@@ -305,6 +305,27 @@ if(BUILD_MG_ALGOS)
     PERCENT 100
     ADDITIONAL_DEP NCCL::NCCL
   )
+  ConfigureTest(
+    NAME CLUSTER_MG_TEST
+    PATH cluster/kmeans_mg.cu
+    GPUS 1
+    PERCENT 100
+    ADDITIONAL_DEP NCCL::NCCL
+  )
+  # CLUSTER_MG_TEST uses raft::comms::std_comms (via build_comms_nccl_only), which needs UCX
+  set(_ucx_extra "")
+  if(DEFINED ENV{CONDA_PREFIX})
+    list(APPEND _ucx_extra HINTS "$ENV{CONDA_PREFIX}/lib")
+  endif()
+  find_library(UCXX_LIBRARY NAMES ucxx ${_ucx_extra})
+  find_library(UCP_LIBRARY NAMES ucp ${_ucx_extra})
+  find_library(UCS_LIBRARY NAMES ucs ${_ucx_extra})
+  if(UCXX_LIBRARY AND UCP_LIBRARY AND UCS_LIBRARY)
+    target_link_libraries(CLUSTER_MG_TEST PRIVATE ${UCXX_LIBRARY} ${UCP_LIBRARY} ${UCS_LIBRARY})
+  elseif(NOT UCXX_LIBRARY OR NOT UCP_LIBRARY OR NOT UCS_LIBRARY)
+    message(WARNING "CLUSTER_MG_TEST: UCX libraries not found (ucxx=${UCXX_LIBRARY}, ucp=${UCP_LIBRARY}, ucs=${UCS_LIBRARY}). "
+                    "Link may fail. Install libucxx and ucx (e.g. conda install -c conda-forge libucxx ucx).")
+  endif()
 endif()
 
 ConfigureTest(

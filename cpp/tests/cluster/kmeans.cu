@@ -10,6 +10,7 @@
 #include <raft/core/resource/cuda_stream.hpp>
 #include <raft/core/resources.hpp>
 #include <raft/random/make_blobs.cuh>
+#include <raft/random/rng.cuh>
 #include <raft/stats/adjusted_rand_index.cuh>
 #include <raft/util/cuda_utils.cuh>
 #include <raft/util/cudart_utils.hpp>
@@ -345,5 +346,51 @@ typedef KmeansTest<float> KmeansTestF;
 TEST_P(KmeansTestF, Result) { ASSERT_TRUE(score == 1.0); }
 
 INSTANTIATE_TEST_CASE_P(KmeansTests, KmeansTestF, ::testing::ValuesIn(inputsf2));
+
+// Single-GPU stress test: 8M x 1024 (needs ~32GB GPU memory). Disabled by default; run manually:
+//   ./CLUSTER_TEST --gtest_also_run_disabled_tests --gtest_filter=*8M_1024*
+TEST(KmeansTests, DISABLED_8M_1024_RandomData)
+{
+  const int64_t n_samples  = 8000000;
+  const int64_t n_features  = 1024;
+  const int n_clusters     = 100;
+
+  raft::resources handle;
+  cuvs::cluster::kmeans::params params;
+  params.n_clusters          = n_clusters;
+  params.tol                 = 0.0001;
+  params.max_iter            = 20;
+  params.n_init              = 1;
+  params.rng_state.seed      = 1234ULL;
+  params.oversampling_factor = 1;
+
+  auto stream = raft::resource::get_cuda_stream(handle);
+
+  rmm::device_uvector<float> X(n_samples * n_features, stream);
+  raft::random::RngState rng(params.rng_state.seed, raft::random::GeneratorType::GenPhilox);
+  raft::random::uniform(handle, rng, X.data(), X.size(), -1.0f, 1.0f);
+
+  rmm::device_uvector<float> d_centroids(n_clusters * n_features, stream);
+
+  auto X_view = raft::make_device_matrix_view<const float, int>(X.data(), n_samples, n_features);
+  auto centroids_view =
+    raft::make_device_matrix_view<float, int>(d_centroids.data(), n_clusters, n_features);
+
+  float inertia = 0;
+  int n_iter    = 0;
+
+  cuvs::cluster::kmeans::fit(handle,
+                            params,
+                            X_view,
+                            std::nullopt,
+                            centroids_view,
+                            raft::make_host_scalar_view<float>(&inertia),
+                            raft::make_host_scalar_view<int>(&n_iter));
+
+  raft::resource::sync_stream(handle, stream);
+
+  EXPECT_GE(n_iter, 1);
+  EXPECT_GT(inertia, 0);
+}
 
 }  // namespace cuvs
