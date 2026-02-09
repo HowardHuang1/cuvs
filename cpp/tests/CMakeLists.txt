@@ -326,6 +326,14 @@ if(BUILD_MG_ALGOS)
     message(WARNING "CLUSTER_MG_TEST: UCX libraries not found (ucxx=${UCXX_LIBRARY}, ucp=${UCP_LIBRARY}, ucs=${UCS_LIBRARY}). "
                     "Link may fail. Install libucxx and ucx (e.g. conda install -c conda-forge libucxx ucx).")
   endif()
+  # MPI for sharded multi-GPU test (data split across ranks; higher OOM threshold)
+  # MPI calls live in kmeans_mg_mpi.cpp (compiled with host compiler) so the .cu file never includes mpi.h (nvcc can fail on it).
+  find_package(MPI)
+  if(MPI_CXX_FOUND)
+    target_sources(CLUSTER_MG_TEST PRIVATE cluster/kmeans_mg_mpi.cpp)
+    target_link_libraries(CLUSTER_MG_TEST PRIVATE MPI::MPI_CXX)
+    target_compile_definitions(CLUSTER_MG_TEST PRIVATE CUVS_CLUSTER_MG_TEST_HAVE_MPI=1)
+  endif()
 endif()
 
 ConfigureTest(

@@ -379,13 +379,14 @@ TEST_P(KmeansTestF, Result) { ASSERT_TRUE(score == 1.0); }
 
 INSTANTIATE_TEST_CASE_P(KmeansTests, KmeansTestF, ::testing::ValuesIn(inputsf2));
 
+
 // Single-GPU OOM bisect: find at what size OOM occurs. Run:
 //   ./CLUSTER_TEST --gtest_also_run_disabled_tests --gtest_filter=*OOM_Bisect*
 TEST(KmeansTests, DISABLED_OOM_Bisect_WhereItFails)
 {
   const int64_t n_features = 1024;
   const int n_clusters    = 100;
-  const std::vector<int64_t> sizes = {250000, 500000, 1000000, 2000000, 4000000, 8000000};
+  const std::vector<int64_t> sizes = {250000, 500000, 1000000, 2000000, 4000000, 8000000, 9000000, 12000000, 16000000};
 
   raft::resources handle;
   auto stream = raft::resource::get_cuda_stream(handle);
@@ -455,8 +456,6 @@ TEST(KmeansTests, DISABLED_OOM_Bisect_WhereItFails)
 
 // Single-GPU stress test: 8M x 1024 (needs ~32GB GPU memory). Disabled by default; run manually:
 //   ./CLUSTER_TEST --gtest_also_run_disabled_tests --gtest_filter=*8M_1024*
-// Use int64_t views: n_samples*n_features = 8,192,000,000 > INT_MAX; int would overflow and cause
-// cudaErrorIllegalAddress. Use unique names (X_8m, etc.) to avoid nvcc redeclaration with int64_t.
 TEST(KmeansTests, DISABLED_8M_1024_RandomData)
 {
   const int64_t n_samples   = 8000000;

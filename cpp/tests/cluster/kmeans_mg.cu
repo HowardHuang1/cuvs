@@ -24,27 +24,72 @@
 
 #include <climits>
 #include <cstdint>
+#include <cstdlib>
 #include <iostream>
+#include <string>
 #include <vector>
 
 #include <cuda_runtime_api.h>
 
+#ifdef CUVS_CLUSTER_MG_TEST_HAVE_MPI
+// Declarations only (implemented in kmeans_mg_mpi.cpp). Inline here so nvcc always sees them.
+extern "C" {
+int sharded_mpi_init(int* rank, int* size);
+void sharded_mpi_finalize(void);
+void sharded_mpi_bcast_nccl_id(void* buf, int count);
+void oom_bisect_mpi_get_rank_size(int* rank, int* size);
+}
+void oom_bisect_mpi_gather_print(const std::vector<std::string>& lines, int rank, int size);
+#endif
+
 namespace {
+
+/** GPU id for this process: from MPI local rank env vars (mpirun) or cudaGetDevice(). */
+int get_process_gpu_id()
+{
+  const char* p = std::getenv("OMPI_COMM_WORLD_LOCAL_RANK");
+  if (p != nullptr && p[0] != '\0') {
+    return std::atoi(p);
+  }
+  p = std::getenv("MPICH_LOCAL_RANK");
+  if (p != nullptr && p[0] != '\0') {
+    return std::atoi(p);
+  }
+  p = std::getenv("LOCAL_RANK");
+  if (p != nullptr && p[0] != '\0') {
+    return std::atoi(p);
+  }
+  p = std::getenv("OMPI_COMM_WORLD_RANK");
+  if (p != nullptr && p[0] != '\0') {
+    return std::atoi(p);
+  }
+  int dev = 0;
+  (void)cudaGetDevice(&dev);
+  return dev;
+}
 
 // --- OOM debugging helpers ---
 
-/** Print current GPU free/total memory (bytes). */
-void print_gpu_memory(const char* label)
+/** Print current GPU free/total memory (bytes). If out is non-null, write there; else if buf is non-null, append line to *buf; else write to cerr. */
+void print_gpu_memory(const char* label, std::ostream* out = nullptr, std::vector<std::string>* buf = nullptr)
 {
   size_t free_bytes = 0, total_bytes = 0;
   cudaError_t e = cudaMemGetInfo(&free_bytes, &total_bytes);
+  std::string msg;
   if (e != cudaSuccess) {
-    std::cerr << "[" << label << "] cudaMemGetInfo failed: " << cudaGetErrorString(e)
-              << std::endl;
-    return;
+    msg = std::string("[") + label + "] cudaMemGetInfo failed: " + cudaGetErrorString(e);
+  } else {
+    msg = std::string("[") + label + "] GPU memory: free=" +
+          std::to_string(free_bytes / (1024 * 1024)) + " MiB, total=" +
+          std::to_string(total_bytes / (1024 * 1024)) + " MiB";
   }
-  std::cerr << "[" << label << "] GPU memory: free=" << (free_bytes / (1024 * 1024)) << " MiB, total="
-            << (total_bytes / (1024 * 1024)) << " MiB" << std::endl;
+  if (buf != nullptr) {
+    buf->push_back(msg);
+  } else if (out != nullptr) {
+    *out << msg << std::endl << std::flush;
+  } else {
+    std::cerr << msg << std::endl << std::flush;
+  }
 }
 
 /**
@@ -227,12 +272,22 @@ INSTANTIATE_TEST_CASE_P(KmeansTests, KmeansTestD, ::testing::ValuesIn(inputsd2))
 
 // --- OOM bisect: run with smaller datasets to find exactly where it fails ---
 // Run: ./CLUSTER_MG_TEST --gtest_also_run_disabled_tests --gtest_filter=*OOM_Bisect*
+// With mpirun -np 4: logs are buffered and gathered to rank 0 so GPU 0, GPU 1, ... print in order to the terminal.
 TEST(KmeansTests, DISABLED_OOM_Bisect_WhereItFails)
 {
+  int rank = 0, size = 1;
+#ifdef CUVS_CLUSTER_MG_TEST_HAVE_MPI
+  oom_bisect_mpi_get_rank_size(&rank, &size);
+#endif
+  const int gpu_id       = (size > 1) ? rank : get_process_gpu_id();
+  const std::string gpu  = "[GPU " + std::to_string(gpu_id) + "] ";
+
   const int64_t n_features = 1024;
   const int n_clusters    = 100;
 
-  const std::vector<int64_t> sizes = {250000, 500000, 1000000, 2000000, 4000000, 8000000, 16000000};
+  const std::vector<int64_t> sizes = {250000, 500000, 1000000, 2000000, 4000000, 8000000, 9000000, 12000000, 16000000};
+
+  std::vector<std::string> log_buf;
 
   ncclComm_t nccl_comm;
   NCCLCHECK(ncclCommInitAll(&nccl_comm, 1, {0}));
@@ -248,61 +303,176 @@ TEST(KmeansTests, DISABLED_OOM_Bisect_WhereItFails)
   params.rng_state.seed      = 1234ULL;
   params.oversampling_factor  = 1;
 
-  for (int64_t n_samples : sizes) {
-    std::cerr << "\n[OOM_Bisect] ========== n_samples=" << n_samples << " ==========" << std::endl;
+  auto oom_append_log = [&gpu, &log_buf](const std::string& msg) { log_buf.push_back(gpu + msg); };
 
-    const size_t X_bytes = size_X_bytes(n_samples, n_features, sizeof(float));
-    const size_t centroids_bytes =
-      static_cast<size_t>(n_clusters) * static_cast<size_t>(n_features) * sizeof(float);
-    const bool overflow = would_overflow_int32(n_samples, n_features);
+  auto flush_log = [&log_buf, rank, size]() {
+    if (size > 1) {
+  #ifdef CUVS_CLUSTER_MG_TEST_HAVE_MPI
+        oom_bisect_mpi_gather_print(log_buf, rank, size);
+  #endif
+    } else {
+        for (const auto& s : log_buf) std::cerr << s << '\n';
+        std::cerr << std::flush;
+    }
+  };
 
-    std::cerr << "[OOM_Bisect] X bytes: " << (X_bytes / (1024 * 1024)) << " MiB ("
-              << (X_bytes / (1024 * 1024 * 1024)) << " GiB)" << std::endl;
-    std::cerr << "[OOM_Bisect] centroids bytes: " << (centroids_bytes / 1024) << " KiB"
-              << std::endl;
-    std::cerr << "[OOM_Bisect] n_samples*n_features overflows int32? " << (overflow ? "YES" : "no")
-              << " (INT_MAX=" << INT_MAX << ")" << std::endl;
-    print_gpu_memory("OOM_Bisect before alloc");
+  try {
+    for (int64_t n_samples : sizes) {
+      oom_append_log("\n[OOM_Bisect] ========== n_samples=" + std::to_string(n_samples) + " ==========");
 
-    std::cerr << "[OOM_Bisect] Step: allocate X" << std::endl;
-    rmm::device_uvector<float> X(static_cast<size_t>(n_samples * n_features), stream);
-    std::cerr << "[OOM_Bisect] Step: allocated X" << std::endl;
-    print_gpu_memory("OOM_Bisect after alloc X");
+      const size_t X_bytes = size_X_bytes(n_samples, n_features, sizeof(float));
+      const size_t centroids_bytes =
+        static_cast<size_t>(n_clusters) * static_cast<size_t>(n_features) * sizeof(float);
+      const bool overflow = would_overflow_int32(n_samples, n_features);
 
-    std::cerr << "[OOM_Bisect] Step: fill X with uniform" << std::endl;
-    raft::random::RngState rng(params.rng_state.seed, raft::random::GeneratorType::GenPhilox);
-    raft::random::uniform(handle, rng, X.data(), X.size(), -1.0f, 1.0f);
-    std::cerr << "[OOM_Bisect] Step: filled X" << std::endl;
+      oom_append_log("[OOM_Bisect] X bytes: " + std::to_string(X_bytes / (1024 * 1024)) + " MiB (" +
+                 std::to_string(X_bytes / (1024 * 1024 * 1024)) + " GiB)");
+      oom_append_log("[OOM_Bisect] centroids bytes: " + std::to_string(centroids_bytes / 1024) + " KiB");
+      oom_append_log(std::string("[OOM_Bisect] n_samples*n_features overflows int32? ") +
+                 (overflow ? "YES" : "no") + " (INT_MAX=" + std::to_string(INT_MAX) + ")");
+      print_gpu_memory((gpu + "OOM_Bisect before alloc").c_str(), nullptr, &log_buf);
 
-    std::cerr << "[OOM_Bisect] Step: allocate d_centroids" << std::endl;
-    rmm::device_uvector<float> d_centroids(
-      static_cast<size_t>(n_clusters) * static_cast<size_t>(n_features), stream);
-    std::cerr << "[OOM_Bisect] Step: allocated d_centroids" << std::endl;
+      oom_append_log("[OOM_Bisect] Step: allocate X");
+      rmm::device_uvector<float> X(static_cast<size_t>(n_samples * n_features), stream);
+      oom_append_log("[OOM_Bisect] Step: allocated X");
+      print_gpu_memory((gpu + "OOM_Bisect after alloc X").c_str(), nullptr, &log_buf);
 
-    auto X_view =
-      raft::make_device_matrix_view<const float, int64_t>(X.data(), n_samples, n_features);
-    auto centroids_view =
-      raft::make_device_matrix_view<float, int64_t>(d_centroids.data(), n_clusters, n_features);
-    float inertia  = 0;
-    int64_t n_iter = 0;
+      oom_append_log("[OOM_Bisect] Step: fill X with uniform");
+      raft::random::RngState rng(params.rng_state.seed, raft::random::GeneratorType::GenPhilox);
+      raft::random::uniform(handle, rng, X.data(), X.size(), -1.0f, 1.0f);
+      oom_append_log("[OOM_Bisect] Step: filled X");
 
-    std::cerr << "[OOM_Bisect] Step: call fit" << std::endl;
-    cuvs::cluster::kmeans::fit(handle,
-                               params,
-                               X_view,
-                               std::nullopt,
-                               centroids_view,
-                               raft::make_host_scalar_view<float>(&inertia),
-                               raft::make_host_scalar_view<int64_t>(&n_iter));
-    std::cerr << "[OOM_Bisect] Step: fit returned (n_iter=" << n_iter << ")" << std::endl;
+      oom_append_log("[OOM_Bisect] Step: allocate d_centroids");
+      rmm::device_uvector<float> d_centroids(
+        static_cast<size_t>(n_clusters) * static_cast<size_t>(n_features), stream);
+      oom_append_log("[OOM_Bisect] Step: allocated d_centroids");
 
-    raft::resource::sync_stream(handle, stream);
-    std::cerr << "[OOM_Bisect] Step: sync done" << std::endl;
+      auto X_view =
+        raft::make_device_matrix_view<const float, int64_t>(X.data(), n_samples, n_features);
+      auto centroids_view =
+        raft::make_device_matrix_view<float, int64_t>(d_centroids.data(), n_clusters, n_features);
+      float inertia  = 0;
+      int64_t n_iter = 0;
+
+      oom_append_log("[OOM_Bisect] Step: call fit");
+      cuvs::cluster::kmeans::fit(handle,
+                                 params,
+                                 X_view,
+                                 std::nullopt,
+                                 centroids_view,
+                                 raft::make_host_scalar_view<float>(&inertia),
+                                 raft::make_host_scalar_view<int64_t>(&n_iter));
+      oom_append_log("[OOM_Bisect] Step: fit returned (n_iter=" + std::to_string(n_iter) + ")");
+
+      raft::resource::sync_stream(handle, stream);
+      oom_append_log("[OOM_Bisect] Step: sync done");
+    }
+
+    oom_append_log("[OOM_Bisect] All sizes completed.");
+  } catch (...) {
+    // One rank bailed (e.g. OOM); can't do collective gather. Just print this rank's buffer.
+    for (const auto& s : log_buf) std::cerr << s << '\n';
+    std::cerr << std::flush;
+    ncclCommDestroy(nccl_comm);
+#ifdef CUVS_CLUSTER_MG_TEST_HAVE_MPI
+    if (size > 1) sharded_mpi_finalize();
+#endif
+    throw;
   }
 
-  std::cerr << "[OOM_Bisect] All sizes completed." << std::endl;
+  flush_log();
   ncclCommDestroy(nccl_comm);
+#ifdef CUVS_CLUSTER_MG_TEST_HAVE_MPI
+  if (size > 1) sharded_mpi_finalize();
+#endif
 }
+
+// Sharded multi-GPU: data split across ranks so total dataset can be n_ranks × single-GPU limit.
+// Run: mpirun -np 4 bash -c 'export CUDA_VISIBLE_DEVICES=$OMPI_COMM_WORLD_LOCAL_RANK; exec
+//   ./CLUSTER_MG_TEST --gtest_also_run_disabled_tests --gtest_filter=*Sharded_32M*'
+// With 4 GPUs (4×32GB), total 32M×1024 (~128 GB) fits with 8M×1024 (~32 GB) per rank.
+#ifdef CUVS_CLUSTER_MG_TEST_HAVE_MPI
+TEST(KmeansTests, DISABLED_Sharded_32M_1024_MultiGPU)
+{
+  int rank = 0, size = 1;
+  if (!sharded_mpi_init(&rank, &size)) {
+    sharded_mpi_finalize();
+    GTEST_SKIP() << "Sharded test needs mpirun -np 2 or more (e.g. -np 4).";
+  }
+
+  const int64_t n_total_samples = 32000000;  // 32M total; 8M per rank for 4 GPUs
+  const int64_t n_features      = 1024;
+  const int n_clusters          = 100;
+  const int64_t n_local         = n_total_samples / size;
+
+  ncclUniqueId id;
+  if (rank == 0) { NCCLCHECK(ncclGetUniqueId(&id)); }
+  sharded_mpi_bcast_nccl_id(&id, static_cast<int>(sizeof(id)));
+
+  cudaSetDevice(0);  // assume CUDA_VISIBLE_DEVICES set per process when using mpirun
+  ncclComm_t nccl_comm;
+  NCCLCHECK(ncclCommInitRank(&nccl_comm, size, id, rank));
+
+  raft::resources handle;
+  raft::comms::build_comms_nccl_only(&handle, nccl_comm, size, rank);
+
+  cuvs::cluster::kmeans::params params;
+  params.n_clusters          = n_clusters;
+  params.tol                 = 0.0001f;
+  params.max_iter            = 20;
+  params.n_init              = 1;
+  params.rng_state.seed      = 1234ULL;
+  params.oversampling_factor = 1;
+
+  auto stream = raft::resource::get_cuda_stream(handle);
+
+  if (rank == 0) {
+    std::cerr << "[Sharded_32M] total_samples=" << n_total_samples << " n_ranks=" << size
+              << " local_per_rank=" << n_local << " (" << (n_local * n_features * sizeof(float) / (1024 * 1024))
+              << " MiB per rank)" << std::endl;
+  }
+
+  rmm::device_uvector<float> X_local(static_cast<size_t>(n_local * n_features), stream);
+  raft::random::RngState rng(params.rng_state.seed + rank, raft::random::GeneratorType::GenPhilox);
+  raft::random::uniform(handle, rng, X_local.data(), X_local.size(), -1.0f, 1.0f);
+
+  rmm::device_uvector<float> centroids(
+    static_cast<size_t>(n_clusters) * static_cast<size_t>(n_features), stream);
+
+  auto X_view = raft::make_device_matrix_view<const float, int64_t>(
+    X_local.data(), n_local, n_features);
+  auto centroids_view =
+    raft::make_device_matrix_view<float, int64_t>(centroids.data(), n_clusters, n_features);
+
+  float inertia  = 0;
+  int64_t n_iter = 0;
+
+  cuvs::cluster::kmeans::fit(handle,
+                             params,
+                             X_view,
+                             std::nullopt,
+                             centroids_view,
+                             raft::make_host_scalar_view<float>(&inertia),
+                             raft::make_host_scalar_view<int64_t>(&n_iter));
+
+  raft::resource::sync_stream(handle, stream);
+
+  if (rank == 0) {
+    std::cerr << "[Sharded_32M] fit done n_iter=" << n_iter << " inertia=" << inertia << std::endl;
+  }
+
+  EXPECT_GE(n_iter, 1);
+
+  ncclCommDestroy(nccl_comm);
+  sharded_mpi_finalize();
+}
+#else
+TEST(KmeansTests, DISABLED_Sharded_32M_1024_MultiGPU)
+{
+  GTEST_SKIP() << "Build without MPI; install MPI (e.g. conda install -c conda-forge openmpi) and "
+                  "reconfigure to run sharded multi-GPU test.";
+}
+#endif
 
 // Multi-GPU path stress test: 8M x 1024 (needs ~32GB GPU memory when run with 1 rank).
 // Build requires BUILD_MG_ALGOS=ON (default). Run: ./CLUSTER_MG_TEST
