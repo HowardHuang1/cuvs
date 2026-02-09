@@ -286,7 +286,7 @@ TEST(KmeansTests, DISABLED_OOM_Bisect_WhereItFails)
   const int64_t n_features = 1024;
   const int n_clusters    = 100;
 
-  const std::vector<int64_t> sizes = {250000, 500000, 1000000, 2000000, 4000000, 8000000, 9000000, 12000000, 16000000};
+  const std::vector<int64_t> sizes = {250000, 500000, 1000000, 2000000, 4000000, 8000000, 9000000, 12000000, 16000000, 24000000, 26000000, 28000000, 29000000, 300000000, 320000000, 360000000};
 
   std::vector<std::string> log_buf;
 
