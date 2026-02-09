@@ -272,7 +272,8 @@ INSTANTIATE_TEST_CASE_P(KmeansTests, KmeansTestD, ::testing::ValuesIn(inputsd2))
 
 // --- OOM bisect: run with smaller datasets to find exactly where it fails ---
 // Run: ./CLUSTER_MG_TEST --gtest_also_run_disabled_tests --gtest_filter=*OOM_Bisect*
-// With mpirun -np 4: logs are buffered and gathered to rank 0 so GPU 0, GPU 1, ... print in order to the terminal.
+// With mpirun -np 4: data is SHARDED across ranks (each rank holds n_samples/size rows); logs
+// are buffered and gathered to rank 0 so GPU 0, GPU 1, ... print in order.
 TEST(KmeansTests, DISABLED_OOM_Bisect_WhereItFails)
 {
   int rank = 0, size = 1;
@@ -290,9 +291,20 @@ TEST(KmeansTests, DISABLED_OOM_Bisect_WhereItFails)
   std::vector<std::string> log_buf;
 
   ncclComm_t nccl_comm;
-  NCCLCHECK(ncclCommInitAll(&nccl_comm, 1, {0}));
   raft::resources handle;
-  raft::comms::build_comms_nccl_only(&handle, nccl_comm, 1, 0);
+  if (size > 1) {
+    ncclUniqueId id;
+#ifdef CUVS_CLUSTER_MG_TEST_HAVE_MPI
+    if (rank == 0) { NCCLCHECK(ncclGetUniqueId(&id)); }
+    sharded_mpi_bcast_nccl_id(&id, static_cast<int>(sizeof(id)));
+#endif
+    cudaSetDevice(0);
+    NCCLCHECK(ncclCommInitRank(&nccl_comm, size, id, rank));
+    raft::comms::build_comms_nccl_only(&handle, nccl_comm, size, rank);
+  } else {
+    NCCLCHECK(ncclCommInitAll(&nccl_comm, 1, {0}));
+    raft::comms::build_comms_nccl_only(&handle, nccl_comm, 1, 0);
+  }
   auto stream = raft::resource::get_cuda_stream(handle);
 
   cuvs::cluster::kmeans::params params;
@@ -318,28 +330,40 @@ TEST(KmeansTests, DISABLED_OOM_Bisect_WhereItFails)
 
   try {
     for (int64_t n_samples : sizes) {
-      oom_append_log("\n[OOM_Bisect] ========== n_samples=" + std::to_string(n_samples) + " ==========");
+      const int64_t n_local_base = n_samples / size;
+      const int64_t row_start    = static_cast<int64_t>(rank) * n_local_base;
+      const int64_t row_end      = (rank == size - 1) ? n_samples : (row_start + n_local_base);
+      const int64_t n_local     = row_end - row_start;
 
-      const size_t X_bytes = size_X_bytes(n_samples, n_features, sizeof(float));
+      oom_append_log("\n[OOM_Bisect] ========== n_samples=" + std::to_string(n_samples) + " ==========");
+      oom_append_log("[OOM_Bisect] DATASET: total_rows=" + std::to_string(n_samples) +
+                     " n_ranks=" + std::to_string(size) + " n_features=" + std::to_string(n_features) +
+                     (size > 1 ? " (sharded)" : " (single rank, full dataset)"));
+      oom_append_log("[OOM_Bisect] Rank " + std::to_string(rank) + " (GPU " + std::to_string(gpu_id) +
+                     "): dataset rows " + std::to_string(row_start) + " to " + std::to_string(row_end - 1) +
+                     " (inclusive) -> " + std::to_string(n_local) + " rows");
+
+      const size_t X_local_bytes = size_X_bytes(n_local, n_features, sizeof(float));
       const size_t centroids_bytes =
         static_cast<size_t>(n_clusters) * static_cast<size_t>(n_features) * sizeof(float);
-      const bool overflow = would_overflow_int32(n_samples, n_features);
+      const bool overflow = would_overflow_int32(n_local, n_features);
 
-      oom_append_log("[OOM_Bisect] X bytes: " + std::to_string(X_bytes / (1024 * 1024)) + " MiB (" +
-                 std::to_string(X_bytes / (1024 * 1024 * 1024)) + " GiB)");
+      oom_append_log("[OOM_Bisect] X local bytes: " + std::to_string(X_local_bytes / (1024 * 1024)) + " MiB (" +
+                 std::to_string(X_local_bytes / (1024 * 1024 * 1024)) + " GiB)");
       oom_append_log("[OOM_Bisect] centroids bytes: " + std::to_string(centroids_bytes / 1024) + " KiB");
-      oom_append_log(std::string("[OOM_Bisect] n_samples*n_features overflows int32? ") +
+      oom_append_log(std::string("[OOM_Bisect] n_local*n_features overflows int32? ") +
                  (overflow ? "YES" : "no") + " (INT_MAX=" + std::to_string(INT_MAX) + ")");
       print_gpu_memory((gpu + "OOM_Bisect before alloc").c_str(), nullptr, &log_buf);
 
-      oom_append_log("[OOM_Bisect] Step: allocate X");
-      rmm::device_uvector<float> X(static_cast<size_t>(n_samples * n_features), stream);
+      oom_append_log("[OOM_Bisect] Step: allocate X (local shard)");
+      rmm::device_uvector<float> X_local(static_cast<size_t>(n_local * n_features), stream);
       oom_append_log("[OOM_Bisect] Step: allocated X");
       print_gpu_memory((gpu + "OOM_Bisect after alloc X").c_str(), nullptr, &log_buf);
 
       oom_append_log("[OOM_Bisect] Step: fill X with uniform");
-      raft::random::RngState rng(params.rng_state.seed, raft::random::GeneratorType::GenPhilox);
-      raft::random::uniform(handle, rng, X.data(), X.size(), -1.0f, 1.0f);
+      raft::random::RngState rng(params.rng_state.seed + static_cast<uint64_t>(rank),
+                                 raft::random::GeneratorType::GenPhilox);
+      raft::random::uniform(handle, rng, X_local.data(), X_local.size(), -1.0f, 1.0f);
       oom_append_log("[OOM_Bisect] Step: filled X");
 
       oom_append_log("[OOM_Bisect] Step: allocate d_centroids");
@@ -348,7 +372,7 @@ TEST(KmeansTests, DISABLED_OOM_Bisect_WhereItFails)
       oom_append_log("[OOM_Bisect] Step: allocated d_centroids");
 
       auto X_view =
-        raft::make_device_matrix_view<const float, int64_t>(X.data(), n_samples, n_features);
+        raft::make_device_matrix_view<const float, int64_t>(X_local.data(), n_local, n_features);
       auto centroids_view =
         raft::make_device_matrix_view<float, int64_t>(d_centroids.data(), n_clusters, n_features);
       float inertia  = 0;
@@ -404,6 +428,8 @@ TEST(KmeansTests, DISABLED_Sharded_32M_1024_MultiGPU)
   const int64_t n_features      = 1024;
   const int n_clusters          = 100;
   const int64_t n_local         = n_total_samples / size;
+  const int64_t row_start       = static_cast<int64_t>(rank) * n_local;
+  const int64_t row_end         = (rank == size - 1) ? n_total_samples : (row_start + n_local);
 
   ncclUniqueId id;
   if (rank == 0) { NCCLCHECK(ncclGetUniqueId(&id)); }
@@ -426,10 +452,27 @@ TEST(KmeansTests, DISABLED_Sharded_32M_1024_MultiGPU)
 
   auto stream = raft::resource::get_cuda_stream(handle);
 
+  // --- Sharding debug: total dataset size and per-GPU row ranges ---
   if (rank == 0) {
-    std::cerr << "[Sharded_32M] total_samples=" << n_total_samples << " n_ranks=" << size
-              << " local_per_rank=" << n_local << " (" << (n_local * n_features * sizeof(float) / (1024 * 1024))
-              << " MiB per rank)" << std::endl;
+    std::cerr << "[Sharded_32M] DATASET: total_rows=" << n_total_samples
+              << " n_ranks=" << size
+              << " n_features=" << n_features
+              << " (target local_rows=" << n_local << " per rank, "
+              << (n_local * n_features * sizeof(float) / (1024 * 1024)) << " MiB per rank)"
+              << std::endl;
+  }
+  raft::resource::sync_stream(handle, stream);
+  for (int r = 0; r < size; ++r) {
+    if (r == rank) {
+      const int64_t my_rows = row_end - row_start;
+      std::cerr << "[Sharded_32M] Rank " << rank << " (GPU " << rank << "): dataset rows "
+                << row_start << " to " << (row_end - 1) << " (inclusive) -> "
+                << my_rows << " rows" << std::endl;
+    }
+    raft::resource::sync_stream(handle, stream);
+  }
+  if (rank == 0) {
+    std::cerr << "[Sharded_32M] local_per_rank=" << n_local << std::endl;
   }
 
   rmm::device_uvector<float> X_local(static_cast<size_t>(n_local * n_features), stream);
