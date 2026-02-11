@@ -52,20 +52,49 @@ def _reclaim_gpu_memory(rank: int, size: int) -> None:
         pass
 
 
-def _get_gpu_mem_str(num_gpus: int) -> str:
-    """Return GPU memory free/total for GPUs 0..num_gpus-1, or empty if unavailable."""
+def _get_gpu_mem_str(rank: int, size: int, comm) -> str:
+    """Return GPU memory free/total using cudaMemGetInfo (CUDA runtime view).
+    Each rank queries its own GPU (the one it uses) and results are gathered to rank 0.
+    cudaMemGetInfo is more accurate than NVML for 'available for allocation' with RMM/caching allocator.
+    All ranks must call this (collective).
+    """
     try:
-        import pynvml
-        pynvml.nvmlInit()
-        parts = []
-        for i in range(num_gpus):
-            h = pynvml.nvmlDeviceGetHandleByIndex(i)
-            info = pynvml.nvmlDeviceGetMemoryInfo(h)
-            parts.append(f"GPU{i}={info.free//2**20}/{info.total//2**20}MB")
-        pynvml.nvmlShutdown()
-        return " ".join(parts)
-    except Exception:
-        return "(pynvml not available: pip install nvidia-ml-py)"
+        import ctypes
+        from ctypes import byref, c_size_t, c_int, POINTER
+
+        cudart = ctypes.CDLL("libcudart.so")
+        cudaMemGetInfo = cudart.cudaMemGetInfo
+        cudaMemGetInfo.argtypes = [POINTER(c_size_t), POINTER(c_size_t)]
+        cudaMemGetInfo.restype = c_int
+
+        count = c_int()
+        if cudart.cudaGetDeviceCount(byref(count)) != 0:
+            return "(cudaGetDeviceCount failed)"
+        dev = 0 if count.value == 1 else rank
+        if cudart.cudaSetDevice(dev) != 0:
+            return "(cudaSetDevice failed)"
+        if cudart.cudaDeviceSynchronize() != 0:
+            pass  # best-effort sync
+
+        free = c_size_t()
+        total = c_size_t()
+        if cudaMemGetInfo(byref(free), byref(total)) != 0:
+            return "(cudaMemGetInfo failed)"
+
+        free_mb = free.value // (2**20)
+        total_mb = total.value // (2**20)
+        # When each rank sees 1 GPU (CUDA_VISIBLE_DEVICES), label by rank; else by device index
+        my_str = f"rank{rank}={free_mb}/{total_mb}MB" if count.value == 1 else f"GPU{dev}={free_mb}/{total_mb}MB"
+
+        if size <= 1:
+            return my_str
+        # Gather from all ranks (each reports its GPU)
+        gathered = comm.gather(my_str, root=0)
+        if rank == 0:
+            return " ".join(gathered)
+        return ""
+    except Exception as e:
+        return f"(GPU mem query failed: {e})"
 
 
 def main():
@@ -112,7 +141,8 @@ def main():
     parser.add_argument(
         "--mem",
         action="store_true",
-        help="Print GPU memory (free/total MB) before and after each fit_mg_sharded call.",
+        help="Print GPU memory: Python prints 'before' (pre-alloc); C++ prints 'WITH dataset' "
+        "(after alloc) and 'after fit (before freeing)' (before dealloc).",
     )
     parser.add_argument(
         "--debug",
@@ -176,11 +206,12 @@ def main():
         while trial <= high:
             if rank == 0:
                 print(f"Trying n_samples={trial} ...", flush=True)
-            if args.mem and rank == 0:
-                print(f"  before: {_get_gpu_mem_str(size)}", flush=True)
+            if args.mem:
+                mem_str = _get_gpu_mem_str(rank, size, comm)
+                if rank == 0:
+                    print(f"  before: {mem_str}", flush=True)
             ok = run_one(trial)
-            if args.mem and rank == 0:
-                print(f"  after:  {_get_gpu_mem_str(size)}", flush=True)
+            # "after" (before freeing) is printed from C++ fit_mg_sharded
             if rank == 0:
                 print(f"  -> {'OK' if ok else 'OOM'}", flush=True)
             if not ok:
@@ -198,11 +229,12 @@ def main():
             mid = (last_ok + high + 1) // 2
             if rank == 0:
                 print(f"Trying n_samples={mid} ...", flush=True)
-            if args.mem and rank == 0:
-                print(f"  before: {_get_gpu_mem_str(size)}", flush=True)
+            if args.mem:
+                mem_str = _get_gpu_mem_str(rank, size, comm)
+                if rank == 0:
+                    print(f"  before: {mem_str}", flush=True)
             ok = run_one(mid)
-            if args.mem and rank == 0:
-                print(f"  after:  {_get_gpu_mem_str(size)}", flush=True)
+            # "after" (before freeing) is printed from C++ fit_mg_sharded
             if rank == 0:
                 print(f"  -> {'OK' if ok else 'OOM'}", flush=True)
             if ok:
@@ -219,11 +251,12 @@ def main():
     n_samples = args.n_samples
     if rank == 0:
         print(f"Trying n_samples={n_samples} (n_features={args.n_features}, n_clusters={args.n_clusters}) ...", flush=True)
-    if args.mem and rank == 0:
-        print(f"  before: {_get_gpu_mem_str(size)}", flush=True)
+    if args.mem:
+        mem_str = _get_gpu_mem_str(rank, size, comm)
+        if rank == 0:
+            print(f"  before: {mem_str}", flush=True)
     ok = run_one(n_samples)
-    if args.mem and rank == 0:
-        print(f"  after:  {_get_gpu_mem_str(size)}", flush=True)
+    # "after" (before freeing) is printed from C++ fit_mg_sharded
     if rank == 0:
         print("OK" if ok else "OOM", flush=True)
     sys.exit(0 if ok else 1)

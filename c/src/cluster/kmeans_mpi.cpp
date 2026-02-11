@@ -11,6 +11,7 @@
 
 #include <cstdint>
 #include <cstdio>
+#include <cuda_runtime_api.h>
 #include <dlpack/dlpack.h>
 #include <nccl.h>
 
@@ -105,6 +106,29 @@ cuvsError_t fit_from_host_mg_sharded_impl(cuvsKMeansParams_t params,
   rmm::device_uvector<T> d_centroids(static_cast<size_t>(n_clusters) * static_cast<size_t>(n_cols),
                                      stream);
 
+  // Debug: GPU memory right after dataset + centroids on device (true usage during fit).
+  raft::resource::sync_stream(handle, stream);
+  for (int r = 0; r < size; ++r) {
+    MPI_Barrier(MPI_COMM_WORLD);
+    if (r == rank) {
+      size_t free_bytes = 0, total_bytes = 0;
+      cudaError_t mem_err = cudaMemGetInfo(&free_bytes, &total_bytes);
+      if (mem_err == cudaSuccess) {
+        const size_t x_bytes = static_cast<size_t>(n_local) * static_cast<size_t>(n_cols) * sizeof(T);
+        std::fprintf(stderr,
+                     "[fit_mg_sharded] rank %d/%d: GPU mem WITH dataset on device: "
+                     "free=%zuMB total=%zuMB (X_local=%zuMB)\n",
+                     rank,
+                     size,
+                     free_bytes / (1024 * 1024),
+                     total_bytes / (1024 * 1024),
+                     x_bytes / (1024 * 1024));
+      }
+      std::fflush(stderr);
+    }
+    MPI_Barrier(MPI_COMM_WORLD);
+  }
+
   auto X_view = raft::make_device_matrix_view<const T, int64_t>(X_local.data(), n_local, n_cols);
   auto centroids_view =
     raft::make_device_matrix_view<T, int64_t>(d_centroids.data(), n_clusters, n_cols);
@@ -134,6 +158,26 @@ cuvsError_t fit_from_host_mg_sharded_impl(cuvsKMeansParams_t params,
                static_cast<size_t>(n_clusters) * static_cast<size_t>(n_cols),
                stream);
     raft::resource::sync_stream(handle, stream);
+  }
+
+  // Debug: GPU memory after fit, before freeing (dataset + temporaries still allocated).
+  for (int r = 0; r < size; ++r) {
+    MPI_Barrier(MPI_COMM_WORLD);
+    if (r == rank) {
+      size_t free_bytes = 0, total_bytes = 0;
+      cudaError_t mem_err = cudaMemGetInfo(&free_bytes, &total_bytes);
+      if (mem_err == cudaSuccess) {
+        std::fprintf(stderr,
+                     "[fit_mg_sharded] rank %d/%d: GPU mem after fit (before freeing): "
+                     "free=%zuMB total=%zuMB\n",
+                     rank,
+                     size,
+                     free_bytes / (1024 * 1024),
+                     total_bytes / (1024 * 1024));
+      }
+      std::fflush(stderr);
+    }
+    MPI_Barrier(MPI_COMM_WORLD);
   }
 
   ncclCommDestroy(nccl_comm);
