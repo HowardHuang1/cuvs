@@ -239,6 +239,159 @@ def fit(
     return FitOutput(centroids, inertia, n_iter)
 
 
+@auto_sync_resources
+@auto_convert_output
+def fit_mg(
+    KMeansParams params, X, rank, size, centroids=None, resources=None
+):
+    """
+    Multi-GPU KMeans fit from host memory (MPI sharded).
+
+    Run the script with mpirun (e.g. mpirun -np 4 python script.py).
+    Each process must call this with the same X (full dataset) and its
+    rank/size from mpi4py. The implementation shards X by rows and runs
+    one collective KMeans across all ranks. Requires the cuVS C library
+    to be built with MPI.
+
+    Parameters
+    ----------
+    params : KMeansParams
+        Parameters for KMeans model.
+    X : numpy.ndarray (host), shape (n_samples, n_features)
+        Row-major, float32 or float64. Same full dataset on every rank.
+    rank : int
+        MPI rank (e.g. from mpi4py.MPI.COMM_WORLD.Get_rank()).
+    size : int
+        MPI size (e.g. from mpi4py.MPI.COMM_WORLD.Get_size()).
+    centroids : Device array (n_clusters, n_features), optional
+        Output buffer; if None, one is allocated.
+    resources : Resources, optional
+        Per-process resources handle.
+
+    Returns
+    -------
+    centroids, inertia, n_iter : same as fit()
+
+    Examples
+    --------
+    >>> from mpi4py import MPI
+    >>> import numpy as np
+    >>> from cuvs.cluster.kmeans import fit_mg, KMeansParams
+    >>> comm = MPI.COMM_WORLD
+    >>> rank, size = comm.Get_rank(), comm.Get_size()
+    >>> X = np.random.randn(100000, 64).astype(np.float32)
+    >>> params = KMeansParams(n_clusters=100)
+    >>> centroids, inertia, n_iter = fit_mg(params, X, rank=rank, size=size)
+    """
+    from cuvs.common import Resources
+
+    X_np = np.ascontiguousarray(X)
+    if X_np.dtype not in (np.float32, np.float64):
+        raise ValueError("X must be float32 or float64")
+    n_rows, n_cols = X_np.shape
+    is_float64 = 1 if X_np.dtype == np.float64 else 0
+
+    cdef uintptr_t x_addr = X_np.__array_interface__["data"][0]
+    cdef cuvsResources_t res = <cuvsResources_t>(resources or Resources()).get_c_obj()
+
+    if centroids is None:
+        centroids = device_ndarray.empty((params.n_clusters, n_cols), dtype=X_np.dtype)
+    centroids_ai = wrap_array(centroids)
+    cdef cydlpack.DLManagedTensor* centroids_dlpack = cydlpack.dlpack_c(centroids_ai)
+
+    cdef double inertia = 0
+    cdef int n_iter = 0
+
+    with cuda_interruptible():
+        check_cuvs(
+            cuvsKMeansFitFromHostMG(
+                res,
+                params.params,
+                <const void*>x_addr,
+                n_rows,
+                n_cols,
+                is_float64,
+                rank,
+                size,
+                centroids_dlpack,
+                &inertia,
+                &n_iter,
+            )
+        )
+
+    return FitOutput(centroids, inertia, n_iter)
+
+
+@auto_sync_resources
+@auto_convert_output
+def fit_mg_sharded(
+    KMeansParams params, X_local, rank, size, centroids=None, resources=None
+):
+    """
+    Multi-GPU KMeans fit from host memory (MPI sharded), memory-efficient.
+
+    Each rank passes only its row shard X_local [n_local x n_features]. Avoids
+    replicating the full dataset on host (prevents host OOM with large datasets).
+    Run with mpirun (e.g. mpirun -np 4 python script.py).
+
+    Parameters
+    ----------
+    params : KMeansParams
+        Parameters for KMeans model.
+    X_local : numpy.ndarray (host), shape (n_local, n_features)
+        This rank's row shard. n_local = n_samples // size (last rank gets remainder).
+    rank : int
+        MPI rank.
+    size : int
+        MPI size.
+    centroids : Device array, optional
+        Output buffer; if None, one is allocated.
+    resources : Resources, optional
+        Per-process resources handle.
+
+    Returns
+    -------
+    centroids, inertia, n_iter : same as fit()
+    """
+    from cuvs.common import Resources
+
+    X_np = np.ascontiguousarray(X_local)
+    if X_np.dtype not in (np.float32, np.float64):
+        raise ValueError("X_local must be float32 or float64")
+    n_local, n_cols = X_np.shape
+    is_float64 = 1 if X_np.dtype == np.float64 else 0
+
+    cdef uintptr_t x_addr = X_np.__array_interface__["data"][0]
+    cdef cuvsResources_t res = <cuvsResources_t>(resources or Resources()).get_c_obj()
+
+    if centroids is None:
+        centroids = device_ndarray.empty((params.n_clusters, n_cols), dtype=X_np.dtype)
+    centroids_ai = wrap_array(centroids)
+    cdef cydlpack.DLManagedTensor* centroids_dlpack = cydlpack.dlpack_c(centroids_ai)
+
+    cdef double inertia = 0
+    cdef int n_iter = 0
+
+    with cuda_interruptible():
+        check_cuvs(
+            cuvsKMeansFitFromHostMGSharded(
+                res,
+                params.params,
+                <const void*>x_addr,
+                n_local,
+                n_cols,
+                is_float64,
+                rank,
+                size,
+                centroids_dlpack,
+                &inertia,
+                &n_iter,
+            )
+        )
+
+    return FitOutput(centroids, inertia, n_iter)
+
+
 PredictOutput = namedtuple("PredictOutput", "labels inertia")
 
 

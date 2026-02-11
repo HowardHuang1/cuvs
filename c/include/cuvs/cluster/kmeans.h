@@ -212,6 +212,71 @@ cuvsError_t cuvsKMeansClusterCost(cuvsResources_t res,
                                   DLManagedTensor* X,
                                   DLManagedTensor* centroids,
                                   double* cost);
+
+/**
+ * @brief Multi-GPU KMeans fit from host memory (MPI sharded).
+ *
+ * Each MPI rank must call this with the same n_rows, n_cols, rank, size.
+ * X_host can be the full dataset on every rank; the implementation copies
+ * only this rank's row shard to device and runs the multi-GPU fit.
+ * Requires the C library to be built with MPI.
+ *
+ * @param[in]     res       opaque C handle (used for stream/allocator when applicable)
+ * @param[in]     params    KMeans parameters
+ * @param[in]     X_host    Host pointer to row-major data [n_rows x n_cols]
+ * @param[in]     n_rows    Total number of rows (global dataset)
+ * @param[in]     n_cols    Number of features
+ * @param[in]     is_float64 1 if float64, 0 if float32
+ * @param[in]     rank      MPI rank (0..size-1)
+ * @param[in]     size      MPI size (number of processes)
+ * @param[inout]  centroids Device tensor [n_clusters x n_cols]; output centroids
+ * @param[out]    inertia   Sum of squared distances to nearest centroid
+ * @param[out]    n_iter    Number of iterations run
+ */
+cuvsError_t cuvsKMeansFitFromHostMG(cuvsResources_t res,
+                                    cuvsKMeansParams_t params,
+                                    const void* X_host,
+                                    int64_t n_rows,
+                                    int64_t n_cols,
+                                    int is_float64,
+                                    int rank,
+                                    int size,
+                                    DLManagedTensor* centroids,
+                                    double* inertia,
+                                    int* n_iter);
+
+/**
+ * @brief Multi-GPU KMeans fit from host memory (MPI sharded), memory-efficient.
+ *
+ * Each MPI rank passes only its row shard X_local [n_local x n_cols]. Avoids
+ * replicating the full dataset on every rank (host OOM). Same results as
+ * cuvsKMeansFitFromHostMG when sharding matches: n_local = ceil(n_rows/size) for
+ * rank < remainder, else n_rows/size.
+ *
+ * @param[in]     res           opaque C handle
+ * @param[in]     params        KMeans parameters
+ * @param[in]     X_local_host  Host pointer to this rank's shard [n_local x n_cols]
+ * @param[in]     n_local       Number of rows on this rank
+ * @param[in]     n_cols        Number of features
+ * @param[in]     is_float64    1 if float64, 0 if float32
+ * @param[in]     rank          MPI rank
+ * @param[in]     size          MPI size
+ * @param[inout]  centroids     Device tensor; output centroids
+ * @param[out]    inertia       Sum of squared distances
+ * @param[out]    n_iter        Number of iterations
+ */
+cuvsError_t cuvsKMeansFitFromHostMGSharded(cuvsResources_t res,
+                                          cuvsKMeansParams_t params,
+                                          const void* X_local_host,
+                                          int64_t n_local,
+                                          int64_t n_cols,
+                                          int is_float64,
+                                          int rank,
+                                          int size,
+                                          DLManagedTensor* centroids,
+                                          double* inertia,
+                                          int* n_iter);
+
 /**
  * @}
  */

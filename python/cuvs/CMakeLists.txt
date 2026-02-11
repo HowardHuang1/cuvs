@@ -35,6 +35,19 @@ include(rapids-find)
 
 rapids_cpm_init()
 
+# Workaround when building against an installed libcuvs whose config lists a non-existent
+# INTERFACE_INCLUDE_DIRECTORIES path (e.g. .../targets/x86_64-linux/include/cccl in some conda
+# envs). Create the directory so CMake's existence check passes; CCCL headers are found
+# via other include paths from the build.
+if(DEFINED ENV{CONDA_PREFIX})
+  set(_cccl_path "$ENV{CONDA_PREFIX}/targets/x86_64-linux/include/cccl")
+  if(NOT EXISTS "${_cccl_path}")
+    message(STATUS "cuvs_py: creating ${_cccl_path} so installed libcuvs config is valid")
+    file(MAKE_DIRECTORY "${_cccl_path}")
+  endif()
+  unset(_cccl_path)
+endif()
+
 # --- cuVS ---#
 find_package(cuvs "${RAPIDS_VERSION}" REQUIRED COMPONENTS cuvs_cpp_headers cuvs cuvs_shared c_api)
 

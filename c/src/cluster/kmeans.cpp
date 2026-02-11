@@ -267,3 +267,58 @@ extern "C" cuvsError_t cuvsKMeansClusterCost(cuvsResources_t res,
     }
   });
 }
+
+#ifndef CUVS_HAVE_MPI
+extern "C" cuvsError_t cuvsKMeansFitFromHostMG(cuvsResources_t res,
+                                               cuvsKMeansParams_t params,
+                                               const void* X_host,
+                                               int64_t n_rows,
+                                               int64_t n_cols,
+                                               int is_float64,
+                                               int rank,
+                                               int size,
+                                               DLManagedTensor* centroids,
+                                               double* inertia,
+                                               int* n_iter)
+{
+  (void)res;
+  (void)params;
+  (void)X_host;
+  (void)n_rows;
+  (void)n_cols;
+  (void)is_float64;
+  (void)rank;
+  (void)size;
+  (void)centroids;
+  (void)inertia;
+  (void)n_iter;
+  RAFT_FAIL("cuvsKMeansFitFromHostMG requires cuVS C library built with MPI (find_package(MPI)).");
+}
+
+extern "C" cuvsError_t cuvsKMeansFitFromHostMGSharded(cuvsResources_t res,
+                                                     cuvsKMeansParams_t params,
+                                                     const void* X_local_host,
+                                                     int64_t n_local,
+                                                     int64_t n_cols,
+                                                     int is_float64,
+                                                     int rank,
+                                                     int size,
+                                                     DLManagedTensor* centroids,
+                                                     double* inertia,
+                                                     int* n_iter)
+{
+  (void)res;
+  (void)params;
+  (void)X_local_host;
+  (void)n_local;
+  (void)n_cols;
+  (void)is_float64;
+  (void)rank;
+  (void)size;
+  (void)centroids;
+  (void)inertia;
+  (void)n_iter;
+  RAFT_FAIL(
+    "cuvsKMeansFitFromHostMGSharded requires cuVS C library built with MPI (find_package(MPI)).");
+}
+#endif

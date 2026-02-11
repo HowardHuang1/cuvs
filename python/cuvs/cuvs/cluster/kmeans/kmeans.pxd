@@ -4,7 +4,7 @@
 #
 # cython: language_level=3
 
-from libc.stdint cimport uintptr_t
+from libc.stdint cimport int64_t, uintptr_t
 from libcpp cimport bool
 
 from cuvs.common.c_api cimport cuvsError_t, cuvsResources_t
@@ -63,3 +63,49 @@ cdef extern from "cuvs/cluster/kmeans.h" nogil:
                                       DLManagedTensor* X,
                                       DLManagedTensor* centroids,
                                       double* cost)
+
+    cuvsError_t cuvsKMeansFitFromHostMG(cuvsResources_t res,
+                                        cuvsKMeansParams_t params,
+                                        const void* X_host,
+                                        int64_t n_rows,
+                                        int64_t n_cols,
+                                        int is_float64,
+                                        int rank,
+                                        int size,
+                                        DLManagedTensor* centroids,
+                                        double* inertia,
+                                        int* n_iter) except +
+
+# Inject cuvsKMeansFitFromHostMGSharded declaration via verbatim C.
+# Conda's kmeans.h may not have this symbol; inline declaration avoids header dependency.
+cdef extern from * nogil:
+    """
+    #ifdef __cplusplus
+    extern "C" {
+    #endif
+    cuvsError_t cuvsKMeansFitFromHostMGSharded(cuvsResources_t res,
+                                              cuvsKMeansParams_t params,
+                                              const void* X_local_host,
+                                              int64_t n_local,
+                                              int64_t n_cols,
+                                              int is_float64,
+                                              int rank,
+                                              int size,
+                                              DLManagedTensor* centroids,
+                                              double* inertia,
+                                              int* n_iter);
+    #ifdef __cplusplus
+    }
+    #endif
+    """
+    cuvsError_t cuvsKMeansFitFromHostMGSharded(cuvsResources_t res,
+                                              cuvsKMeansParams_t params,
+                                              const void* X_local_host,
+                                              int64_t n_local,
+                                              int64_t n_cols,
+                                              int is_float64,
+                                              int rank,
+                                              int size,
+                                              DLManagedTensor* centroids,
+                                              double* inertia,
+                                              int* n_iter) except +

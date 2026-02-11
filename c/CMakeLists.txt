@@ -80,12 +80,25 @@ if(BUILD_MG_ALGOS AND CUVSC_STATIC_CUVS_LIBRARY)
   find_package(NCCL REQUIRED)
 endif()
 
+# Optional MPI for cuvsKMeansFitFromHostMG (multi-GPU KMeans from host memory)
+find_package(MPI COMPONENTS CXX)
+
+# UCX libraries required at runtime when using MPI multi-GPU (raft comms use ucxx::Worker::progress)
+set(_ucx_hints "")
+if(DEFINED ENV{CONDA_PREFIX})
+  list(APPEND _ucx_hints HINTS "$ENV{CONDA_PREFIX}/lib")
+endif()
+find_library(UCXX_LIBRARY NAMES ucxx ${_ucx_hints})
+find_library(UCP_LIBRARY NAMES ucp ${_ucx_hints})
+find_library(UCS_LIBRARY NAMES ucs ${_ucx_hints})
+
 # ##################################################################################################
 # * cuvs_c -------------------------------------------------------------------------------
 add_library(
   cuvs_c SHARED
   src/core/c_api.cpp
   src/cluster/kmeans.cpp
+  $<$<BOOL:${MPI_CXX_FOUND}>:src/cluster/kmeans_mpi.cpp>
   src/neighbors/brute_force.cpp
   src/neighbors/ivf_flat.cpp
   src/neighbors/ivf_pq.cpp
@@ -161,6 +174,11 @@ target_include_directories(
   INTERFACE "$<INSTALL_INTERFACE:include>"
 )
 
+target_compile_definitions(
+  cuvs_c
+  PRIVATE $<$<BOOL:${MPI_CXX_FOUND}>:CUVS_HAVE_MPI>
+)
+
 target_link_libraries(
   cuvs_c
   PRIVATE # we don't want any dependencies exported
@@ -168,6 +186,17 @@ target_link_libraries(
           $<COMPILE_ONLY:raft::raft> # enforce we shouldn't use raft symbols
           $<TARGET_NAME_IF_EXISTS:hnswlib::hnswlib>
 )
+
+if(MPI_CXX_FOUND)
+  target_link_libraries(cuvs_c PRIVATE MPI::MPI_CXX)
+  if(UCXX_LIBRARY AND UCP_LIBRARY AND UCS_LIBRARY)
+    target_link_libraries(cuvs_c PRIVATE ${UCXX_LIBRARY} ${UCP_LIBRARY} ${UCS_LIBRARY})
+  else()
+    message(WARNING "cuvs_c: UCX libraries not found (ucxx=${UCXX_LIBRARY}, ucp=${UCP_LIBRARY}, ucs=${UCS_LIBRARY}). "
+                    "Runtime may fail with undefined symbol ucxx::Worker::progress. "
+                    "Install libucxx and ucx (e.g. conda install -c conda-forge libucxx ucx).")
+  endif()
+endif()
 
 # ##################################################################################################
 # * install targets-----------------------------------------------------------
