@@ -10,6 +10,7 @@
 #include <mpi.h>
 
 #include <cstdint>
+#include <cstdio>
 #include <dlpack/dlpack.h>
 #include <nccl.h>
 
@@ -64,6 +65,22 @@ cuvsError_t fit_from_host_mg_sharded_impl(cuvsKMeansParams_t params,
                                           int* n_iter)
 {
   const int n_clusters = params->n_clusters;
+
+  // Debug: fit_mg_sharded receives already-sharded data (each rank has only its rows).
+  for (int r = 0; r < size; ++r) {
+    MPI_Barrier(MPI_COMM_WORLD);
+    if (r == rank) {
+      std::fprintf(stderr,
+                   "[fit_mg_sharded] rank %d/%d: received SHARDED input. "
+                   "This rank has n_local=%ld rows (n_cols=%ld). No sharding needed.\n",
+                   rank,
+                   size,
+                   static_cast<long>(n_local),
+                   static_cast<long>(n_cols));
+      std::fflush(stderr);
+    }
+    MPI_Barrier(MPI_COMM_WORLD);
+  }
 
   ncclUniqueId id;
   if (rank == 0) { NCCLCHECK(ncclGetUniqueId(&id)); }
@@ -139,6 +156,33 @@ cuvsError_t fit_from_host_mg_impl(cuvsKMeansParams_t params,
   const int64_t row_start    = static_cast<int64_t>(rank) * n_local_base;
   const int64_t row_end      = (rank == size - 1) ? n_rows : (row_start + n_local_base);
   const int64_t n_local     = row_end - row_start;
+
+  // Debug: (1) fit_mg received full dataset - one print for total size.
+  if (rank == 0) {
+    std::fprintf(stderr,
+                 "[fit_mg] received FULL dataset: n_rows=%ld, n_cols=%ld (total across all ranks)\n",
+                 static_cast<long>(n_rows),
+                 static_cast<long>(n_cols));
+    std::fflush(stderr);
+  }
+  MPI_Barrier(MPI_COMM_WORLD);
+
+  // Debug: (2) after sharding, each rank's shard size right before passing to fit_mg_sharded.
+  for (int r = 0; r < size; ++r) {
+    MPI_Barrier(MPI_COMM_WORLD);
+    if (r == rank) {
+      std::fprintf(stderr,
+                   "[fit_mg] rank %d/%d: after sharding -> n_local=%ld rows (rows %ld:%ld). "
+                   "Passing shard to fit_mg_sharded.\n",
+                   rank,
+                   size,
+                   static_cast<long>(n_local),
+                   static_cast<long>(row_start),
+                   static_cast<long>(row_end));
+      std::fflush(stderr);
+    }
+    MPI_Barrier(MPI_COMM_WORLD);
+  }
 
   const T* X_local_ptr = static_cast<const T*>(X_host) + row_start * n_cols;
   return fit_from_host_mg_sharded_impl<T>(
