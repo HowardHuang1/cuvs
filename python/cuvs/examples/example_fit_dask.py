@@ -9,7 +9,8 @@ a large dataset across workers, and runs iterative Lloyd's algorithm with
 map-reduce. Each partition runs cuVS predict + local reduction; results
 are aggregated to update centroids.
 
-Install optional deps first:
+Requires a regular (non-editable) cuvs install:
+    pip install python/cuvs --no-build-isolation --no-deps
     pip install cuvs[dask]
 
 Then run (adjust chunks/workers as needed):
@@ -17,23 +18,6 @@ Then run (adjust chunks/workers as needed):
 """
 import os
 import sys
-import subprocess
-
-# Re-launch with clean sys.path so cuvs loads from installed package, not source tree
-if os.environ.get("CUVS_EXAMPLE_RUNNING") != "1":
-    _script = os.path.abspath(__file__)
-    _repo = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
-    env = os.environ.copy()
-    env["CUVS_EXAMPLE_RUNNING"] = "1"
-    env.pop("PYTHONPATH", None)
-    # Bootstrap: strip repo from sys.path before running script
-    _bootstrap = f"""import sys, os, runpy
-_repo = {repr(_repo)}
-sys.path[:] = [p for p in sys.path if _repo not in os.path.abspath(p)]
-os.chdir("/tmp")
-runpy.run_path({repr(_script)}, run_name="__main__")
-"""
-    sys.exit(subprocess.call([sys.executable, "-c", _bootstrap], env=env))
 
 import cupy as cp
 import dask.array as da
@@ -44,10 +28,8 @@ try:
 except ModuleNotFoundError as e:
     if "cydlpack" in str(e):
         print(
-            "Error: cuvs loaded from source tree (likely editable install).\n"
-            "Fix: pip uninstall cuvs -y && pip install python/cuvs --no-build-isolation --no-deps\n"
-            "Or run from outside repo: cd /tmp && python",
-            os.path.abspath(__file__),
+            "Error: cuvs is an editable install; examples need a regular install.\n"
+            "Run: pip uninstall cuvs -y && pip install python/cuvs --no-build-isolation --no-deps"
         )
     raise
 
