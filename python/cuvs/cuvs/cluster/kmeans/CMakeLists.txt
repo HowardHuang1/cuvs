@@ -14,3 +14,9 @@ rapids_cython_create_modules(
   SOURCE_FILES "${cython_sources}"
   LINKED_LIBRARIES "${linked_libraries}" ASSOCIATED_TARGETS cuvs MODULE_PREFIX cluster_kmeans_
 )
+
+# Install pure Python module (Dask multi-GPU KMeans)
+# Use same layout as Cython modules (relative to CMAKE_INSTALL_PREFIX)
+install(FILES dask_kmeans.py
+  DESTINATION cuvs/cluster/kmeans
+  COMPONENT python)

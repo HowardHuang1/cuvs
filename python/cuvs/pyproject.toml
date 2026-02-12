@@ -34,6 +34,11 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
+dask = [
+    "dask[array]",
+    "distributed",
+    "dask-cuda",
+]
 test = [
     "cupy-cuda13x>=13.6.0",
     "pytest-cov",
