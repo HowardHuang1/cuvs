@@ -19,15 +19,21 @@ import os
 import sys
 import subprocess
 
-# Re-launch from /tmp to avoid loading cuvs from source tree (editable install / PYTHONPATH)
+# Re-launch with clean sys.path so cuvs loads from installed package, not source tree
 if os.environ.get("CUVS_EXAMPLE_RUNNING") != "1":
     _script = os.path.abspath(__file__)
     _repo = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
-    if os.getcwd().startswith(_repo) or _repo in os.environ.get("PYTHONPATH", ""):
-        env = os.environ.copy()
-        env["CUVS_EXAMPLE_RUNNING"] = "1"
-        env.pop("PYTHONPATH", None)  # clear PYTHONPATH if it pointed at repo
-        sys.exit(subprocess.call([sys.executable, _script], cwd="/tmp", env=env))
+    env = os.environ.copy()
+    env["CUVS_EXAMPLE_RUNNING"] = "1"
+    env.pop("PYTHONPATH", None)
+    # Bootstrap: strip repo from sys.path before running script
+    _bootstrap = f"""import sys, os, runpy
+_repo = {repr(_repo)}
+sys.path[:] = [p for p in sys.path if _repo not in os.path.abspath(p)]
+os.chdir("/tmp")
+runpy.run_path({repr(_script)}, run_name="__main__")
+"""
+    sys.exit(subprocess.call([sys.executable, "-c", _bootstrap], env=env))
 
 import cupy as cp
 import dask.array as da
@@ -38,8 +44,9 @@ try:
 except ModuleNotFoundError as e:
     if "cydlpack" in str(e):
         print(
-            "Error: cuvs loaded from source tree. Run from outside repo:\n"
-            "  cd /tmp && python",
+            "Error: cuvs loaded from source tree (likely editable install).\n"
+            "Fix: pip uninstall cuvs -y && pip install python/cuvs --no-build-isolation --no-deps\n"
+            "Or run from outside repo: cd /tmp && python",
             os.path.abspath(__file__),
         )
     raise
@@ -51,7 +58,19 @@ except ImportError:
     HAS_DASK_CUDA = False
 
 
+def _print_gpu_memory():
+    """Print used/total memory for each visible GPU."""
+    n = cp.cuda.runtime.getDeviceCount()
+    for i in range(n):
+        free, total = cp.cuda.Device(i).mem_info
+        used = total - free
+        print(f"  GPU {i}: {used / 2**20:.1f} MiB used / {total / 2**20:.1f} MiB total")
+
+
 def main():
+    print("GPU memory (before cluster):")
+    _print_gpu_memory()
+
     # Prefer LocalCUDACluster (one worker per GPU) when available
     if HAS_DASK_CUDA:
         n_gpus = cp.cuda.runtime.getDeviceCount()
@@ -62,6 +81,10 @@ def main():
         print("For multi-GPU, install: conda install -c rapidsai dask-cuda")
         cluster = LocalCluster(n_workers=4)
     client = Client(cluster)
+
+    print("GPU memory (after cluster) / Dask overhead:")
+    _print_gpu_memory()
+
     n_workers = len(client.scheduler_info()["workers"])
     _n_gpus = cp.cuda.runtime.getDeviceCount() if HAS_DASK_CUDA else "N/A"
     print(f"GPUs visible to CuPy: {_n_gpus}, Workers: {n_workers}")
@@ -75,6 +98,9 @@ def main():
     X_cupy = cp.random.random((n_samples, n_features), dtype=cp.float32)
     X_dask = da.from_array(X_cupy, chunks=(chunk_rows, n_features))
 
+    print("GPU memory (after data on driver):")
+    _print_gpu_memory()
+
     params = KMeansParams(
         n_clusters=n_clusters,
         max_iter=100,
@@ -87,6 +113,8 @@ def main():
     print(f"Converged in {n_iter} iterations")
     print(f"Inertia: {inertia:.4f}")
     print(f"Centroids shape: {centroids.shape}")
+    print("GPU memory (after fit; X_cupy/centroids still in driver memory):")
+    _print_gpu_memory()
 
     client.close()
     cluster.close()
