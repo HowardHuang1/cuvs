@@ -163,9 +163,13 @@ def fit_dask(
     prev_inertia = float("inf")
     metric_name = params.metric if hasattr(params, "metric") else "L2Expanded"
 
+    n_blocks = len(blocks)
     for iteration in range(max_iter):
         # Use delayed() so _partition_fit receives computed array, not Delayed
         from dask.delayed import delayed
+
+        hint = " (blocks computed on-demand)" if iteration == 0 else ""
+        print(f"  KMeans iter {iteration + 1}/{max_iter} ({n_blocks} partitions){hint}...", flush=True)
 
         fit_delayed = [
             delayed(_partition_fit)(block, centroids, n_clusters, metric_name)
