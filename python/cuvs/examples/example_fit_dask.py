@@ -123,7 +123,7 @@ def main():
             chunks=(chunk_rows, n_features),
             name=False,  # avoid hashing copy
         )
-        print("GPU memory (after from_array; driver holds full numpy array):")
+        print("GPU memory (after from_array; driver/CPU holds full numpy array):")
     else:
         # Lazy generation: chunks created on workers, no driver allocation
         X_dask = da.random.random(
@@ -131,7 +131,7 @@ def main():
             chunks=(chunk_rows, n_features),
             dtype=np.float32,
         )
-        print("GPU memory (after data created lazily; no driver allocation):")
+        print("GPU memory (after data created lazily; no driver/CPU allocation):")
     _print_gpu_memory(max_devices=None)
 
     params = KMeansParams(

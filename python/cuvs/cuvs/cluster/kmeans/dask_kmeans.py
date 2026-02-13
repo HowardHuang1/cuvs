@@ -65,7 +65,8 @@ def _partition_fit(
         cnt = int(mask.sum())
         counts[c] = cnt
         if cnt > 0:
-            partial_sums[c] = X[mask].sum(axis=0)
+            # X.T @ mask avoids materializing X[mask] which OOMs for large clusters
+            partial_sums[c] = (X.T @ mask.astype(cp.float32))
 
     return (
         cp.asnumpy(partial_sums),
