@@ -13,8 +13,11 @@ cuML's make_blobs creates Dask cuPy arrays (data on GPU). Here we simulate the
 common case: user has numpy array on CPU → Dask chunks it → sends to GPUs.
 
 Memory: reports GPU total and driver RSS (if psutil installed).
-For arrays > ~4 GiB, da.from_array embeds data in the task graph and can be slow;
-consider da.random (lazy) or disk-backed sources for very large datasets.
+
+Data paths:
+  - Default (from_array): driver holds full array; workers cache chunks → ~2× memory
+  - CUVS_DASK_USE_SCATTER=1: scatter chunks to workers, then del driver copy → ~1× memory
+    Use for larger datasets (e.g. 35M+ rows) to avoid OOM.
 
 Run:
     python python/cuvs/examples/example_fit_dask_mnmg.py
@@ -27,6 +30,7 @@ import time
 import numpy as np
 import cupy as cp
 import dask.array as da
+from dask.delayed import delayed
 from dask.distributed import Client
 
 try:
@@ -115,10 +119,38 @@ def main():
         used, total = driver_mem_after
         print(f"  Driver (CPU): {used:.1f} GiB used / {total:.1f} GiB total (system)")
 
-    # --- Chunk into Dask array (logical partitioning; data still on CPU) ---
-    X_dask = da.from_array(X_np, chunks=(chunk_rows, n_features), name=False)
     n_chunks = (n_samples + chunk_rows - 1) // chunk_rows
-    print(f"  Dask array: {n_chunks} chunks\n")
+
+    if os.environ.get("CUVS_DASK_USE_SCATTER") == "1":
+        # Scatter chunks to workers, then delete driver copy → ~1× memory (data only on workers)
+        print(f"  Scattering {n_chunks} chunks to workers (CUVS_DASK_USE_SCATTER=1)...")
+        # Views (no copy); scatter serializes and sends to workers
+        chunks_list = [
+            X_np[i * chunk_rows : min((i + 1) * chunk_rows, n_samples)]
+            for i in range(n_chunks)
+        ]
+        scattered = client.scatter(chunks_list, broadcast=False)
+        del X_np, chunks_list
+        # Build Dask array from scattered futures; each block fetches from worker that has it
+        def _get_chunk(f, n_r, n_c):
+            arr = f.result() if hasattr(f, "result") else f  # Future or direct array
+            return np.asarray(arr, dtype=np.float32).reshape(n_r, n_c)
+
+        blocks = []
+        for i in range(n_chunks):
+            n_rows_i = min(chunk_rows, n_samples - i * chunk_rows)
+            block = da.from_delayed(
+                delayed(_get_chunk)(scattered[i], n_rows_i, n_features),
+                shape=(n_rows_i, n_features),
+                dtype=np.float32,
+            )
+            blocks.append(block)
+        X_dask = da.concatenate(blocks, axis=0)
+        print(f"  Dask array: {n_chunks} chunks (data on workers, driver copy released)\n")
+    else:
+        # from_array: driver holds full array; workers cache chunks → ~2× memory
+        X_dask = da.from_array(X_np, chunks=(chunk_rows, n_features), name=False)
+        print(f"  Dask array: {n_chunks} chunks\n")
 
     # --- cuVS fit_dask ---
     params = KMeansParams(n_clusters=n_clusters, max_iter=100, tol=1e-4)
@@ -146,8 +178,10 @@ def main():
     if driver_after is not None:
         print(f"  Driver peak: {driver_after[0]:.1f} GiB")
 
-    # Release large arrays before shutdown so workers can clean up faster
-    del X_np, X_dask
+    # Release references before shutdown so workers can clean up faster
+    if os.environ.get("CUVS_DASK_USE_SCATTER") != "1":
+        del X_np
+    del X_dask
     client.close()
     try:
         cluster.close(timeout=15)
