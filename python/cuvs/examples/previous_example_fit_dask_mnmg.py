@@ -17,24 +17,16 @@ Data paths:
   - Default (from_array): driver holds full array; workers cache chunks → ~2× memory
   - CUVS_DASK_USE_SCATTER=1: generate in batches, scatter each batch, release → low driver peak
     Driver holds only one batch at a time (~batch_size × chunk_size). Use for 40M+ rows.
-    Chunks stay numpy on workers; _partition_fit converts to CuPy per call (freed after).
-    Tune CUVS_DASK_SCATTER_BATCH (default 22): smaller = lower peak, larger = faster scatter.
+    Tune CUVS_DASK_SCATTER_BATCH (default 10): smaller = lower peak, larger = faster scatter.
 
 Run:
     python python/cuvs/examples/example_fit_dask_mnmg.py
     CUVS_DASK_USE_SCATTER=1 python python/cuvs/examples/example_fit_dask_mnmg.py  # low-memory path
 
-Script sets DASK_DISTRIBUTED__SCHEDULER__WORKER_TTL=30m (default 5min causes worker restarts
-and "Removing worker...scattered data" when GPU tasks take longer than 5min).
-Override: DASK_DISTRIBUTED__SCHEDULER__WORKER_TTL=2h python ... for very long runs.
-
 Optional: pip install psutil for driver (CPU) memory, nvidia-ml-py for accurate GPU memory.
 """
 import os
 import time
-
-# Set before any distributed imports so scheduler reads it (default 5min is too short for long GPU tasks)
-os.environ.setdefault("DASK_DISTRIBUTED__SCHEDULER__WORKER_TTL", "30m")
 
 import numpy as np
 import cupy as cp
@@ -57,15 +49,12 @@ try:
 except ImportError:
     LocalCUDACluster = None
 
-
 def _worker_gpu_mem():
     """Run on each Dask worker: cudaMemGetInfo from the process that owns the GPU (like MPI)."""
     import cupy as cp
-
     free, total = cp.cuda.runtime.memGetInfo()
     dev = cp.cuda.runtime.getDevice()
     return {"device_id": dev, "free": free, "total": total, "used": total - free}
-
 
 def _print_gpu_memory(max_devices=None, client=None):
     """Print used/total GiB for each visible GPU.
@@ -97,7 +86,6 @@ def _print_gpu_memory(max_devices=None, client=None):
     # 1. pynvml (nvidia-ml-py) - matches nvidia-smi, includes reserved memory
     try:
         import pynvml
-
         pynvml.nvmlInit()
         print("  [pynvml]")
         for i in range(n):
@@ -124,7 +112,6 @@ def _print_gpu_memory(max_devices=None, client=None):
     # 3. nvidia-smi subprocess
     try:
         import subprocess
-
         print("  [nvidia-smi]")
         out = subprocess.check_output(
             ["nvidia-smi", "--query-gpu=memory.used,memory.total", "--format=csv,noheader,nounits"],
@@ -143,7 +130,6 @@ def _driver_memory():
     """Return (used_gib, total_gib) for driver process. used=RSS, total=system RAM. None if no psutil."""
     try:
         import psutil
-
         used = psutil.Process().memory_info().rss / (1024**3)
         vm = psutil.virtual_memory()
         total = vm.total / (1024**3)
@@ -157,7 +143,6 @@ def main():
     n_features = 1024
     n_clusters = 6
     chunk_rows = 1_000_000  # Each chunk maps to a partition/worker
-    n_chunks = (n_samples + chunk_rows - 1) // chunk_rows
 
     print("=== cuVS K-Means MNMG ===\n")
     print(f"Config: n_samples={n_samples:,}, n_features={n_features}, n_clusters={n_clusters}")
@@ -169,7 +154,6 @@ def main():
     if LocalCUDACluster is None:
         raise RuntimeError("dask-cuda required: pip install dask-cuda")
     n_gpus = cp.cuda.runtime.getDeviceCount()
-
     cluster = LocalCUDACluster(
         CUDA_VISIBLE_DEVICES=list(range(n_gpus)),
         n_workers=n_gpus,
@@ -187,50 +171,49 @@ def main():
         used, total = driver_mem
         print(f"  Driver (CPU): {used:.1f} GiB used / {total:.1f} GiB total (system)")
 
+    n_chunks = (n_samples + chunk_rows - 1) // chunk_rows
+
     if os.environ.get("CUVS_DASK_USE_SCATTER") == "1":
-        # Generate chunks on workers (each worker's GPU in parallel), no driver bottleneck
-        print(f"\n[Data] Generating {n_chunks} chunks on worker GPUs (parallel)...")
+        # Batched generate + scatter: one batch at a time → low driver peak (~40 GiB vs 190 GiB)
+        batch_size = int(os.environ.get("CUVS_DASK_SCATTER_BATCH", "22"))
+        print(f"\n[Data] Batched generate+scatter ({n_chunks} chunks, batch_size={batch_size})...")
         t0 = time.perf_counter()
-
-        def _gen_chunk_on_worker(chunk_id, n_samp, n_feat, chunk_rows_val):
-            """Run on worker: generate chunk on this worker's GPU, return numpy."""
-            import cupy as cp
-
-            cp.random.seed(42 + chunk_id)
-            row_start = chunk_id * chunk_rows_val
-            row_end = min((chunk_id + 1) * chunk_rows_val, n_samp)
-            n_r = row_end - row_start
-            gpu = cp.random.random((n_r, n_feat), dtype=cp.float32)
-            cpu = cp.asnumpy(gpu)
-            del gpu
-            return cpu
+        np.random.seed(42)
 
         def _get_chunk(f, n_r, n_c):
             arr = f.result() if hasattr(f, "result") else f
             return np.asarray(arr, dtype=np.float32).reshape(n_r, n_c)
 
-        # Create delayed tasks: each runs on a worker, generates one chunk on that worker's GPU
-        gen_delayed = [
-            delayed(_gen_chunk_on_worker)(i, n_samples, n_features, chunk_rows)
-            for i in range(n_chunks)
-        ]
-        # Compute but keep results on workers; wait for completion
-        gen_futures = client.compute(gen_delayed)
-        from dask.distributed import wait
+        scattered = []
+        for batch_start in range(0, n_chunks, batch_size):
+            batch_end = min(batch_start + batch_size, n_chunks)
+            n_chunks_batch = batch_end - batch_start
+            row_start = batch_start * chunk_rows
+            row_end = min(batch_end * chunk_rows, n_samples)
+            batch_n_rows = row_end - row_start
 
-        wait(gen_futures)
+            batch_data = np.random.random((batch_n_rows, n_features)).astype(np.float32)
+            batch_chunks = [
+                batch_data[
+                    i * chunk_rows : min((i + 1) * chunk_rows, batch_n_rows)
+                ].copy()
+                for i in range(n_chunks_batch)
+                if i * chunk_rows < batch_n_rows
+            ]
+            batch_scattered = client.scatter(batch_chunks, broadcast=False)
+            scattered.extend(batch_scattered)
+            del batch_data, batch_chunks
+
         t_gen = time.perf_counter() - t0
-        print(f"  Generated on worker GPUs in {t_gen:.2f} s")
-        scattered = gen_futures
+        print(f"  Generated and scattered in {t_gen:.2f} s")
         driver_mem_after = _driver_memory()
         if driver_mem_after is not None:
             used, total = driver_mem_after
-            print(f"  Driver (CPU): {used:.1f} GiB used / {total:.1f} GiB total (system)")
+            print(f"  Driver (CPU): {used:.1f} GiB used / {total:.1f} GiB total (system)")     
 
         blocks = []
         for i in range(n_chunks):
             n_rows_i = min(chunk_rows, n_samples - i * chunk_rows)
-            # scattered[i] is a Future; _get_chunk fetches the numpy from the worker
             block = da.from_delayed(
                 delayed(_get_chunk)(scattered[i], n_rows_i, n_features),
                 shape=(n_rows_i, n_features),
@@ -242,17 +225,10 @@ def main():
     else:
         # --- Generate full array on CPU (from_array path) ---
         print(f"\n[Data] Generating numpy array on CPU ({data_gib:.1f} GiB)...")
-        print("  (GPU generation + copy to CPU; monitor with htop/nvidia-smi)")
+        print("  (Allocation + randoms may take several min; monitor with htop/nvidia-smi)")
         t0 = time.perf_counter()
-        X_np = np.empty((n_samples, n_features), dtype=np.float32)
-        cp.random.seed(42)
-        for i in range(n_chunks):
-            row_start = i * chunk_rows
-            row_end = min((i + 1) * chunk_rows, n_samples)
-            n_rows_i = row_end - row_start
-            gpu_chunk = cp.random.random((n_rows_i, n_features), dtype=cp.float32)
-            X_np[row_start:row_end] = cp.asnumpy(gpu_chunk)
-            del gpu_chunk
+        np.random.seed(42)
+        X_np = np.random.random((n_samples, n_features)).astype(np.float32)
         t_gen = time.perf_counter() - t0
         print(f"  Generated in {t_gen:.2f} s")
         driver_mem_after = _driver_memory()
@@ -286,8 +262,7 @@ def main():
     print("=== Summary ===")
     print(f"  Data: {n_samples:,} x {n_features} = {data_gib:.2f} GiB")
     print(f"  Workers: {n_workers}, Chunks: {n_chunks}")
-    gen_label = "gen+scatter" if os.environ.get("CUVS_DASK_USE_SCATTER") == "1" else "gen"
-    print(f"  Time: fit {t_fit:.2f} s, {gen_label} {t_gen:.2f} s")
+    print(f"  Time: fit {t_fit:.2f} s, gen {t_gen:.2f} s")
     if driver_after is not None:
         print(f"  Driver peak: {driver_after[0]:.1f} GiB")
 
@@ -300,6 +275,7 @@ def main():
         cluster.close(timeout=15)
     except TimeoutError:
         pass  # Result already captured; shutdown is best-effort
+
 
 
 if __name__ == "__main__":

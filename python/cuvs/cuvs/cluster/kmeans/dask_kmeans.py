@@ -65,7 +65,7 @@ def _partition_fit(
         cnt = int(mask.sum())
         counts[c] = cnt
         if cnt > 0:
-            # X.T @ mask avoids materializing X[mask] which OOMs for large clusters
+            # X.T @ mask avoids copy and instead does it in place which OOMs for large clusters
             partial_sums[c] = (X.T @ mask.astype(cp.float32))
 
     return (
@@ -178,30 +178,36 @@ def fit_dask(
         ]
         results = client.compute(fit_delayed, sync=True)
 
-        total_sums = np.zeros((n_clusters, n_features), dtype=dtype)
+        # Use float64 for aggregation to match RAFT's reduce_rows_by_key accuracy.
+        # Summing float32 across partitions is non-associative and can diverge.
+        total_sums = np.zeros((n_clusters, n_features), dtype=np.float64)
         total_counts = np.zeros(n_clusters, dtype=np.int64)
         inertia = 0.0
 
         for psum, cnt, inc in results:
-            total_sums += psum
+            total_sums += np.asarray(psum, dtype=np.float64)
             total_counts += cnt
             inertia += inc
 
-        # Update centroids (handle empty clusters)
+        # Compute new centroids (matches RAFT update_centroids: keep previous if empty)
+        new_centroids = np.empty_like(centroids)
         for c in range(n_clusters):
             if total_counts[c] > 0:
-                centroids[c] = total_sums[c] / total_counts[c]
-            # else: keep previous centroid
+                new_centroids[c] = (total_sums[c] / total_counts[c]).astype(dtype)
+            else:
+                new_centroids[c] = centroids[c]
 
-        # Convergence
+        # Centroid movement (RAFT uses sqrdNormError < tol as convergence criterion)
+        sqrd_norm = float(np.sum((centroids.astype(np.float64) - new_centroids.astype(np.float64)) ** 2))
+        centroids[:] = new_centroids
+
+        # Convergence: match RAFT's dual check (inertia change + centroid movement)
         if tol is not None and prev_inertia != float("inf"):
             delta = abs(prev_inertia - inertia)
             if delta < tol * prev_inertia:
-                return FitDaskOutput(
-                    centroids,
-                    float(inertia),
-                    iteration + 1,
-                )
+                return FitDaskOutput(centroids, float(inertia), iteration + 1)
+            if sqrd_norm < tol:
+                return FitDaskOutput(centroids, float(inertia), iteration + 1)
         prev_inertia = inertia
 
     return FitDaskOutput(centroids, float(prev_inertia), max_iter)
