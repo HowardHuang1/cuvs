@@ -122,8 +122,9 @@ def main():
         n_samples = meta["n_samples"]
         n_features = meta["n_features"]
         chunk_rows = (n_samples + n_chunks - 1) // n_chunks
+        last_chunk_rows = n_samples - (n_chunks - 1) * chunk_rows
         print(f"\n[Data] Loading from {data_path} ({n_samples:,} x {n_features})...")
-        print(f"  Partitioning into {n_chunks} chunks (~{chunk_rows:,} rows each)...")
+        print(f"  Partitioning into {n_chunks} chunks (~{chunk_rows:,} rows each, last chunk {last_chunk_rows:,} rows)...")
 
         load_futures = [
             client.submit(
