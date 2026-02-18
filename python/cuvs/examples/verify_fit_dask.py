@@ -4,7 +4,9 @@
 """
 Verify fit_dask correctness by comparing with single-GPU fit on the same data.
 
-Both use identical init centroids and Lloyd's algorithm → results must match.
+Both use identical init centroids and Lloyd's algorithm. Results should match
+within tolerance when deterministic GPU settings are used (see below).
+
 Run with a Dask cluster already available (e.g. from another terminal), or this
 script will create one:
 
@@ -14,7 +16,16 @@ With existing cluster:
     from dask.distributed import default_client
     # ... after creating cluster in another process
     python -c "exec(open('verify_fit_dask.py').read()); verify(default_client())"
+
+Note: Single-GPU (RAFT) uses atomics and block reductions, so its reduction order
+can vary run-to-run. We set CUBLAS_WORKSPACE_CONFIG before importing CUDA libs to
+improve cuBLAS determinism; some run-to-run variation may still occur.
 """
+import os
+
+# Set before any CUDA/cuBLAS use so cuBLAS picks deterministic algorithms where available.
+os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:2")
+
 import numpy as np
 
 from cuvs.cluster.kmeans import KMeansParams, fit, fit_dask

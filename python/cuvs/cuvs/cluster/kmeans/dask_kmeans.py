@@ -99,31 +99,34 @@ def _partition_fit(
         )
     )
 
+    # Use same dtype as centroids (pipeline dtype) so we match single-GPU float32/float64 behavior.
+    dtype_np = np.float32 if centroids.dtype == np.float32 else np.float64
+    dtype_cp = cp.float32 if dtype_np == np.float32 else cp.float64
+
     if on_own_worker and hasattr(X_partition, "get"):
         print(f"      [partition] data on this worker ({this_worker}), no transfer", flush=True)
         # Use in place when already C-contiguous to avoid 2× GPU memory (MPI path has no copy).
         # If Dask gives an array with wrong metadata, copy to a fresh buffer for cuVS predict.
-        X = cp.asarray(X_partition, dtype=cp.float32)
+        X = cp.asarray(X_partition, dtype=dtype_cp)
         if not X.flags.c_contiguous:
             X = X.copy(order="C")
     elif hasattr(X_partition, "get"):
         print(f"      [partition] data from other worker, copying via host to {this_worker}", flush=True)
-        X_partition = np.asarray(X_partition.get(), dtype=np.float32, order="C")
-        X = cp.asarray(X_partition, dtype=cp.float32)
+        X_partition = np.asarray(X_partition.get(), dtype=dtype_np, order="C")
+        X = cp.asarray(X_partition, dtype=dtype_cp)
     else:
         print(f"      [partition] numpy: copying to this worker's GPU", flush=True)
         if isinstance(X_partition, np.ndarray) and X_partition.dtype == np.dtype("object"):
-            X_partition = np.asarray(X_partition, dtype=np.float32, order="C")
+            X_partition = np.asarray(X_partition, dtype=dtype_np, order="C")
         else:
-            X_partition = np.asarray(X_partition, dtype=np.float32, order="C")
-        X = cp.asarray(X_partition, dtype=cp.float32)
+            X_partition = np.asarray(X_partition, dtype=dtype_np, order="C")
+        X = cp.asarray(X_partition, dtype=dtype_cp)
     cents = cp.asarray(centroids)
     params = KMeansParams(n_clusters=n_clusters, metric=metric)
 
     k, d = cents.shape
-    dtype = X.dtype
     n_rows = X.shape[0]
-    partial_sums = cp.zeros((k, d), dtype=dtype)
+    partial_sums = cp.zeros((k, d), dtype=dtype_cp)
     counts = cp.zeros(k, dtype=cp.int64)
     total_inertia = 0.0
 
@@ -136,7 +139,7 @@ def _partition_fit(
             cnt = int(mask.sum())
             counts[c] = cnt
             if cnt > 0:
-                partial_sums[c] = X.T @ mask.astype(cp.float32)
+                partial_sums[c] = X.T @ mask.astype(dtype_cp)
     else:
         # Chunk predict to stay under cuVS int32 indexing (n_rows * n_features <= INT32_MAX).
         for start in range(0, n_rows, MAX_PREDICT_ROWS):
@@ -150,7 +153,7 @@ def _partition_fit(
                 cnt = int(mask.sum())
                 counts[c] = counts[c] + cnt
                 if cnt > 0:
-                    partial_sums[c] = partial_sums[c] + (X_slice.T @ mask.astype(cp.float32))
+                    partial_sums[c] = partial_sums[c] + (X_slice.T @ mask.astype(dtype_cp))
 
     return (
         cp.asnumpy(partial_sums),
@@ -305,18 +308,36 @@ def fit_dask(
             print(f"    Partition {completed}/{n_blocks}...", flush=True)
             sys.stdout.flush()
 
-        # Use float64 for aggregation to match RAFT's reduce_rows_by_key accuracy.
-        # Summing float32 across partitions is non-associative and can diverge.
-        total_sums = np.zeros((n_clusters, n_features), dtype=np.float64)
-        total_counts = np.zeros(n_clusters, dtype=np.int64)
-        inertia = 0.0
+        # Use same dtype as pipeline for centroid sums so we match single-GPU rounding
+        # (RAFT reduce_rows_by_key uses DataT; float64 accumulation would diverge from float32 path).
+        # Combine partition results in balanced-tree order (pairwise) to mirror RAFT's
+        # block reduction pattern and get closer to single-GPU numerical behavior.
+        agg_dtype = np.float64 if dtype == np.float64 else np.float32
 
-        for psum, cnt, inc in results:
-            total_sums += np.asarray(psum, dtype=np.float64)
-            total_counts += cnt
-            inertia += inc
+        def tree_reduce(results_list):
+            """Pairwise tree reduction: (r0+r1)+(r2+r3)+... for reproducible float order."""
+            n = len(results_list)
+            if n == 0:
+                return (
+                    np.zeros((n_clusters, n_features), dtype=agg_dtype),
+                    np.zeros(n_clusters, dtype=np.int64),
+                    np.float64(0.0),
+                )
+            if n == 1:
+                psum, cnt, inc = results_list[0]
+                return (
+                    np.asarray(psum, dtype=agg_dtype),
+                    np.asarray(cnt, dtype=np.int64),
+                    np.float64(inc),
+                )
+            mid = n // 2
+            s_left, c_left, i_left = tree_reduce(results_list[:mid])
+            s_right, c_right, i_right = tree_reduce(results_list[mid:])
+            return s_left + s_right, c_left + c_right, i_left + i_right
 
-        # Compute new centroids (matches RAFT update_centroids: keep previous if empty)
+        total_sums, total_counts, inertia = tree_reduce(results)
+
+        # Compute new centroids (matches RAFT update_centroids: keep previous if empty).
         new_centroids = np.empty_like(centroids)
         for c in range(n_clusters):
             if total_counts[c] > 0:
