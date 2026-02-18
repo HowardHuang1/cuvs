@@ -16,6 +16,7 @@ the broader Python distributed ecosystem.
 
 from __future__ import annotations
 
+import sys
 from collections import namedtuple
 from typing import TYPE_CHECKING, Optional
 
@@ -30,48 +31,130 @@ if TYPE_CHECKING:
 
 FitDaskOutput = namedtuple("FitDaskOutput", "centroids inertia n_iter")
 
+# cuVS KMeans predict uses int32 indexing; n_rows * n_features must be <= INT32_MAX.
+# 2M * 1024 = 2.048e9 < 2^31-1, so we chunk predict for larger partitions.
+MAX_PREDICT_ROWS = 2_000_000
+
+
+def _worker_addr_normalize(addr: Optional[str]) -> Optional[tuple]:
+    """Normalize worker address to (host, port) for comparison. Scheduler may use
+    contact (127.0.0.1:port) while get_worker().address may be listen (0.0.0.0:port).
+    """
+    if not addr:
+        return None
+    try:
+        # tcp://127.0.0.1:33167 -> host="127.0.0.1", port=33167
+        part = addr.replace("tcp://", "").replace("tls://", "").strip()
+        if ":" in part:
+            host, port = part.rsplit(":", 1)
+            return (host.strip(), int(port))
+    except (ValueError, AttributeError):
+        pass
+    return None
+
+
+def _worker_addr_match(addr1: Optional[str], addr2: Optional[str]) -> bool:
+    """True if both addresses refer to the same worker (same port; localhost hosts treated equal)."""
+    n1, n2 = _worker_addr_normalize(addr1), _worker_addr_normalize(addr2)
+    if n1 is None or n2 is None:
+        return addr1 == addr2
+    h1, p1 = n1
+    h2, p2 = n2
+    if p1 != p2:
+        return False
+    localhost = {"127.0.0.1", "0.0.0.0", "localhost", ""}
+    return h1 == h2 or (h1 in localhost and h2 in localhost)
+
 
 def _partition_fit(
     X_partition,
     centroids: np.ndarray,
     n_clusters: int,
     metric: str = "L2Expanded",
+    expected_worker: Optional[str] = None,
 ) -> tuple[np.ndarray, np.ndarray, float]:
     """
     Run predict on a partition, then compute partial sums and counts.
     Runs on a Dask worker (with GPU). X_partition should be CuPy when on a
     CUDA worker; centroids is numpy (small, broadcast to all workers).
+    If expected_worker is set and we're on that worker, use X_partition in place
+    (no CPU transfer). Otherwise copy via host to avoid cross-process GPU pointers.
     """
     import cupy as cp
     from cuvs.cluster.kmeans import KMeansParams, predict
+    from dask.distributed import get_worker
 
-    # Avoid touching Delayed objects; only convert object-dtype numpy arrays
-    if isinstance(X_partition, np.ndarray) and X_partition.dtype == np.dtype("object"):
-        X_partition = np.asarray(X_partition, dtype=np.float32, order="C")
-    X = cp.asarray(X_partition, dtype=cp.float32)
+    # Use worker address as unique ID: only use array in place when this task
+    # runs on the worker that owns the block (avoids cudaErrorIllegalAddress).
+    worker = get_worker()
+    this_worker = worker.address
+    this_worker_alt = getattr(worker, "contact_address", None)
+    # Normalize comparison: scheduler who_has may use contact (127.0.0.1:port),
+    # get_worker().address may be listen (0.0.0.0:port) -> same worker, same port
+    on_own_worker = (
+        expected_worker is not None
+        and (
+            _worker_addr_match(this_worker, expected_worker)
+            or _worker_addr_match(this_worker_alt, expected_worker)
+        )
+    )
+
+    if on_own_worker and hasattr(X_partition, "get"):
+        print(f"      [partition] data on this worker ({this_worker}), no transfer", flush=True)
+        # Always copy to a fresh buffer. The partition may be a Dask dependency that
+        # exposes the same device pointer with wrong metadata (e.g. for large arrays),
+        # causing illegal memory access in cuVS predict. A copy gives predict a valid buffer.
+        X = cp.asarray(X_partition, dtype=cp.float32).copy(order="C")
+    elif hasattr(X_partition, "get"):
+        print(f"      [partition] data from other worker, copying via host to {this_worker}", flush=True)
+        X_partition = np.asarray(X_partition.get(), dtype=np.float32, order="C")
+        X = cp.asarray(X_partition, dtype=cp.float32)
+    else:
+        print(f"      [partition] numpy: copying to this worker's GPU", flush=True)
+        if isinstance(X_partition, np.ndarray) and X_partition.dtype == np.dtype("object"):
+            X_partition = np.asarray(X_partition, dtype=np.float32, order="C")
+        else:
+            X_partition = np.asarray(X_partition, dtype=np.float32, order="C")
+        X = cp.asarray(X_partition, dtype=cp.float32)
     cents = cp.asarray(centroids)
     params = KMeansParams(n_clusters=n_clusters, metric=metric)
 
-    labels, inertia = predict(params, X, cents)
-    labels_cp = cp.asarray(labels)
     k, d = cents.shape
     dtype = X.dtype
-
+    n_rows = X.shape[0]
     partial_sums = cp.zeros((k, d), dtype=dtype)
     counts = cp.zeros(k, dtype=cp.int64)
+    total_inertia = 0.0
 
-    for c in range(k):
-        mask = labels_cp == c
-        cnt = int(mask.sum())
-        counts[c] = cnt
-        if cnt > 0:
-            # X.T @ mask avoids copy and instead does it in place which OOMs for large clusters
-            partial_sums[c] = (X.T @ mask.astype(cp.float32))
+    if n_rows <= MAX_PREDICT_ROWS:
+        labels, inertia = predict(params, X, cents)
+        total_inertia = float(inertia)
+        labels_cp = cp.asarray(labels)
+        for c in range(k):
+            mask = labels_cp == c
+            cnt = int(mask.sum())
+            counts[c] = cnt
+            if cnt > 0:
+                partial_sums[c] = X.T @ mask.astype(cp.float32)
+    else:
+        # Chunk predict to stay under cuVS int32 indexing (n_rows * n_features <= INT32_MAX).
+        for start in range(0, n_rows, MAX_PREDICT_ROWS):
+            end = min(start + MAX_PREDICT_ROWS, n_rows)
+            X_slice = X[start:end]
+            labels_slice, inertia_slice = predict(params, X_slice, cents)
+            total_inertia += float(inertia_slice)
+            labels_cp = cp.asarray(labels_slice)
+            for c in range(k):
+                mask = labels_cp == c
+                cnt = int(mask.sum())
+                counts[c] = counts[c] + cnt
+                if cnt > 0:
+                    partial_sums[c] = partial_sums[c] + (X_slice.T @ mask.astype(cp.float32))
 
     return (
         cp.asnumpy(partial_sums),
         cp.asnumpy(counts),
-        float(inertia),
+        total_inertia,
     )
 
 
@@ -157,26 +240,69 @@ def fit_dask(
         centroids_out, _, _ = fit(params, X_sample)
         centroids = np.asarray(cp.asnumpy(centroids_out))
 
-    # Persist so partitions stay on workers
+    # Persist so partitions stay on workers. Then compute block futures so we get
+    # keys the scheduler actually has; who_has(future.key) then returns workers.
+    # (Persisted array's __dask_keys__() can differ from scheduler keys.)
+    from dask.delayed import delayed
+    from dask.distributed import as_completed, wait as dask_wait
+
     X_persisted = client.persist(X)
+    dask_wait(X_persisted)
     blocks = list(X_persisted.to_delayed().flatten())
+    block_futures = [client.compute(blocks[i]) for i in range(len(blocks))]
+    dask_wait(block_futures)
+    block_keys = [f.key for f in block_futures]
+    # who_has(keys) can be empty after wait(); build key->workers from has_what() instead.
+    has_what = client.has_what()
+    who_has = {}
+    for worker, keys in has_what.items():
+        for k in keys:
+            who_has.setdefault(k, set()).add(worker)
 
     prev_inertia = float("inf")
     metric_name = params.metric if hasattr(params, "metric") else "L2Expanded"
 
     n_blocks = len(blocks)
     for iteration in range(max_iter):
-        # Use delayed() so _partition_fit receives computed array, not Delayed
-        from dask.delayed import delayed
-
-        hint = " (blocks computed on-demand)" if iteration == 0 else ""
+        hint = " (blocks ready on workers)" if iteration == 0 else ""
         print(f"  KMeans iter {iteration + 1}/{max_iter} ({n_blocks} partitions){hint}...", flush=True)
 
-        fit_delayed = [
-            delayed(_partition_fit)(block, centroids, n_clusters, metric_name)
-            for block in blocks
+        worker_addrs = [
+            next(iter(who_has.get(block_keys[i], set()))) if who_has.get(block_keys[i]) else None
+            for i in range(n_blocks)
         ]
-        results = client.compute(fit_delayed, sync=True)
+        if iteration == 0:
+            n_matched = sum(1 for a in worker_addrs if a is not None)
+            if n_matched < n_blocks:
+                print(
+                    f"    [fit_dask] who_has: {n_matched}/{n_blocks} blocks have worker. "
+                    f"worker_addrs={worker_addrs!r}, block_keys_sample={block_keys[:2]!r}",
+                    flush=True,
+                )
+            else:
+                print(f"    [fit_dask] who_has: all {n_blocks} blocks have worker (pinning tasks)", flush=True)
+        fit_delayed = [
+            delayed(_partition_fit)(
+                blocks[i], centroids, n_clusters, metric_name,
+                expected_worker=worker_addrs[i],
+            )
+            for i in range(n_blocks)
+        ]
+        # Pin each task to the worker that has its block so data stays local
+        futures = [
+            client.compute(fit_delayed[i], workers=[worker_addrs[i]] if worker_addrs[i] else None)
+            for i in range(n_blocks)
+        ]
+        future_to_idx = {f: i for i, f in enumerate(futures)}
+        results = [None] * n_blocks
+        completed = 0
+        print(f"    Submitted {n_blocks} partitions, waiting for results...", flush=True)
+        for future in as_completed(futures):
+            idx = future_to_idx[future]
+            results[idx] = future.result()
+            completed += 1
+            print(f"    Partition {completed}/{n_blocks}...", flush=True)
+            sys.stdout.flush()
 
         # Use float64 for aggregation to match RAFT's reduce_rows_by_key accuracy.
         # Summing float32 across partitions is non-associative and can diverge.
