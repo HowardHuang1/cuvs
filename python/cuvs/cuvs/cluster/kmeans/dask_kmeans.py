@@ -101,10 +101,11 @@ def _partition_fit(
 
     if on_own_worker and hasattr(X_partition, "get"):
         print(f"      [partition] data on this worker ({this_worker}), no transfer", flush=True)
-        # Always copy to a fresh buffer. The partition may be a Dask dependency that
-        # exposes the same device pointer with wrong metadata (e.g. for large arrays),
-        # causing illegal memory access in cuVS predict. A copy gives predict a valid buffer.
-        X = cp.asarray(X_partition, dtype=cp.float32).copy(order="C")
+        # Use in place when already C-contiguous to avoid 2× GPU memory (MPI path has no copy).
+        # If Dask gives an array with wrong metadata, copy to a fresh buffer for cuVS predict.
+        X = cp.asarray(X_partition, dtype=cp.float32)
+        if not X.flags.c_contiguous:
+            X = X.copy(order="C")
     elif hasattr(X_partition, "get"):
         print(f"      [partition] data from other worker, copying via host to {this_worker}", flush=True)
         X_partition = np.asarray(X_partition.get(), dtype=np.float32, order="C")

@@ -3,10 +3,18 @@ Multi-GPU KMeans with data fully on GPU (one chunk per worker).
 
 Data is created on each worker's GPU (CuPy) and stays there. One chunk per
 worker so there is no per-iteration CPU→GPU transfer and no cross-worker
-chunk transfer (with locality pinning in fit_dask). Default chunk size is
-~4 GB so it runs on typical GPUs; increase chunk_rows for 32 GB+ GPUs.
+chunk transfer (with locality pinning in fit_dask).
 
-Run from repo root: python python/cuvs/examples/test.py
+Spilling: dask-cuda spills GPU→host by default when GPU usage reaches 80% so
+workloads with more data than GPU memory can run. For this example we want one
+chunk per GPU that stays on GPU (no 2×, no purge reload OOM). We disable spilling
+with device_memory_limit=0. Then only 1× chunk must fit in GPU (e.g. 8M×1024 ≈ 32 GB
+on 32 GB GPUs; leave headroom for CuPy/RAFT overhead). With spilling enabled
+(default), 2× chunk must fit (spill + reload); with it disabled, chunk ≤ GPU size.
+
+Note: KMeans runs entirely on GPU. memory_limit is worker *process* (host) memory.
+
+Run from repo root: python python/cuvs/examples/one_chunk_per_gpu.py
 """
 import time
 import cupy as cp
@@ -50,10 +58,13 @@ def _create_cupy_chunk_on_gpu(n_rows, n_features, seed):
 def main():
     # --- Cluster: one worker per GPU (use actual worker count; may be < n_gpus on NFS/setup) ---
     n_gpus = cp.cuda.runtime.getDeviceCount()
+    # device_memory_limit=0 disables GPU→host spilling so data stays on GPU (no 2×,
+    # no purge reload OOM). memory_limit = worker process (host) memory.
     cluster = LocalCUDACluster(
         n_workers=n_gpus,
         threads_per_worker=1,
-        memory_limit="50GiB",
+        device_memory_limit=0,  # disable spilling; chunk must fit in GPU
+        memory_limit="80GiB",
     )
     client = Client(cluster)
     # client.run(f) runs f on every worker and returns {worker_address: result}; keys = all addresses
@@ -66,9 +77,9 @@ def main():
     print(f"Dashboard: {client.dashboard_link}")
 
     # --- One chunk per worker, created on that worker's GPU and kept there ---
-    # Default 1M rows × 1024 × 4 bytes ≈ 4 GB/chunk so it runs on typical GPUs without OOM.
-    # For 32 GB GPUs you can use chunk_rows = 8_000_000 (~32 GB/chunk).
-    chunk_rows = 3_000_000
+    # With device_memory_limit=0 (spilling off), only 1× chunk must fit. 8M×1024 ≈ 32 GB;
+    # on 32 GB GPUs use 8M (tight) or 6M–7M if you see OOM (CuPy/driver need headroom).
+    chunk_rows = 7_900_000
     n_features = 1024
     n_clusters = 8
 
