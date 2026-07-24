@@ -176,6 +176,25 @@ fn path_to_cstring(path: &Path) -> Result<CString> {
     Ok(CString::new(path.as_os_str().as_encoded_bytes())?)
 }
 
+/// Resolve the dataset layout CAGRA requires for `dataset`.
+fn dataset_layout<T>(dataset: &T) -> Result<ffi::cuvsDatasetLayout_t>
+where
+    T: AsDlTensor + ?Sized,
+{
+    let dataset = dataset.as_dl_tensor()?;
+    unsafe {
+        let mut dataset_c = dataset.to_c();
+        let mut mem_type = std::mem::MaybeUninit::<ffi::cuvsDatasetMemType_t>::uninit();
+        let mut layout = std::mem::MaybeUninit::<ffi::cuvsDatasetLayout_t>::uninit();
+        check_cuvs(ffi::cuvsCagraGetDatasetMemTypeAndLayout(
+            dataset_c.as_mut_ptr(),
+            mem_type.as_mut_ptr(),
+            layout.as_mut_ptr(),
+        ))?;
+        Ok(layout.assume_init())
+    }
+}
+
 impl<'d> Index<'d> {
     /// Builds a CAGRA index over `dataset` for efficient search.
     ///
@@ -187,14 +206,23 @@ impl<'d> Index<'d> {
     where
         T: AsDlTensor + ?Sized,
     {
-        let dataset = dataset.as_dl_tensor()?;
         let index = Index::create_handle()?;
+        // The memory space and layout the view is built with select the C++ build overload.
+        let view_handle: ffi::cuvsDatasetView_t;
+        let _padded;
+        let _standard;
+        if dataset_layout(dataset)? == ffi::cuvsDatasetLayout_t::CUVS_DATASET_LAYOUT_PADDED {
+            _padded = PaddedDatasetView::new(res, dataset)?;
+            view_handle = _padded.handle;
+        } else {
+            _standard = StandardDatasetView::new(res, dataset)?;
+            view_handle = _standard.handle as ffi::cuvsDatasetView_t;
+        }
         unsafe {
-            let mut dataset_c = dataset.to_c();
             check_cuvs(ffi::cuvsCagraBuild(
                 res.handle(),
                 params.handle(),
-                dataset_c.as_mut_ptr(),
+                view_handle,
                 index.handle,
             ))?;
         }

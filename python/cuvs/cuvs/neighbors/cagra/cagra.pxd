@@ -108,6 +108,10 @@ cdef extern from "cuvs/neighbors/cagra.h" nogil:
         CUVS_DATASET_LAYOUT_STANDARD
         CUVS_DATASET_LAYOUT_PADDED
 
+    ctypedef enum cuvsDatasetMemType_t:
+        CUVS_DATASET_MEM_TYPE_HOST
+        CUVS_DATASET_MEM_TYPE_DEVICE
+
     ctypedef enum cuvsDatasetStorageKind_t:
         CUVS_DATASET_STORAGE_KIND_EXTENDED
         CUVS_DATASET_STORAGE_KIND_MERGED
@@ -143,12 +147,6 @@ cdef extern from "cuvs/neighbors/cagra.h" nogil:
                                        DLManagedTensor * graph)
     cuvsError_t cuvsCagraIndexGetDataset(cuvsCagraIndex_t index,
                                          DLManagedTensor * dataset)
-
-    ctypedef enum cuvsDatasetViewKind_t:
-        CUVS_DATASET_VIEW_KIND_DEVICE_PADDED
-        CUVS_DATASET_VIEW_KIND_HOST_PADDED
-        CUVS_DATASET_VIEW_KIND_DEVICE_STANDARD
-        CUVS_DATASET_VIEW_KIND_HOST_STANDARD
 
     ctypedef struct cuvsDatasetView:
         pass
@@ -194,10 +192,12 @@ cdef extern from "cuvs/neighbors/cagra.h" nogil:
 
     cuvsError_t cuvsCagraBuild(cuvsResources_t res,
                                cuvsCagraIndexParams_t params,
-                               DLManagedTensor* dataset,
+                               cuvsDatasetView_t dataset,
                                cuvsCagraIndex_t index)
-    cuvsError_t cuvsCagraGetDatasetViewKind(DLManagedTensor* dataset,
-                                            cuvsDatasetViewKind_t* kind)
+    cuvsError_t cuvsCagraGetDatasetMemTypeAndLayout(
+        DLManagedTensor* dataset,
+        cuvsDatasetMemType_t* mem_type,
+        cuvsDatasetLayout_t* layout)
 
     cuvsError_t cuvsCagraSearch(cuvsResources_t res,
                                 cuvsCagraSearchParams* params,

@@ -282,11 +282,9 @@ pub enum cuvsDatasetLayout_t {
 }
 #[repr(u32)]
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
-pub enum cuvsDatasetViewKind_t {
-    CUVS_DATASET_VIEW_KIND_DEVICE_PADDED = 0,
-    CUVS_DATASET_VIEW_KIND_HOST_PADDED = 1,
-    CUVS_DATASET_VIEW_KIND_DEVICE_STANDARD = 2,
-    CUVS_DATASET_VIEW_KIND_HOST_STANDARD = 3,
+pub enum cuvsDatasetMemType_t {
+    CUVS_DATASET_MEM_TYPE_HOST = 0,
+    CUVS_DATASET_MEM_TYPE_DEVICE = 1,
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
@@ -295,7 +293,7 @@ pub struct cuvsDatasetPadded {
     pub destroy_addr:
         ::std::option::Option<unsafe extern "C" fn(arg1: *mut ::std::os::raw::c_void)>,
     pub dtype: DLDataType,
-    pub layout: cuvsDatasetLayout_t,
+    pub mem_type: cuvsDatasetMemType_t,
 }
 #[allow(clippy::unnecessary_operation, clippy::identity_op)]
 const _: () = {
@@ -307,8 +305,8 @@ const _: () = {
         [::std::mem::offset_of!(cuvsDatasetPadded, destroy_addr) - 8usize];
     ["Offset of field: cuvsDatasetPadded::dtype"]
         [::std::mem::offset_of!(cuvsDatasetPadded, dtype) - 16usize];
-    ["Offset of field: cuvsDatasetPadded::layout"]
-        [::std::mem::offset_of!(cuvsDatasetPadded, layout) - 20usize];
+    ["Offset of field: cuvsDatasetPadded::mem_type"]
+        [::std::mem::offset_of!(cuvsDatasetPadded, mem_type) - 20usize];
 };
 pub type cuvsDatasetPadded_t = *mut cuvsDatasetPadded;
 #[repr(C)]
@@ -318,7 +316,7 @@ pub struct cuvsDatasetStandard {
     pub destroy_addr:
         ::std::option::Option<unsafe extern "C" fn(arg1: *mut ::std::os::raw::c_void)>,
     pub dtype: DLDataType,
-    pub layout: cuvsDatasetLayout_t,
+    pub mem_type: cuvsDatasetMemType_t,
 }
 #[allow(clippy::unnecessary_operation, clippy::identity_op)]
 const _: () = {
@@ -330,8 +328,8 @@ const _: () = {
         [::std::mem::offset_of!(cuvsDatasetStandard, destroy_addr) - 8usize];
     ["Offset of field: cuvsDatasetStandard::dtype"]
         [::std::mem::offset_of!(cuvsDatasetStandard, dtype) - 16usize];
-    ["Offset of field: cuvsDatasetStandard::layout"]
-        [::std::mem::offset_of!(cuvsDatasetStandard, layout) - 20usize];
+    ["Offset of field: cuvsDatasetStandard::mem_type"]
+        [::std::mem::offset_of!(cuvsDatasetStandard, mem_type) - 20usize];
 };
 pub type cuvsDatasetStandard_t = *mut cuvsDatasetStandard;
 #[repr(C)]
@@ -340,8 +338,8 @@ pub struct cuvsDatasetPaddedView {
     pub addr: usize,
     pub destroy_addr:
         ::std::option::Option<unsafe extern "C" fn(arg1: *mut ::std::os::raw::c_void)>,
-    pub kind: cuvsDatasetViewKind_t,
     pub dtype: DLDataType,
+    pub mem_type: cuvsDatasetMemType_t,
     pub layout: cuvsDatasetLayout_t,
 }
 #[allow(clippy::unnecessary_operation, clippy::identity_op)]
@@ -353,10 +351,10 @@ const _: () = {
         [::std::mem::offset_of!(cuvsDatasetPaddedView, addr) - 0usize];
     ["Offset of field: cuvsDatasetPaddedView::destroy_addr"]
         [::std::mem::offset_of!(cuvsDatasetPaddedView, destroy_addr) - 8usize];
-    ["Offset of field: cuvsDatasetPaddedView::kind"]
-        [::std::mem::offset_of!(cuvsDatasetPaddedView, kind) - 16usize];
     ["Offset of field: cuvsDatasetPaddedView::dtype"]
-        [::std::mem::offset_of!(cuvsDatasetPaddedView, dtype) - 20usize];
+        [::std::mem::offset_of!(cuvsDatasetPaddedView, dtype) - 16usize];
+    ["Offset of field: cuvsDatasetPaddedView::mem_type"]
+        [::std::mem::offset_of!(cuvsDatasetPaddedView, mem_type) - 20usize];
     ["Offset of field: cuvsDatasetPaddedView::layout"]
         [::std::mem::offset_of!(cuvsDatasetPaddedView, layout) - 24usize];
 };
@@ -369,8 +367,8 @@ pub struct cuvsDatasetStandardView {
     pub addr: usize,
     pub destroy_addr:
         ::std::option::Option<unsafe extern "C" fn(arg1: *mut ::std::os::raw::c_void)>,
-    pub kind: cuvsDatasetViewKind_t,
     pub dtype: DLDataType,
+    pub mem_type: cuvsDatasetMemType_t,
     pub layout: cuvsDatasetLayout_t,
 }
 #[allow(clippy::unnecessary_operation, clippy::identity_op)]
@@ -382,10 +380,10 @@ const _: () = {
         [::std::mem::offset_of!(cuvsDatasetStandardView, addr) - 0usize];
     ["Offset of field: cuvsDatasetStandardView::destroy_addr"]
         [::std::mem::offset_of!(cuvsDatasetStandardView, destroy_addr) - 8usize];
-    ["Offset of field: cuvsDatasetStandardView::kind"]
-        [::std::mem::offset_of!(cuvsDatasetStandardView, kind) - 16usize];
     ["Offset of field: cuvsDatasetStandardView::dtype"]
-        [::std::mem::offset_of!(cuvsDatasetStandardView, dtype) - 20usize];
+        [::std::mem::offset_of!(cuvsDatasetStandardView, dtype) - 16usize];
+    ["Offset of field: cuvsDatasetStandardView::mem_type"]
+        [::std::mem::offset_of!(cuvsDatasetStandardView, mem_type) - 20usize];
     ["Offset of field: cuvsDatasetStandardView::layout"]
         [::std::mem::offset_of!(cuvsDatasetStandardView, layout) - 24usize];
 };
@@ -1491,9 +1489,10 @@ unsafe extern "C" {
 }
 unsafe extern "C" {
     #[must_use]
-    pub fn cuvsCagraGetDatasetViewKind(
+    pub fn cuvsCagraGetDatasetMemTypeAndLayout(
         dataset: *mut DLManagedTensor,
-        kind: *mut cuvsDatasetViewKind_t,
+        mem_type: *mut cuvsDatasetMemType_t,
+        layout: *mut cuvsDatasetLayout_t,
     ) -> cuvsError_t;
 }
 unsafe extern "C" {
@@ -1501,7 +1500,7 @@ unsafe extern "C" {
     pub fn cuvsCagraBuild(
         res: cuvsResources_t,
         params: cuvsCagraIndexParams_t,
-        dataset: *mut DLManagedTensor,
+        dataset: cuvsDatasetView_t,
         index: cuvsCagraIndex_t,
     ) -> cuvsError_t;
 }

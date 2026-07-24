@@ -529,8 +529,35 @@ def build(IndexParams index_params, dataset, resources=None):
 
     cdef cuvsResources_t res = <cuvsResources_t>resources.get_c_obj()
 
+    cdef cuvsDatasetMemType_t mem_type
+    cdef cuvsDatasetLayout_t layout
+    cdef PaddedDatasetView padded_view
+    cdef StandardDatasetView standard_view
+    cdef cuvsDatasetView_t dataset_view
+
     with cuda_interruptible():
-        check_cuvs(cuvsCagraBuild(res, params, dataset_dlpack, idx.index))
+        check_cuvs(cuvsCagraGetDatasetMemTypeAndLayout(
+            dataset_dlpack, &mem_type, &layout))
+        if layout == CUVS_DATASET_LAYOUT_PADDED:
+            padded_view = PaddedDatasetView()
+            if mem_type == CUVS_DATASET_MEM_TYPE_DEVICE:
+                check_cuvs(cuvsDatasetMakeDevicePaddedView(
+                    res, dataset_dlpack, &padded_view.view))
+            else:
+                check_cuvs(cuvsDatasetMakeHostPaddedView(
+                    res, dataset_dlpack, &padded_view.view))
+            dataset_view = padded_view.view
+        else:
+            standard_view = StandardDatasetView()
+            if mem_type == CUVS_DATASET_MEM_TYPE_DEVICE:
+                check_cuvs(cuvsDatasetMakeDeviceStandardView(
+                    res, dataset_dlpack, &standard_view.view))
+            else:
+                check_cuvs(cuvsDatasetMakeHostStandardView(
+                    res, dataset_dlpack, &standard_view.view))
+            dataset_view = standard_view.view
+
+        check_cuvs(cuvsCagraBuild(res, params, dataset_view, idx.index))
         idx.trained = True
         idx.active_index_type = dataset_ai.dtype.name
 
@@ -549,19 +576,17 @@ def get_dataset_view_kind(dataset):
                                     np.dtype('ubyte')])
     cdef cydlpack.DLManagedTensor* dataset_dlpack = \
         cydlpack.dlpack_c(dataset_ai)
-    cdef cuvsDatasetViewKind_t view_kind
+    cdef cuvsDatasetMemType_t mem_type
+    cdef cuvsDatasetLayout_t layout
     with cuda_interruptible():
-        check_cuvs(cuvsCagraGetDatasetViewKind(dataset_dlpack, &view_kind))
+        check_cuvs(cuvsCagraGetDatasetMemTypeAndLayout(
+            dataset_dlpack, &mem_type, &layout))
 
-    if view_kind == CUVS_DATASET_VIEW_KIND_DEVICE_PADDED:
-        return "device_padded"
-    elif view_kind == CUVS_DATASET_VIEW_KIND_DEVICE_STANDARD:
-        return "device_standard"
-    elif view_kind == CUVS_DATASET_VIEW_KIND_HOST_PADDED:
-        return "host_padded"
-    elif view_kind == CUVS_DATASET_VIEW_KIND_HOST_STANDARD:
-        return "host_standard"
-    raise RuntimeError("unexpected dataset view kind")
+    mem_name = ("device" if mem_type == CUVS_DATASET_MEM_TYPE_DEVICE
+                else "host")
+    layout_name = ("padded" if layout == CUVS_DATASET_LAYOUT_PADDED
+                   else "standard")
+    return f"{mem_name}_{layout_name}"
 
 
 @auto_sync_resources

@@ -28,8 +28,12 @@ cuvsResourcesCreate(&res);
 cuvsCagraIndexParamsCreate(&index_params);
 cuvsCagraIndexCreate(&index);
 
-cuvsCagraBuild(res, index_params, dataset, index);
+cuvsDatasetView_t dataset_view;
+cuvsDatasetMakeDeviceStandardView(res, dataset, &dataset_view);
 
+cuvsCagraBuild(res, index_params, dataset_view, index);
+
+cuvsDatasetStandardViewDestroy(dataset_view);
 cuvsCagraIndexDestroy(index);
 cuvsCagraIndexParamsDestroy(index_params);
 cuvsResourcesDestroy(res);
@@ -555,10 +559,14 @@ hnsw_params->hierarchy = GPU;
 hnsw_search_params->ef = 200;
 hnsw_search_params->num_threads = 0;
 
-cuvsCagraBuild(res, cagra_params, dataset, cagra_index);
+cuvsDatasetView_t dataset_view;
+cuvsDatasetMakeDeviceStandardView(res, dataset, &dataset_view);
+
+cuvsCagraBuild(res, cagra_params, dataset_view, cagra_index);
 cuvsHnswFromCagra(res, hnsw_params, cagra_index, hnsw_index);
 cuvsHnswSearch(res, hnsw_search_params, hnsw_index, queries, neighbors, distances);
 
+cuvsDatasetStandardViewDestroy(dataset_view);
 cuvsHnswSearchParamsDestroy(hnsw_search_params);
 cuvsHnswIndexDestroy(hnsw_index);
 cuvsHnswIndexParamsDestroy(hnsw_params);
@@ -746,7 +754,12 @@ load_dataset(dataset);
 load_queries(queries);
 allocate_outputs(neighbors, distances);
 
-cuvsCagraBuild(res, index_params, dataset, index);
+cuvsDatasetView_t dataset_view;
+cuvsDatasetMakeDeviceStandardView(res, dataset, &dataset_view);
+
+cuvsCagraBuild(res, index_params, dataset_view, index);
+
+cuvsDatasetStandardViewDestroy(dataset_view);
 
 // Create a device uint32 bitset with one bit per indexed vector. Bit 1 means
 // allowed; bit 0 means filtered out.

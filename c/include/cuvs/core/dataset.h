@@ -24,38 +24,38 @@ typedef enum {
 } cuvsDatasetLayout_t;
 
 /**
- * @brief Dataset view kind for host/device + layout dispatch.
+ * @brief Memory space holding a C API dataset handle's data.
  */
 typedef enum {
-  CUVS_DATASET_VIEW_KIND_DEVICE_PADDED   = 0,
-  CUVS_DATASET_VIEW_KIND_HOST_PADDED     = 1,
-  CUVS_DATASET_VIEW_KIND_DEVICE_STANDARD = 2,
-  CUVS_DATASET_VIEW_KIND_HOST_STANDARD   = 3
-} cuvsDatasetViewKind_t;
+  CUVS_DATASET_MEM_TYPE_HOST   = 0,
+  CUVS_DATASET_MEM_TYPE_DEVICE = 1
+} cuvsDatasetMemType_t;
 
 /**
  * @brief Owning padded dataset handle.
  *
- * `addr` points to C++ owning dataset storage managed by the C API.
+ * `addr` points to C++ owning dataset storage managed by the C API. The layout is implied by
+ * the handle type; `mem_type` identifies the memory space.
  */
 typedef struct {
   uintptr_t addr;
   void (*destroy_addr)(void*);
   DLDataType dtype;
-  cuvsDatasetLayout_t layout;
+  cuvsDatasetMemType_t mem_type;
 } cuvsDatasetPadded;
 typedef cuvsDatasetPadded* cuvsDatasetPadded_t;
 
 /**
  * @brief Owning standard dataset handle.
  *
- * `addr` points to C++ owning dataset storage managed by the C API.
+ * `addr` points to C++ owning dataset storage managed by the C API. The layout is implied by
+ * the handle type; `mem_type` identifies the memory space.
  */
 typedef struct {
   uintptr_t addr;
   void (*destroy_addr)(void*);
   DLDataType dtype;
-  cuvsDatasetLayout_t layout;
+  cuvsDatasetMemType_t mem_type;
 } cuvsDatasetStandard;
 typedef cuvsDatasetStandard* cuvsDatasetStandard_t;
 
@@ -63,13 +63,13 @@ typedef cuvsDatasetStandard* cuvsDatasetStandard_t;
  * @brief Non-owning dataset view handle.
  *
  * `addr` points to C API-owned metadata that references caller-provided tensor memory. The
- * `kind` and `layout` fields identify the concrete host/device and standard/padded view type.
+ * `mem_type` and `layout` fields identify the concrete dataset view type.
  */
 typedef struct {
   uintptr_t addr;
   void (*destroy_addr)(void*);
-  cuvsDatasetViewKind_t kind;
   DLDataType dtype;
+  cuvsDatasetMemType_t mem_type;
   cuvsDatasetLayout_t layout;
 } cuvsDatasetView;
 typedef cuvsDatasetView* cuvsDatasetView_t;

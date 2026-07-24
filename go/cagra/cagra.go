@@ -174,10 +174,56 @@ func CreateIndex() (*CagraIndex, error) {
 // * `index` - CagraIndex to build
 func BuildIndex[T any](Resources cuvs.Resource, params *IndexParams, dataset *cuvs.Tensor[T], index *CagraIndex) error {
 	datasetTensor := (*C.DLManagedTensor)(unsafe.Pointer(dataset.C_tensor))
-	err := cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsCagraBuild(
+
+	var memType C.cuvsDatasetMemType_t
+	var layout C.cuvsDatasetLayout_t
+	err := cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsCagraGetDatasetMemTypeAndLayout(
+		datasetTensor, &memType, &layout,
+	)))
+	if err != nil {
+		return err
+	}
+
+	// The memory space and layout the view is built with select the C++ build overload.
+	var datasetView C.cuvsDatasetView_t
+	if layout == C.CUVS_DATASET_LAYOUT_PADDED {
+		var paddedView C.cuvsDatasetPaddedView_t
+		if memType == C.CUVS_DATASET_MEM_TYPE_DEVICE {
+			err = cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsDatasetMakeDevicePaddedView(
+				C.cuvsResources_t(Resources.Resource), datasetTensor, &paddedView,
+			)))
+		} else {
+			err = cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsDatasetMakeHostPaddedView(
+				C.cuvsResources_t(Resources.Resource), datasetTensor, &paddedView,
+			)))
+		}
+		if err != nil {
+			return err
+		}
+		defer C.cuvsDatasetPaddedViewDestroy(paddedView)
+		datasetView = (C.cuvsDatasetView_t)(unsafe.Pointer(paddedView))
+	} else {
+		var standardView C.cuvsDatasetStandardView_t
+		if memType == C.CUVS_DATASET_MEM_TYPE_DEVICE {
+			err = cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsDatasetMakeDeviceStandardView(
+				C.cuvsResources_t(Resources.Resource), datasetTensor, &standardView,
+			)))
+		} else {
+			err = cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsDatasetMakeHostStandardView(
+				C.cuvsResources_t(Resources.Resource), datasetTensor, &standardView,
+			)))
+		}
+		if err != nil {
+			return err
+		}
+		defer C.cuvsDatasetStandardViewDestroy(standardView)
+		datasetView = (C.cuvsDatasetView_t)(unsafe.Pointer(standardView))
+	}
+
+	err = cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsCagraBuild(
 		C.cuvsResources_t(Resources.Resource),
 		params.params,
-		datasetTensor,
+		datasetView,
 		index.index,
 	)))
 	if err != nil {

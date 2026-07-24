@@ -53,7 +53,14 @@ void cagra_build_search_simple()
   cuvsCagraIndex_t index;
   CHECK_CUVS(cuvsCagraIndexCreate(&index));
 
-  CHECK_CUVS(cuvsCagraBuild(res, index_params, &dataset_tensor, index));
+  // Wrap the dataset in the view handle `cuvsCagraBuild` takes. `dataset` is compact and in host
+  // memory, so a host standard view describes it.
+  cuvsDatasetView_t dataset_view;
+  CHECK_CUVS(cuvsDatasetMakeHostStandardView(res, &dataset_tensor, &dataset_view));
+
+  CHECK_CUVS(cuvsCagraBuild(res, index_params, dataset_view, index));
+
+  CHECK_CUVS(cuvsDatasetStandardViewDestroy(dataset_view));
 
   // Allocate memory for `queries`, `neighbors` and `distances` output
   uint32_t* neighbors;

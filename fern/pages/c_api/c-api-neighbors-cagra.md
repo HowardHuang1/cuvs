@@ -664,17 +664,19 @@ Note that the DLManagedTensor graph returned will have an associated 'deleter' f
 <a id="cuvscagrabuild"></a>
 ### cuvsCagraBuild
 
-Build a CAGRA index with a `DLManagedTensor` which has underlying `DLDeviceType` equal to `kDLCUDA`, `kDLCUDAHost`, `kDLCUDAManaged`, or `kDLCPU`. Also, acceptable underlying types are:
+Build a CAGRA index from a dataset view handle. Acceptable underlying types are:
 
 1. `kDLDataType.code == kDLFloat` and `kDLDataType.bits = 32`
 2. `kDLDataType.code == kDLFloat` and `kDLDataType.bits = 16`
 3. `kDLDataType.code == kDLInt` and `kDLDataType.bits = 8`
 4. `kDLDataType.code == kDLUInt` and `kDLDataType.bits = 8`
 
+The memory space and layout `dataset` was constructed with select the C++ build overload. Build the handle with the matching `cuvsDatasetMake*View` function; `cuvsCagraGetDatasetMemTypeAndLayout` resolves which one an input tensor calls for.
+
 ```c
 cuvsError_t cuvsCagraBuild(cuvsResources_t res,
 cuvsCagraIndexParams_t params,
-DLManagedTensor* dataset,
+cuvsDatasetView_t dataset,
 cuvsCagraIndex_t index);
 ```
 
@@ -684,7 +686,7 @@ cuvsCagraIndex_t index);
 | --- | --- | --- | --- |
 | `res` | in | [`cuvsResources_t`](/api-reference/c-api-core-c-api#cuvsresources-t) | cuvsResources_t opaque C handle |
 | `params` | in | [`cuvsCagraIndexParams_t`](/api-reference/c-api-neighbors-cagra#cuvscagraindexparams) | cuvsCagraIndexParams_t used to build CAGRA index |
-| `dataset` | in | `DLManagedTensor*` | DLManagedTensor* training dataset |
+| `dataset` | in | `cuvsDatasetView_t` | cuvsDatasetView_t view of the training dataset |
 | `index` | inout | [`cuvsCagraIndex_t`](/api-reference/c-api-neighbors-cagra#cuvscagraindex) | cuvsCagraIndex_t Newly built CAGRA index. This index needs to be already created with cuvsCagraIndexCreate. |
 
 **Returns**

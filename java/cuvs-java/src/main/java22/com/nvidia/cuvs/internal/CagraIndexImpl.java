@@ -171,8 +171,38 @@ public class CagraIndexImpl implements CagraIndex {
         var returnValue = cuvsStreamSync(cuvsRes);
         checkCuVSError(returnValue, "cuvsStreamSync");
 
-        returnValue = cuvsCagraBuild(cuvsRes, indexParamsMemorySegment, datasetTensor, index);
+        // The memory space and layout the view is built with select the C++ build overload.
+        MemorySegment memTypePtr = localArena.allocate(C_INT);
+        MemorySegment layoutPtr = localArena.allocate(C_INT);
+        returnValue = cuvsCagraGetDatasetMemTypeAndLayout(datasetTensor, memTypePtr, layoutPtr);
+        checkCuVSError(returnValue, "cuvsCagraGetDatasetMemTypeAndLayout");
+        boolean isDevice = memTypePtr.get(C_INT, 0) == CUVS_DATASET_MEM_TYPE_DEVICE();
+        boolean isPadded = layoutPtr.get(C_INT, 0) == CUVS_DATASET_LAYOUT_PADDED();
+
+        MemorySegment datasetViewPtr = localArena.allocate(cuvsDatasetView_t);
+        if (isPadded) {
+          returnValue =
+              isDevice
+                  ? cuvsDatasetMakeDevicePaddedView(cuvsRes, datasetTensor, datasetViewPtr)
+                  : cuvsDatasetMakeHostPaddedView(cuvsRes, datasetTensor, datasetViewPtr);
+          checkCuVSError(returnValue, "cuvsDatasetMakePaddedView");
+        } else {
+          returnValue =
+              isDevice
+                  ? cuvsDatasetMakeDeviceStandardView(cuvsRes, datasetTensor, datasetViewPtr)
+                  : cuvsDatasetMakeHostStandardView(cuvsRes, datasetTensor, datasetViewPtr);
+          checkCuVSError(returnValue, "cuvsDatasetMakeStandardView");
+        }
+        MemorySegment datasetView = datasetViewPtr.get(cuvsDatasetView_t, 0);
+
+        returnValue = cuvsCagraBuild(cuvsRes, indexParamsMemorySegment, datasetView, index);
         checkCuVSError(returnValue, "cuvsCagraBuild");
+
+        returnValue =
+            isPadded
+                ? cuvsDatasetPaddedViewDestroy(datasetView)
+                : cuvsDatasetStandardViewDestroy(datasetView);
+        checkCuVSError(returnValue, "cuvsDatasetViewDestroy");
 
         returnValue = cuvsStreamSync(cuvsRes);
         checkCuVSError(returnValue, "cuvsStreamSync");

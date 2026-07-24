@@ -49,6 +49,35 @@ float distances_exp_filtered[4]    = {0.03878258, 0.12472608, 0.04776672, 0.5906
 std::vector<uint64_t> neighbors_exp_disk = {3, 0, 3, 1};
 std::vector<float> distances_exp_disk    = {0.03878258, 0.12472608, 0.04776672, 0.15224178};
 
+/** Wrap a tensor in the dataset view `cuvsCagraBuild` requires, build, and release the view. */
+cuvsError_t build_from_tensor(cuvsResources_t res,
+                              cuvsCagraIndexParams_t params,
+                              DLManagedTensor* tensor,
+                              cuvsCagraIndex_t index)
+{
+  cuvsDatasetMemType_t mem_type;
+  cuvsDatasetLayout_t layout;
+  cuvsError_t status = cuvsCagraGetDatasetMemTypeAndLayout(tensor, &mem_type, &layout);
+  if (status != CUVS_SUCCESS) { return status; }
+
+  bool const is_padded   = layout == CUVS_DATASET_LAYOUT_PADDED;
+  cuvsDatasetView_t view = nullptr;
+  if (mem_type == CUVS_DATASET_MEM_TYPE_DEVICE) {
+    status = is_padded ? cuvsDatasetMakeDevicePaddedView(res, tensor, &view)
+                       : cuvsDatasetMakeDeviceStandardView(res, tensor, &view);
+  } else {
+    status = is_padded ? cuvsDatasetMakeHostPaddedView(res, tensor, &view)
+                       : cuvsDatasetMakeHostStandardView(res, tensor, &view);
+  }
+  if (status != CUVS_SUCCESS) { return status; }
+
+  status = cuvsCagraBuild(res, params, view, index);
+
+  cuvsError_t destroy_status = is_padded ? cuvsDatasetPaddedViewDestroy(view)
+                                         : cuvsDatasetStandardViewDestroy(view);
+  return status != CUVS_SUCCESS ? status : destroy_status;
+}
+
 TEST(CagraC, BuildSearch)
 {
   // create cuvsResources_t
@@ -76,7 +105,7 @@ TEST(CagraC, BuildSearch)
   // build index
   cuvsCagraIndexParams_t build_params;
   cuvsCagraIndexParamsCreate(&build_params);
-  ASSERT_EQ(cuvsCagraBuild(res, build_params, &dataset_tensor, index), CUVS_SUCCESS);
+  ASSERT_EQ(build_from_tensor(res, build_params, &dataset_tensor, index), CUVS_SUCCESS);
 
   // Host build yields a host index. Attach a caller-provided device padded dataset
   // to produce a search-ready device padded index.
@@ -186,7 +215,7 @@ TEST(CagraC, UpdateHostPadded)
   cuvsCagraIndexParamsCreate(&build_params);
   cuvsCagraIndex_t index;
   cuvsCagraIndexCreate(&index);
-  ASSERT_EQ(cuvsCagraBuildHostPadded(res, build_params, host_view, index), CUVS_SUCCESS);
+  ASSERT_EQ(cuvsCagraBuild(res, build_params, host_view, index), CUVS_SUCCESS);
 
   rmm::device_uvector<float> device_dataset(16, stream);
   raft::copy(device_dataset.data(), host_dataset, 16, stream);
@@ -282,7 +311,7 @@ TEST(CagraC, BuildExtendSearch)
   // build index
   cuvsCagraIndexParams_t build_params;
   cuvsCagraIndexParamsCreate(&build_params);
-  ASSERT_EQ(cuvsCagraBuild(res, build_params, &dataset_tensor, index), CUVS_SUCCESS);
+  ASSERT_EQ(build_from_tensor(res, build_params, &dataset_tensor, index), CUVS_SUCCESS);
 
   cuvsStreamSync(res);
 
@@ -458,7 +487,7 @@ TEST(CagraC, BuildSearchFiltered)
   // build index
   cuvsCagraIndexParams_t build_params;
   cuvsCagraIndexParamsCreate(&build_params);
-  ASSERT_EQ(cuvsCagraBuild(res, build_params, &dataset_tensor, index), CUVS_SUCCESS);
+  ASSERT_EQ(build_from_tensor(res, build_params, &dataset_tensor, index), CUVS_SUCCESS);
 
   // Host build yields a host index. Attach a caller-provided device padded dataset
   // to produce a search-ready device padded index.
@@ -613,8 +642,8 @@ TEST(CagraC, BuildMergeSearch)
   cuvsCagraIndex_t index_main, index_add;
   cuvsCagraIndexCreate(&index_main);
   cuvsCagraIndexCreate(&index_add);
-  ASSERT_EQ(cuvsCagraBuild(res, build_params, &main_dataset_tensor, index_main), CUVS_SUCCESS);
-  ASSERT_EQ(cuvsCagraBuild(res, build_params, &additional_dataset_tensor, index_add),
+  ASSERT_EQ(build_from_tensor(res, build_params, &main_dataset_tensor, index_main), CUVS_SUCCESS);
+  ASSERT_EQ(build_from_tensor(res, build_params, &additional_dataset_tensor, index_add),
             CUVS_SUCCESS);
 
   cuvsCagraIndex_t index_merged;
@@ -751,7 +780,7 @@ TEST(CagraC, BuildSearchACEMemory)
   ace_params->use_disk = false;
 
   build_params->graph_build_params = ace_params;
-  ASSERT_EQ(cuvsCagraBuild(res, build_params, &dataset_tensor, index), CUVS_SUCCESS);
+  ASSERT_EQ(build_from_tensor(res, build_params, &dataset_tensor, index), CUVS_SUCCESS);
 
   // Host build yields a host index. Attach a caller-provided device padded dataset
   // to produce a search-ready device padded index.
@@ -873,7 +902,7 @@ TEST(CagraC, BuildSearchACEDisk)
   ace_params->build_dir = strdup("/tmp/cagra_ace_test_disk");
 
   build_params->graph_build_params = ace_params;
-  ASSERT_EQ(cuvsCagraBuild(res, build_params, &dataset_tensor, index), CUVS_SUCCESS);
+  ASSERT_EQ(build_from_tensor(res, build_params, &dataset_tensor, index), CUVS_SUCCESS);
 
   // Convert CAGRA index to HNSW (automatically serializes to disk for ACE)
   cuvsHnswIndex_t hnsw_index_ser;
