@@ -218,10 +218,6 @@ cdef extern from "cuvs/neighbors/cagra.h" nogil:
                                 DLManagedTensor* neighbors,
                                 DLManagedTensor* distances,
                                 cuvsFilter filter)
-    cuvsError_t cuvsCagraAttachDataset(
-        cuvsResources_t res,
-        cuvsDatasetPaddedView_t device_padded_dataset,
-        cuvsCagraIndex_t index)
     cuvsError_t cuvsCagraUpdateDataset(
         cuvsResources_t res,
         cuvsDatasetView_t device_padded_dataset,
