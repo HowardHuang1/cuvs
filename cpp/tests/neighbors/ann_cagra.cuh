@@ -701,19 +701,18 @@ class AnnCagraAddNodesTest : public ::testing::TestWithParam<AnnCagraInputs> {
         cagra::extend_params extend_params;
         std::unique_ptr<cuvs::neighbors::host_padded_dataset<DataT, int64_t>> add_padded_owner{
           nullptr};
-        auto all_database_host_view = raft::make_host_matrix_view<const DataT, int64_t>(
+        auto all_database_device_view = raft::make_device_matrix_view<const DataT, int64_t>(
           static_cast<const DataT*>(database.data()), ps.n_rows, ps.dim);
-        auto extended_padded_owner =
-          cuvs::neighbors::make_device_padded_dataset(handle_, all_database_host_view);
-        auto extended_padded_view = extended_padded_owner->as_dataset_view();
+        cuvs::neighbors::test::padded_device_matrix_for_cagra<DataT> extended_padded(
+          handle_, all_database_device_view);
         if (cuvs::neighbors::matrix_row_width_matches_cagra_required(additional_dataset.view())) {
           auto add_view = cuvs::neighbors::make_host_padded_dataset_view(additional_dataset.view());
-          cagra::extend(handle_, extend_params, add_view, index, extended_padded_view);
+          cagra::extend(handle_, extend_params, add_view, index, extended_padded.view);
         } else {
           add_padded_owner =
             cuvs::neighbors::make_host_padded_dataset(handle_, additional_dataset.view());
           auto add_view = add_padded_owner->as_dataset_view();
-          cagra::extend(handle_, extend_params, add_view, index, extended_padded_view);
+          cagra::extend(handle_, extend_params, add_view, index, extended_padded.view);
         }
 
         auto search_queries_view = raft::make_device_matrix_view<const DataT, int64_t>(

@@ -6,7 +6,6 @@
 
 #include "../test_utils.cuh"
 #include "ann_utils.cuh"
-#include "cagra_padded_build_helpers.cuh"
 #include "naive_knn.cuh"
 
 #include <cuvs/neighbors/cagra.hpp>
@@ -249,9 +248,9 @@ class AnnMGTest : public ::testing::TestWithParam<AnnMGInputs> {
       auto index_dataset_device = raft::make_device_matrix_view<const DataT, int64_t>(
         d_index_dataset.data(), ps.num_db_vecs, ps.dim);
       auto padded_index_dataset =
-        cuvs::neighbors::make_device_padded_dataset(clique_, index_dataset_device);
-      auto search_index = cuvs::neighbors::cagra::attach_dataset(
-        clique_, new_index, padded_index_dataset->as_dataset_view());
+        cuvs::neighbors::make_device_padded_dataset_view(clique_, index_dataset_device);
+      auto search_index =
+        cuvs::neighbors::cagra::attach_dataset(clique_, new_index, padded_index_dataset);
 
       if (ps.m_mode == m_mode_t::MERGE_ON_ROOT_RANK)
         search_params.merge_mode = MERGE_ON_ROOT_RANK;
@@ -409,9 +408,9 @@ class AnnMGTest : public ::testing::TestWithParam<AnnMGInputs> {
       auto index_dataset_device = raft::make_device_matrix_view<const DataT, int64_t>(
         d_index_dataset.data(), ps.num_db_vecs, ps.dim);
       auto padded_index_dataset =
-        cuvs::neighbors::make_device_padded_dataset(clique_, index_dataset_device);
-      auto search_index = cuvs::neighbors::cagra::attach_dataset(
-        clique_, distributed_index, padded_index_dataset->as_dataset_view());
+        cuvs::neighbors::make_device_padded_dataset_view(clique_, index_dataset_device);
+      auto search_index =
+        cuvs::neighbors::cagra::attach_dataset(clique_, distributed_index, padded_index_dataset);
 
       search_params.merge_mode = TREE_MERGE;
 
@@ -594,9 +593,9 @@ class AnnMGTest : public ::testing::TestWithParam<AnnMGInputs> {
       auto index_dataset_device = raft::make_device_matrix_view<const DataT, int64_t>(
         d_index_dataset.data(), ps.num_db_vecs, ps.dim);
       auto padded_index_dataset =
-        cuvs::neighbors::make_device_padded_dataset(clique_, index_dataset_device);
-      auto search_index = cuvs::neighbors::cagra::attach_dataset(
-        clique_, index, padded_index_dataset->as_dataset_view());
+        cuvs::neighbors::make_device_padded_dataset_view(clique_, index_dataset_device);
+      auto search_index =
+        cuvs::neighbors::cagra::attach_dataset(clique_, index, padded_index_dataset);
 
       int n_parallel_searches = 16;
       std::vector<char> searches_correctness(n_parallel_searches);
