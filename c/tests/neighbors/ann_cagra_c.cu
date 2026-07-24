@@ -76,9 +76,7 @@ TEST(CagraC, BuildSearch)
   // build index
   cuvsCagraIndexParams_t build_params;
   cuvsCagraIndexParamsCreate(&build_params);
-  cuvsDatasetStandardView_t dataset_view = nullptr;
-  ASSERT_EQ(cuvsDatasetMakeHostStandardView(res, &dataset_tensor, &dataset_view), CUVS_SUCCESS);
-  ASSERT_EQ(cuvsCagraBuildHostStandard(res, build_params, dataset_view, index), CUVS_SUCCESS);
+  ASSERT_EQ(cuvsCagraBuild(res, build_params, &dataset_tensor, index), CUVS_SUCCESS);
 
   // Host build yields a host index. Attach a caller-provided device padded dataset
   // to produce a search-ready device padded index.
@@ -158,7 +156,6 @@ TEST(CagraC, BuildSearch)
 
   // de-allocate index and res
   cuvsCagraSearchParamsDestroy(search_params);
-  cuvsDatasetStandardViewDestroy(dataset_view);
   cuvsDatasetPaddedViewDestroy(padded_dataset_view);
   cuvsDatasetPaddedDestroy(padded_dataset_owner);
   cuvsCagraIndexParamsDestroy(build_params);
@@ -244,9 +241,7 @@ TEST(CagraC, BuildExtendSearch)
   // build index
   cuvsCagraIndexParams_t build_params;
   cuvsCagraIndexParamsCreate(&build_params);
-  cuvsDatasetPaddedView_t dataset_view = nullptr;
-  ASSERT_EQ(cuvsDatasetMakeDevicePaddedView(res, &dataset_tensor, &dataset_view), CUVS_SUCCESS);
-  ASSERT_EQ(cuvsCagraBuildDevicePadded(res, build_params, dataset_view, index), CUVS_SUCCESS);
+  ASSERT_EQ(cuvsCagraBuild(res, build_params, &dataset_tensor, index), CUVS_SUCCESS);
 
   cuvsStreamSync(res);
 
@@ -387,7 +382,6 @@ TEST(CagraC, BuildExtendSearch)
 
   // de-allocate index and res
   cuvsCagraSearchParamsDestroy(search_params);
-  cuvsDatasetPaddedViewDestroy(dataset_view);
   cuvsDatasetPaddedViewDestroy(additional_padded_dataset_view);
   cuvsDatasetPaddedViewDestroy(extended_dataset_view);
   cuvsCagraExtendParamsDestroy(extend_params);
@@ -423,9 +417,7 @@ TEST(CagraC, BuildSearchFiltered)
   // build index
   cuvsCagraIndexParams_t build_params;
   cuvsCagraIndexParamsCreate(&build_params);
-  cuvsDatasetStandardView_t dataset_view = nullptr;
-  ASSERT_EQ(cuvsDatasetMakeHostStandardView(res, &dataset_tensor, &dataset_view), CUVS_SUCCESS);
-  ASSERT_EQ(cuvsCagraBuildHostStandard(res, build_params, dataset_view, index), CUVS_SUCCESS);
+  ASSERT_EQ(cuvsCagraBuild(res, build_params, &dataset_tensor, index), CUVS_SUCCESS);
 
   // Host build yields a host index. Attach a caller-provided device padded dataset
   // to produce a search-ready device padded index.
@@ -520,7 +512,6 @@ TEST(CagraC, BuildSearchFiltered)
 
   // de-allocate index and res
   cuvsCagraSearchParamsDestroy(search_params);
-  cuvsDatasetStandardViewDestroy(dataset_view);
   cuvsDatasetPaddedViewDestroy(padded_dataset_view);
   cuvsDatasetPaddedDestroy(padded_dataset_owner);
   cuvsCagraIndexParamsDestroy(build_params);
@@ -581,17 +572,8 @@ TEST(CagraC, BuildMergeSearch)
   cuvsCagraIndex_t index_main, index_add;
   cuvsCagraIndexCreate(&index_main);
   cuvsCagraIndexCreate(&index_add);
-  cuvsDatasetStandardView_t main_dataset_view = nullptr;
-  cuvsDatasetStandardView_t additional_dataset_view = nullptr;
-  ASSERT_EQ(cuvsDatasetMakeDeviceStandardView(res, &main_dataset_tensor, &main_dataset_view),
-            CUVS_SUCCESS);
-  ASSERT_EQ(cuvsDatasetMakeDeviceStandardView(
-              res, &additional_dataset_tensor, &additional_dataset_view),
-            CUVS_SUCCESS);
-  ASSERT_EQ(cuvsCagraBuildDeviceStandard(res, build_params, main_dataset_view, index_main),
-            CUVS_SUCCESS);
-  ASSERT_EQ(cuvsCagraBuildDeviceStandard(
-              res, build_params, additional_dataset_view, index_add),
+  ASSERT_EQ(cuvsCagraBuild(res, build_params, &main_dataset_tensor, index_main), CUVS_SUCCESS);
+  ASSERT_EQ(cuvsCagraBuild(res, build_params, &additional_dataset_tensor, index_add),
             CUVS_SUCCESS);
 
   cuvsCagraIndex_t index_merged;
@@ -684,8 +666,6 @@ TEST(CagraC, BuildMergeSearch)
   cuvsCagraSearchParamsDestroy(search_params);
   cuvsDatasetPaddedViewDestroy(padded_dataset);
   cuvsDatasetPaddedDestroy(padded_dataset_owner);
-  cuvsDatasetStandardViewDestroy(additional_dataset_view);
-  cuvsDatasetStandardViewDestroy(main_dataset_view);
   cuvsDatasetStorageDestroy(merged_dataset);
   cuvsCagraIndexParamsDestroy(build_params);
   cuvsCagraIndexDestroy(index_merged);
@@ -730,9 +710,7 @@ TEST(CagraC, BuildSearchACEMemory)
   ace_params->use_disk = false;
 
   build_params->graph_build_params = ace_params;
-  cuvsDatasetStandardView_t dataset_view = nullptr;
-  ASSERT_EQ(cuvsDatasetMakeHostStandardView(res, &dataset_tensor, &dataset_view), CUVS_SUCCESS);
-  ASSERT_EQ(cuvsCagraBuildHostStandard(res, build_params, dataset_view, index), CUVS_SUCCESS);
+  ASSERT_EQ(cuvsCagraBuild(res, build_params, &dataset_tensor, index), CUVS_SUCCESS);
 
   // Host build yields a host index. Attach a caller-provided device padded dataset
   // to produce a search-ready device padded index.
@@ -812,7 +790,6 @@ TEST(CagraC, BuildSearchACEMemory)
 
   // de-allocate index and res
   cuvsCagraSearchParamsDestroy(search_params);
-  cuvsDatasetStandardViewDestroy(dataset_view);
   cuvsDatasetPaddedViewDestroy(padded_dataset_view);
   cuvsDatasetPaddedDestroy(padded_dataset_owner);
   cuvsCagraIndexParamsDestroy(build_params);
@@ -855,9 +832,7 @@ TEST(CagraC, BuildSearchACEDisk)
   ace_params->build_dir = strdup("/tmp/cagra_ace_test_disk");
 
   build_params->graph_build_params = ace_params;
-  cuvsDatasetStandardView_t dataset_view = nullptr;
-  ASSERT_EQ(cuvsDatasetMakeHostStandardView(res, &dataset_tensor, &dataset_view), CUVS_SUCCESS);
-  ASSERT_EQ(cuvsCagraBuildHostStandard(res, build_params, dataset_view, index), CUVS_SUCCESS);
+  ASSERT_EQ(cuvsCagraBuild(res, build_params, &dataset_tensor, index), CUVS_SUCCESS);
 
   // Convert CAGRA index to HNSW (automatically serializes to disk for ACE)
   cuvsHnswIndex_t hnsw_index_ser;
@@ -929,7 +904,6 @@ TEST(CagraC, BuildSearchACEDisk)
   ASSERT_TRUE(cuvs::hostVecMatch(distances_exp_disk, distances, cuvs::CompareApprox<float>(0.001f)));
 
   cuvsCagraIndexParamsDestroy(build_params);
-  cuvsDatasetStandardViewDestroy(dataset_view);
   cuvsCagraIndexDestroy(index);
   cuvsHnswSearchParamsDestroy(search_params);
   cuvsHnswIndexParamsDestroy(hnsw_params);

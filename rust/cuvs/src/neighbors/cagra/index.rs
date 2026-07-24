@@ -191,50 +191,12 @@ impl<'d> Index<'d> {
         let index = Index::create_handle()?;
         unsafe {
             let mut dataset_c = dataset.to_c();
-            let mut view_kind = std::mem::MaybeUninit::<ffi::cuvsDatasetViewKind_t>::uninit();
-            check_cuvs(ffi::cuvsCagraGetDatasetViewKind(
+            check_cuvs(ffi::cuvsCagraBuild(
+                res.handle(),
+                params.handle(),
                 dataset_c.as_mut_ptr(),
-                view_kind.as_mut_ptr(),
+                index.handle,
             ))?;
-
-            match view_kind.assume_init() {
-                ffi::cuvsDatasetViewKind_t::CUVS_DATASET_VIEW_KIND_DEVICE_PADDED => {
-                    let dataset_view = PaddedDatasetView::new(res, &dataset)?;
-                    check_cuvs(ffi::cuvsCagraBuildDevicePadded(
-                        res.handle(),
-                        params.handle(),
-                        dataset_view.handle,
-                        index.handle,
-                    ))?;
-                }
-                ffi::cuvsDatasetViewKind_t::CUVS_DATASET_VIEW_KIND_DEVICE_STANDARD => {
-                    let dataset_view = StandardDatasetView::new(res, &dataset)?;
-                    check_cuvs(ffi::cuvsCagraBuildDeviceStandard(
-                        res.handle(),
-                        params.handle(),
-                        dataset_view.handle,
-                        index.handle,
-                    ))?;
-                }
-                ffi::cuvsDatasetViewKind_t::CUVS_DATASET_VIEW_KIND_HOST_PADDED => {
-                    let dataset_view = PaddedDatasetView::new(res, &dataset)?;
-                    check_cuvs(ffi::cuvsCagraBuildHostPadded(
-                        res.handle(),
-                        params.handle(),
-                        dataset_view.handle,
-                        index.handle,
-                    ))?;
-                }
-                ffi::cuvsDatasetViewKind_t::CUVS_DATASET_VIEW_KIND_HOST_STANDARD => {
-                    let dataset_view = StandardDatasetView::new(res, &dataset)?;
-                    check_cuvs(ffi::cuvsCagraBuildHostStandard(
-                        res.handle(),
-                        params.handle(),
-                        dataset_view.handle,
-                        index.handle,
-                    ))?;
-                }
-            }
         }
         Ok(index)
     }

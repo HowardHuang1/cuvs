@@ -171,68 +171,8 @@ public class CagraIndexImpl implements CagraIndex {
         var returnValue = cuvsStreamSync(cuvsRes);
         checkCuVSError(returnValue, "cuvsStreamSync");
 
-        var viewKindSeg = localArena.allocate(C_INT);
-        returnValue = cuvsCagraGetDatasetViewKind(datasetTensor, viewKindSeg);
-        checkCuVSError(returnValue, "cuvsCagraGetDatasetViewKind");
-        int viewKind = viewKindSeg.get(C_INT, 0);
-
-        MemorySegment paddedView = MemorySegment.NULL;
-        MemorySegment standardView = MemorySegment.NULL;
-        try {
-          switch (viewKind) {
-            case 0 -> { // CUVS_DATASET_VIEW_KIND_DEVICE_PADDED
-              MemorySegment paddedViewPtr = localArena.allocate(cuvsDatasetPaddedView_t);
-              returnValue = cuvsDatasetMakeDevicePaddedView(cuvsRes, datasetTensor, paddedViewPtr);
-              checkCuVSError(returnValue, "cuvsDatasetMakeDevicePaddedView");
-              paddedView = paddedViewPtr.get(cuvsDatasetPaddedView_t, 0);
-              returnValue =
-                  cuvsCagraBuildDevicePadded(cuvsRes, indexParamsMemorySegment, paddedView, index);
-              checkCuVSError(returnValue, "cuvsCagraBuildDevicePadded");
-            }
-            case 1 -> { // CUVS_DATASET_VIEW_KIND_HOST_PADDED
-              MemorySegment paddedViewPtr = localArena.allocate(cuvsDatasetPaddedView_t);
-              returnValue = cuvsDatasetMakeHostPaddedView(cuvsRes, datasetTensor, paddedViewPtr);
-              checkCuVSError(returnValue, "cuvsDatasetMakeHostPaddedView");
-              paddedView = paddedViewPtr.get(cuvsDatasetPaddedView_t, 0);
-              returnValue =
-                  cuvsCagraBuildHostPadded(cuvsRes, indexParamsMemorySegment, paddedView, index);
-              checkCuVSError(returnValue, "cuvsCagraBuildHostPadded");
-            }
-            case 2 -> { // CUVS_DATASET_VIEW_KIND_DEVICE_STANDARD
-              MemorySegment standardViewPtr = localArena.allocate(cuvsDatasetStandardView_t);
-              returnValue =
-                  cuvsDatasetMakeDeviceStandardView(cuvsRes, datasetTensor, standardViewPtr);
-              checkCuVSError(returnValue, "cuvsDatasetMakeDeviceStandardView");
-              standardView = standardViewPtr.get(cuvsDatasetStandardView_t, 0);
-              returnValue =
-                  cuvsCagraBuildDeviceStandard(
-                      cuvsRes, indexParamsMemorySegment, standardView, index);
-              checkCuVSError(returnValue, "cuvsCagraBuildDeviceStandard");
-            }
-            case 3 -> { // CUVS_DATASET_VIEW_KIND_HOST_STANDARD
-              MemorySegment standardViewPtr = localArena.allocate(cuvsDatasetStandardView_t);
-              returnValue =
-                  cuvsDatasetMakeHostStandardView(cuvsRes, datasetTensor, standardViewPtr);
-              checkCuVSError(returnValue, "cuvsDatasetMakeHostStandardView");
-              standardView = standardViewPtr.get(cuvsDatasetStandardView_t, 0);
-              returnValue =
-                  cuvsCagraBuildHostStandard(
-                      cuvsRes, indexParamsMemorySegment, standardView, index);
-              checkCuVSError(returnValue, "cuvsCagraBuildHostStandard");
-            }
-            default ->
-                throw new IllegalStateException("Unsupported CAGRA dataset view kind: " + viewKind);
-          }
-        } finally {
-          if (paddedView.address() != 0) {
-            checkCuVSError(
-                cuvsDatasetPaddedViewDestroy(paddedView), "cuvsDatasetPaddedViewDestroy");
-          }
-          if (standardView.address() != 0) {
-            checkCuVSError(
-                cuvsDatasetStandardViewDestroy(standardView), "cuvsDatasetStandardViewDestroy");
-          }
-        }
+        returnValue = cuvsCagraBuild(cuvsRes, indexParamsMemorySegment, datasetTensor, index);
+        checkCuVSError(returnValue, "cuvsCagraBuild");
 
         returnValue = cuvsStreamSync(cuvsRes);
         checkCuVSError(returnValue, "cuvsStreamSync");

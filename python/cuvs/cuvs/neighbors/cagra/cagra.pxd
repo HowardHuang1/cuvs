@@ -191,22 +191,10 @@ cdef extern from "cuvs/neighbors/cagra.h" nogil:
                                                 cuvsDatasetStandardView_t* standard_dataset)
     cuvsError_t cuvsDatasetStandardViewDestroy(cuvsDatasetStandardView_t standard_dataset)
 
-    cuvsError_t cuvsCagraBuildDevicePadded(cuvsResources_t res,
-                                           cuvsCagraIndexParams_t params,
-                                           cuvsDatasetPaddedView_t dataset_view,
-                                           cuvsCagraIndex_t index)
-    cuvsError_t cuvsCagraBuildDeviceStandard(cuvsResources_t res,
-                                             cuvsCagraIndexParams_t params,
-                                             cuvsDatasetStandardView_t dataset_view,
-                                             cuvsCagraIndex_t index)
-    cuvsError_t cuvsCagraBuildHostPadded(cuvsResources_t res,
-                                         cuvsCagraIndexParams_t params,
-                                         cuvsDatasetPaddedView_t dataset_view,
-                                         cuvsCagraIndex_t index)
-    cuvsError_t cuvsCagraBuildHostStandard(cuvsResources_t res,
-                                           cuvsCagraIndexParams_t params,
-                                           cuvsDatasetStandardView_t dataset_view,
-                                           cuvsCagraIndex_t index)
+    cuvsError_t cuvsCagraBuild(cuvsResources_t res,
+                               cuvsCagraIndexParams_t params,
+                               DLManagedTensor* dataset,
+                               cuvsCagraIndex_t index)
     cuvsError_t cuvsCagraGetDatasetViewKind(DLManagedTensor* dataset,
                                             cuvsDatasetViewKind_t* kind)
 

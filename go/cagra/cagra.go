@@ -174,70 +174,12 @@ func CreateIndex() (*CagraIndex, error) {
 // * `index` - CagraIndex to build
 func BuildIndex[T any](Resources cuvs.Resource, params *IndexParams, dataset *cuvs.Tensor[T], index *CagraIndex) error {
 	datasetTensor := (*C.DLManagedTensor)(unsafe.Pointer(dataset.C_tensor))
-	var viewKind C.cuvsDatasetViewKind_t
-	err := cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsCagraGetDatasetViewKind(
+	err := cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsCagraBuild(
+		C.cuvsResources_t(Resources.Resource),
+		params.params,
 		datasetTensor,
-		&viewKind,
+		index.index,
 	)))
-	if err != nil {
-		return err
-	}
-
-	var paddedView C.cuvsDatasetPaddedView_t
-	var standardView C.cuvsDatasetStandardView_t
-	defer func() {
-		if paddedView != nil {
-			_ = cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsDatasetPaddedViewDestroy(paddedView)))
-		}
-		if standardView != nil {
-			_ = cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsDatasetStandardViewDestroy(standardView)))
-		}
-	}()
-
-	switch viewKind {
-	case C.CUVS_DATASET_VIEW_KIND_DEVICE_PADDED:
-		err = cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsDatasetMakeDevicePaddedView(
-			C.cuvsResources_t(Resources.Resource), datasetTensor, &paddedView,
-		)))
-		if err != nil {
-			return err
-		}
-		err = cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsCagraBuildDevicePadded(
-			C.cuvsResources_t(Resources.Resource), params.params, paddedView, index.index,
-		)))
-	case C.CUVS_DATASET_VIEW_KIND_DEVICE_STANDARD:
-		err = cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsDatasetMakeDeviceStandardView(
-			C.cuvsResources_t(Resources.Resource), datasetTensor, &standardView,
-		)))
-		if err != nil {
-			return err
-		}
-		err = cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsCagraBuildDeviceStandard(
-			C.cuvsResources_t(Resources.Resource), params.params, standardView, index.index,
-		)))
-	case C.CUVS_DATASET_VIEW_KIND_HOST_PADDED:
-		err = cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsDatasetMakeHostPaddedView(
-			C.cuvsResources_t(Resources.Resource), datasetTensor, &paddedView,
-		)))
-		if err != nil {
-			return err
-		}
-		err = cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsCagraBuildHostPadded(
-			C.cuvsResources_t(Resources.Resource), params.params, paddedView, index.index,
-		)))
-	case C.CUVS_DATASET_VIEW_KIND_HOST_STANDARD:
-		err = cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsDatasetMakeHostStandardView(
-			C.cuvsResources_t(Resources.Resource), datasetTensor, &standardView,
-		)))
-		if err != nil {
-			return err
-		}
-		err = cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsCagraBuildHostStandard(
-			C.cuvsResources_t(Resources.Resource), params.params, standardView, index.index,
-		)))
-	default:
-		return errors.New("unsupported dataset view kind from cuvsCagraGetDatasetViewKind")
-	}
 	if err != nil {
 		return err
 	}

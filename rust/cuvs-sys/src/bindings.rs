@@ -1488,37 +1488,10 @@ unsafe extern "C" {
 }
 unsafe extern "C" {
     #[must_use]
-    pub fn cuvsCagraBuildDevicePadded(
+    pub fn cuvsCagraBuild(
         res: cuvsResources_t,
         params: cuvsCagraIndexParams_t,
-        dataset_view: cuvsDatasetPaddedView_t,
-        index: cuvsCagraIndex_t,
-    ) -> cuvsError_t;
-}
-unsafe extern "C" {
-    #[must_use]
-    pub fn cuvsCagraBuildDeviceStandard(
-        res: cuvsResources_t,
-        params: cuvsCagraIndexParams_t,
-        dataset_view: cuvsDatasetStandardView_t,
-        index: cuvsCagraIndex_t,
-    ) -> cuvsError_t;
-}
-unsafe extern "C" {
-    #[must_use]
-    pub fn cuvsCagraBuildHostPadded(
-        res: cuvsResources_t,
-        params: cuvsCagraIndexParams_t,
-        dataset_view: cuvsDatasetPaddedView_t,
-        index: cuvsCagraIndex_t,
-    ) -> cuvsError_t;
-}
-unsafe extern "C" {
-    #[must_use]
-    pub fn cuvsCagraBuildHostStandard(
-        res: cuvsResources_t,
-        params: cuvsCagraIndexParams_t,
-        dataset_view: cuvsDatasetStandardView_t,
+        dataset: *mut DLManagedTensor,
         index: cuvsCagraIndex_t,
     ) -> cuvsError_t;
 }

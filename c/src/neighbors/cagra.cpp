@@ -1466,21 +1466,23 @@ extern "C" cuvsError_t cuvsMakeMergedStorage(cuvsResources_t res,
   });
 }
 
-template <typename T, typename DatasetViewT, typename IndexT>
-static void build_index_from_dataset_view(cuvsResources_t res,
+/**
+ * Build from an already-constructed C++ dataset view. `DatasetViewT` selects the
+ * `cuvs::neighbors::cagra::build` overload, and therefore the resulting index type.
+ */
+template <typename T, cuvs::neighbors::ann_dataset_view DatasetViewT>
+static void build_index_from_dataset_view(raft::resources* res_ptr,
                                           cuvsCagraIndexParams_t params,
-                                          uintptr_t dataset_view_addr,
+                                          DatasetViewT const& ds_view,
                                           cuvsCagraIndex_t index)
 {
-  auto* res_ptr       = reinterpret_cast<raft::resources*>(res);
-  auto const& ds_view = *reinterpret_cast<DatasetViewT const*>(dataset_view_addr);
-  auto index_params   = cuvs::neighbors::cagra::index_params();
+  auto index_params = cuvs::neighbors::cagra::index_params();
   convert_c_index_params(*params,
                          static_cast<int64_t>(ds_view.n_rows()),
                          static_cast<int64_t>(ds_view.dim()),
                          &index_params);
   auto cpp_index = cuvs::neighbors::cagra::build(*res_ptr, index_params, ds_view);
-  auto* raw      = new IndexT(std::move(cpp_index));
+  auto* raw      = new decltype(cpp_index)(std::move(cpp_index));
   wrap_CPP_index_in_lifetime_holder_and_bind_to_C_index<T, DatasetViewT>(index, index->dtype, raw);
 }
 
@@ -1527,166 +1529,78 @@ extern "C" cuvsError_t cuvsCagraGetDatasetViewKind(DLManagedTensor* dataset,
   });
 }
 
-extern "C" cuvsError_t cuvsCagraBuildDevicePadded(cuvsResources_t res,
-                                                  cuvsCagraIndexParams_t params,
-                                                  cuvsDatasetPaddedView_t dataset_view,
-                                                  cuvsCagraIndex_t index)
+/**
+ * Resolve the dataset view kind for `T` and build through the matching C++ overload.
+ *
+ * The kind is resolved with the same helper backing `cuvsCagraGetDatasetViewKind`, so the
+ * kind reported to callers and the overload chosen here can never diverge.
+ */
+template <typename T>
+static void build_dispatch_on_view_kind(raft::resources* res_ptr,
+                                        cuvsCagraIndexParams_t params,
+                                        DLManagedTensor* dataset_tensor,
+                                        cuvsCagraIndex_t index)
 {
-  return cuvs::core::translate_exceptions([=] {
-    RAFT_EXPECTS(dataset_view != nullptr, "cuvsCagraBuildDevicePadded: null dataset view handle");
-    RAFT_EXPECTS(dataset_view->addr != 0, "cuvsCagraBuildDevicePadded: null dataset view storage");
-    RAFT_EXPECTS(dataset_view->kind == CUVS_DATASET_VIEW_KIND_DEVICE_PADDED,
-                 "cuvsCagraBuildDevicePadded: dataset view must be device-padded");
-    destroy_sg_cagra_c_api_box(index->addr);
-    index->addr  = 0;
-    index->dtype = dataset_view->dtype;
-    if (dataset_view->dtype.code == kDLFloat && dataset_view->dtype.bits == 32) {
-      build_index_from_dataset_view<float,
-                                    cuvs::neighbors::device_padded_dataset_view<float, int64_t>,
-                                    cuvs::neighbors::cagra::device_padded_index<float, uint32_t>>(
-        res, params, dataset_view->addr, index);
-    } else if (dataset_view->dtype.code == kDLFloat && dataset_view->dtype.bits == 16) {
-      build_index_from_dataset_view<half,
-                                    cuvs::neighbors::device_padded_dataset_view<half, int64_t>,
-                                    cuvs::neighbors::cagra::device_padded_index<half, uint32_t>>(
-        res, params, dataset_view->addr, index);
-    } else if (dataset_view->dtype.code == kDLInt && dataset_view->dtype.bits == 8) {
-      build_index_from_dataset_view<int8_t,
-                                    cuvs::neighbors::device_padded_dataset_view<int8_t, int64_t>,
-                                    cuvs::neighbors::cagra::device_padded_index<int8_t, uint32_t>>(
-        res, params, dataset_view->addr, index);
-    } else if (dataset_view->dtype.code == kDLUInt && dataset_view->dtype.bits == 8) {
-      build_index_from_dataset_view<uint8_t,
-                                    cuvs::neighbors::device_padded_dataset_view<uint8_t, int64_t>,
-                                    cuvs::neighbors::cagra::device_padded_index<uint8_t, uint32_t>>(
-        res, params, dataset_view->addr, index);
-    } else {
-      RAFT_FAIL("Unsupported dataset dtype: code=%d, bits=%d",
-                dataset_view->dtype.code,
-                dataset_view->dtype.bits);
+  using device_mdspan = raft::device_matrix_view<T const, int64_t, raft::row_major>;
+  using host_mdspan   = raft::host_matrix_view<T const, int64_t, raft::row_major>;
+
+  switch (get_dataset_view_kind_for_t<T>(dataset_tensor)) {
+    case CUVS_DATASET_VIEW_KIND_DEVICE_PADDED: {
+      auto mds = cuvs::core::from_dlpack<device_mdspan>(dataset_tensor);
+      build_index_from_dataset_view<T>(
+        res_ptr, params, cuvs::neighbors::make_device_padded_dataset_view(*res_ptr, mds), index);
+      break;
     }
-  });
+    case CUVS_DATASET_VIEW_KIND_DEVICE_STANDARD: {
+      auto mds = cuvs::core::from_dlpack<device_mdspan>(dataset_tensor);
+      build_index_from_dataset_view<T>(
+        res_ptr, params, cuvs::neighbors::make_device_standard_dataset_view(mds), index);
+      break;
+    }
+    case CUVS_DATASET_VIEW_KIND_HOST_PADDED: {
+      auto mds = cuvs::core::from_dlpack<host_mdspan>(dataset_tensor);
+      build_index_from_dataset_view<T>(
+        res_ptr, params, cuvs::neighbors::make_host_padded_dataset_view(mds), index);
+      break;
+    }
+    case CUVS_DATASET_VIEW_KIND_HOST_STANDARD: {
+      auto mds = cuvs::core::from_dlpack<host_mdspan>(dataset_tensor);
+      build_index_from_dataset_view<T>(
+        res_ptr, params, cuvs::neighbors::make_host_standard_dataset_view(mds), index);
+      break;
+    }
+    default: RAFT_FAIL("cuvsCagraBuild: unsupported dataset view kind");
+  }
 }
 
-extern "C" cuvsError_t cuvsCagraBuildDeviceStandard(cuvsResources_t res,
-                                                    cuvsCagraIndexParams_t params,
-                                                    cuvsDatasetStandardView_t dataset_view,
-                                                    cuvsCagraIndex_t index)
+extern "C" cuvsError_t cuvsCagraBuild(cuvsResources_t res,
+                                      cuvsCagraIndexParams_t params,
+                                      DLManagedTensor* dataset,
+                                      cuvsCagraIndex_t index)
 {
   return cuvs::core::translate_exceptions([=] {
-    RAFT_EXPECTS(dataset_view != nullptr, "cuvsCagraBuildDeviceStandard: null dataset view handle");
-    RAFT_EXPECTS(dataset_view->addr != 0, "cuvsCagraBuildDeviceStandard: null dataset view storage");
-    RAFT_EXPECTS(dataset_view->kind == CUVS_DATASET_VIEW_KIND_DEVICE_STANDARD,
-                 "cuvsCagraBuildDeviceStandard: dataset view must be device-standard");
-    destroy_sg_cagra_c_api_box(index->addr);
-    index->addr  = 0;
-    index->dtype = dataset_view->dtype;
-    if (dataset_view->dtype.code == kDLFloat && dataset_view->dtype.bits == 32) {
-      build_index_from_dataset_view<float,
-                                    cuvs::neighbors::device_standard_dataset_view<float, int64_t>,
-                                    cuvs::neighbors::cagra::device_standard_index<float, uint32_t>>(
-        res, params, dataset_view->addr, index);
-    } else if (dataset_view->dtype.code == kDLFloat && dataset_view->dtype.bits == 16) {
-      build_index_from_dataset_view<half,
-                                    cuvs::neighbors::device_standard_dataset_view<half, int64_t>,
-                                    cuvs::neighbors::cagra::device_standard_index<half, uint32_t>>(
-        res, params, dataset_view->addr, index);
-    } else if (dataset_view->dtype.code == kDLInt && dataset_view->dtype.bits == 8) {
-      build_index_from_dataset_view<int8_t,
-                                    cuvs::neighbors::device_standard_dataset_view<int8_t, int64_t>,
-                                    cuvs::neighbors::cagra::device_standard_index<int8_t, uint32_t>>(
-        res, params, dataset_view->addr, index);
-    } else if (dataset_view->dtype.code == kDLUInt && dataset_view->dtype.bits == 8) {
-      build_index_from_dataset_view<uint8_t,
-                                    cuvs::neighbors::device_standard_dataset_view<uint8_t, int64_t>,
-                                    cuvs::neighbors::cagra::device_standard_index<uint8_t, uint32_t>>(
-        res, params, dataset_view->addr, index);
-    } else {
-      RAFT_FAIL("Unsupported dataset dtype: code=%d, bits=%d",
-                dataset_view->dtype.code,
-                dataset_view->dtype.bits);
-    }
-  });
-}
+    RAFT_EXPECTS(dataset != nullptr, "cuvsCagraBuild: null dataset tensor");
+    RAFT_EXPECTS(params != nullptr, "cuvsCagraBuild: null index params");
+    RAFT_EXPECTS(index != nullptr, "cuvsCagraBuild: null index handle");
 
-extern "C" cuvsError_t cuvsCagraBuildHostPadded(cuvsResources_t res,
-                                                cuvsCagraIndexParams_t params,
-                                                cuvsDatasetPaddedView_t dataset_view,
-                                                cuvsCagraIndex_t index)
-{
-  return cuvs::core::translate_exceptions([=] {
-    RAFT_EXPECTS(dataset_view != nullptr, "cuvsCagraBuildHostPadded: null dataset view handle");
-    RAFT_EXPECTS(dataset_view->addr != 0, "cuvsCagraBuildHostPadded: null dataset view storage");
-    RAFT_EXPECTS(dataset_view->kind == CUVS_DATASET_VIEW_KIND_HOST_PADDED,
-                 "cuvsCagraBuildHostPadded: dataset view must be host-padded");
-    destroy_sg_cagra_c_api_box(index->addr);
-    index->addr  = 0;
-    index->dtype = dataset_view->dtype;
-    if (dataset_view->dtype.code == kDLFloat && dataset_view->dtype.bits == 32) {
-      build_index_from_dataset_view<float,
-                                    cuvs::neighbors::host_padded_dataset_view<float, int64_t>,
-                                    cuvs::neighbors::cagra::host_padded_index<float, uint32_t>>(
-        res, params, dataset_view->addr, index);
-    } else if (dataset_view->dtype.code == kDLFloat && dataset_view->dtype.bits == 16) {
-      build_index_from_dataset_view<half,
-                                    cuvs::neighbors::host_padded_dataset_view<half, int64_t>,
-                                    cuvs::neighbors::cagra::host_padded_index<half, uint32_t>>(
-        res, params, dataset_view->addr, index);
-    } else if (dataset_view->dtype.code == kDLInt && dataset_view->dtype.bits == 8) {
-      build_index_from_dataset_view<int8_t,
-                                    cuvs::neighbors::host_padded_dataset_view<int8_t, int64_t>,
-                                    cuvs::neighbors::cagra::host_padded_index<int8_t, uint32_t>>(
-        res, params, dataset_view->addr, index);
-    } else if (dataset_view->dtype.code == kDLUInt && dataset_view->dtype.bits == 8) {
-      build_index_from_dataset_view<uint8_t,
-                                    cuvs::neighbors::host_padded_dataset_view<uint8_t, int64_t>,
-                                    cuvs::neighbors::cagra::host_padded_index<uint8_t, uint32_t>>(
-        res, params, dataset_view->addr, index);
-    } else {
-      RAFT_FAIL("Unsupported dataset dtype: code=%d, bits=%d",
-                dataset_view->dtype.code,
-                dataset_view->dtype.bits);
-    }
-  });
-}
+    auto* res_ptr    = reinterpret_cast<raft::resources*>(res);
+    auto const dtype = dataset->dl_tensor.dtype;
 
-extern "C" cuvsError_t cuvsCagraBuildHostStandard(cuvsResources_t res,
-                                                  cuvsCagraIndexParams_t params,
-                                                  cuvsDatasetStandardView_t dataset_view,
-                                                  cuvsCagraIndex_t index)
-{
-  return cuvs::core::translate_exceptions([=] {
-    RAFT_EXPECTS(dataset_view != nullptr, "cuvsCagraBuildHostStandard: null dataset view handle");
-    RAFT_EXPECTS(dataset_view->addr != 0, "cuvsCagraBuildHostStandard: null dataset view storage");
-    RAFT_EXPECTS(dataset_view->kind == CUVS_DATASET_VIEW_KIND_HOST_STANDARD,
-                 "cuvsCagraBuildHostStandard: dataset view must be host-standard");
     destroy_sg_cagra_c_api_box(index->addr);
     index->addr  = 0;
-    index->dtype = dataset_view->dtype;
-    if (dataset_view->dtype.code == kDLFloat && dataset_view->dtype.bits == 32) {
-      build_index_from_dataset_view<float,
-                                    cuvs::neighbors::host_standard_dataset_view<float, int64_t>,
-                                    cuvs::neighbors::cagra::host_standard_index<float, uint32_t>>(
-        res, params, dataset_view->addr, index);
-    } else if (dataset_view->dtype.code == kDLFloat && dataset_view->dtype.bits == 16) {
-      build_index_from_dataset_view<half,
-                                    cuvs::neighbors::host_standard_dataset_view<half, int64_t>,
-                                    cuvs::neighbors::cagra::host_standard_index<half, uint32_t>>(
-        res, params, dataset_view->addr, index);
-    } else if (dataset_view->dtype.code == kDLInt && dataset_view->dtype.bits == 8) {
-      build_index_from_dataset_view<int8_t,
-                                    cuvs::neighbors::host_standard_dataset_view<int8_t, int64_t>,
-                                    cuvs::neighbors::cagra::host_standard_index<int8_t, uint32_t>>(
-        res, params, dataset_view->addr, index);
-    } else if (dataset_view->dtype.code == kDLUInt && dataset_view->dtype.bits == 8) {
-      build_index_from_dataset_view<uint8_t,
-                                    cuvs::neighbors::host_standard_dataset_view<uint8_t, int64_t>,
-                                    cuvs::neighbors::cagra::host_standard_index<uint8_t, uint32_t>>(
-        res, params, dataset_view->addr, index);
+    index->dtype = dtype;
+
+    if (dtype.code == kDLFloat && dtype.bits == 32) {
+      build_dispatch_on_view_kind<float>(res_ptr, params, dataset, index);
+    } else if (dtype.code == kDLFloat && dtype.bits == 16) {
+      build_dispatch_on_view_kind<half>(res_ptr, params, dataset, index);
+    } else if (dtype.code == kDLInt && dtype.bits == 8) {
+      build_dispatch_on_view_kind<int8_t>(res_ptr, params, dataset, index);
+    } else if (dtype.code == kDLUInt && dtype.bits == 8) {
+      build_dispatch_on_view_kind<uint8_t>(res_ptr, params, dataset, index);
     } else {
-      RAFT_FAIL("Unsupported dataset dtype: code=%d, bits=%d",
-                dataset_view->dtype.code,
-                dataset_view->dtype.bits);
+      RAFT_FAIL(
+        "cuvsCagraBuild: unsupported dataset dtype: code=%d, bits=%d", dtype.code, dtype.bits);
     }
   });
 }
