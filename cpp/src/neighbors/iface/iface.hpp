@@ -57,12 +57,12 @@ void cagra_build_from_device_dataset(
   if constexpr (std::is_same_v<AnnIndexType, cagra::device_padded_index<T, IdxT>>) {
     auto padded = cuvs::neighbors::make_device_padded_dataset_view(h, dview);
     auto index  = cuvs::neighbors::cagra::build(h, cagra_params, padded);
-    index.update_dataset(h, padded);
+    index.update_device_dataset_same_layout(h, padded);
     interface.index_.emplace(std::move(index));
   } else {
     auto standard = cuvs::neighbors::make_device_standard_dataset_view(dview);
     auto index    = cuvs::neighbors::cagra::build(h, cagra_params, standard);
-    index.update_dataset(h, standard);
+    index.update_device_dataset_same_layout(h, standard);
     interface.index_.emplace(std::move(index));
   }
   interface.cagra_owned_standard_dataset_.reset();
@@ -123,7 +123,7 @@ void build(const raft::resources& handle,
           static_cast<uint32_t>(index_dataset.stride(0)));
         auto device_idx =
           cuvs::neighbors::cagra::detail::convert_host_to_device_index(handle, host_idx);
-        device_idx.update_dataset(handle, standard_r->as_dataset_view());
+        device_idx.update_device_dataset_same_layout(handle, standard_r->as_dataset_view());
         interface.cagra_owned_standard_dataset_ = std::move(standard_r);
         interface.cagra_owned_padded_dataset_.reset();
         interface.index_.emplace(std::move(device_idx));

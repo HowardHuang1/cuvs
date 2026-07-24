@@ -306,7 +306,7 @@ auto build(raft::resources const& res, const index_params& params, DatasetViewT 
   } else if constexpr (cuvs::neighbors::is_dense_row_major_device_dataset_view_v<DatasetViewT>) {
     auto idx = cuvs::neighbors::cagra::detail::build_from_device_matrix<T, IdxT, DatasetViewT>(
       res, params, dataset);
-    if (params.attach_dataset_on_build) { idx.update_dataset(res, dataset); }
+    if (params.attach_dataset_on_build) { idx.update_device_dataset_same_layout(res, dataset); }
     return idx;
   } else {
     if (std::holds_alternative<graph_build_params::ace_params>(params.graph_build_params)) {

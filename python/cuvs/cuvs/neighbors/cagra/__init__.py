@@ -12,7 +12,6 @@ from .cagra import (
     StandardDataset,
     StandardDatasetView,
     SearchParams,
-    attach_dataset,
     build,
     extend,
     from_graph,
@@ -23,6 +22,7 @@ from .cagra import (
     make_device_padded_dataset, make_view_from_owning_padded,
     save,
     search,
+    update_dataset,
 )
 
 __all__ = [
@@ -35,7 +35,6 @@ __all__ = [
     "StandardDataset",
     "StandardDatasetView",
     "SearchParams",
-    "attach_dataset",
     "build",
     "extend",
     "from_graph",
@@ -47,4 +46,5 @@ __all__ = [
     "make_view_from_owning_padded",
     "save",
     "search",
+    "update_dataset",
 ]

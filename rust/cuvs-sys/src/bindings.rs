@@ -361,6 +361,8 @@ const _: () = {
         [::std::mem::offset_of!(cuvsDatasetPaddedView, layout) - 24usize];
 };
 pub type cuvsDatasetPaddedView_t = *mut cuvsDatasetPaddedView;
+pub type cuvsDatasetView = cuvsDatasetPaddedView;
+pub type cuvsDatasetView_t = *mut cuvsDatasetView;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct cuvsDatasetStandardView {
@@ -1476,6 +1478,14 @@ unsafe extern "C" {
     pub fn cuvsCagraAttachDataset(
         res: cuvsResources_t,
         device_padded_dataset: cuvsDatasetPaddedView_t,
+        index: cuvsCagraIndex_t,
+    ) -> cuvsError_t;
+}
+unsafe extern "C" {
+    #[must_use]
+    pub fn cuvsCagraUpdateDataset(
+        res: cuvsResources_t,
+        device_padded_dataset: cuvsDatasetView_t,
         index: cuvsCagraIndex_t,
     ) -> cuvsError_t;
 }

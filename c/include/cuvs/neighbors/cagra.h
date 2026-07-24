@@ -559,6 +559,25 @@ CUVS_EXPORT cuvsError_t cuvsCagraIndexGetDataset(cuvsCagraIndex_t index, DLManag
 CUVS_EXPORT cuvsError_t cuvsCagraIndexGetGraph(cuvsCagraIndex_t index, DLManagedTensor* graph);
 
 /**
+ * @brief Update a CAGRA index with a device-padded dataset.
+ *
+ * This is the centralized dataset update operation for C callers. If \p index
+ * is already device-padded, its dataset view is replaced in place. Otherwise,
+ * the index is converted and its opaque handle is rebound to a search-ready
+ * device-padded index. Caller retains ownership of
+ * \p device_padded_dataset and must keep it alive while \p index uses it.
+ *
+ * @param[in] res                    cuvsResources_t opaque C handle
+ * @param[in] device_padded_dataset  replacement device-padded dataset view
+ * handle
+ * @param[in,out] index              CAGRA index handle of any layout
+ * @return cuvsError_t
+ */
+CUVS_EXPORT cuvsError_t cuvsCagraUpdateDataset(cuvsResources_t res,
+                                               cuvsDatasetView_t device_padded_dataset,
+                                               cuvsCagraIndex_t index);
+
+/**
  * @brief Attach a device-padded dataset and return a search-ready padded-device index.
  *
  * Accepts any CAGRA index layout (host/device + standard/padded). The input \p index is replaced
@@ -573,6 +592,26 @@ CUVS_EXPORT cuvsError_t cuvsCagraIndexGetGraph(cuvsCagraIndex_t index, DLManaged
 CUVS_EXPORT cuvsError_t cuvsCagraAttachDataset(cuvsResources_t res,
                                                cuvsDatasetPaddedView_t device_padded_dataset,
                                                cuvsCagraIndex_t index);
+
+/**
+ * @brief Replace the dataset view on a device CAGRA index.
+ *
+ * This is a direct wrapper around the C++ CAGRA index's
+ * `update_device_dataset_same_layout()` method. The dataset and index layouts
+ * must match: device-standard with device-standard, or device-padded with
+ * device-padded. This function does not convert layouts or allocate dataset
+ * storage. Caller retains ownership of \p device_dataset and must keep it alive
+ * while \p index uses it.
+ *
+ * @param[in] res             cuvsResources_t opaque C handle
+ * @param[in] device_dataset  replacement device dataset view handle
+ * @param[in,out] index       existing device CAGRA index handle with matching
+ * layout
+ * @return cuvsError_t
+ */
+CUVS_EXPORT cuvsError_t cuvsCagraUpdateDeviceDatasetSameLayout(cuvsResources_t res,
+                                                               cuvsDatasetView_t device_dataset,
+                                                               cuvsCagraIndex_t index);
 
 /**
  * @}

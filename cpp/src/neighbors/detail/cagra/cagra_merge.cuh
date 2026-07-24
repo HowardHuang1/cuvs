@@ -69,7 +69,8 @@ merged_dataset compute_merged_dataset_layout(
       if (v.n_rows() == 0) {
         RAFT_FAIL(
           "cagra::merge only supports an index to which the dataset is attached. Please check if "
-          "the index has an empty dataset; attach one with update_dataset before merge.");
+          "the index has an empty dataset; attach one with update_device_dataset_same_layout "
+          "before merge.");
       }
       if (dim == 0) {
         dim    = index->dim();
@@ -208,7 +209,7 @@ cuvs::neighbors::cagra::index<T, IdxT, DatasetViewT> merge(
       raft::make_const_mdspan(filtered_storage), storage.layout.dim);
     auto index = ::cuvs::neighbors::cagra::detail::build_from_device_matrix<T, IdxT, DatasetViewT>(
       handle, params, dv);
-    index.update_dataset(handle, dv);
+    index.update_device_dataset_same_layout(handle, dv);
     RAFT_LOG_DEBUG("cagra merge: using device memory for merged dataset");
     return index;
   }
@@ -217,7 +218,7 @@ cuvs::neighbors::cagra::index<T, IdxT, DatasetViewT> merge(
     raft::make_const_mdspan(merged_storage), storage.layout.dim);
   auto index = ::cuvs::neighbors::cagra::detail::build_from_device_matrix<T, IdxT, DatasetViewT>(
     handle, params, dv);
-  index.update_dataset(handle, dv);
+  index.update_device_dataset_same_layout(handle, dv);
   RAFT_LOG_DEBUG("cagra merge: using device memory for merged dataset");
   return index;
 }
