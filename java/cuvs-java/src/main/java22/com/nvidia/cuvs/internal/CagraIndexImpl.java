@@ -439,7 +439,7 @@ public class CagraIndexImpl implements CagraIndex {
   }
 
   @Override
-  public void attachDataset(CagraIndex.DevicePaddedDatasetView datasetView)
+  public void updateDataset(CagraIndex.DevicePaddedDatasetView datasetView)
       throws Throwable {
     checkNotDestroyed();
     Objects.requireNonNull(datasetView);
@@ -450,11 +450,11 @@ public class CagraIndexImpl implements CagraIndex {
     try (var resourcesAccessor = resources.access()) {
       var cuvsRes = resourcesAccessor.handle();
       var returnValue =
-          cuvsCagraAttachDataset(
+          cuvsCagraUpdateDataset(
               cuvsRes,
               MemorySegment.ofAddress(datasetView.nativeHandleAddress()),
               cagraIndexReference.getMemorySegment());
-      checkCuVSError(returnValue, "cuvsCagraAttachDataset");
+      checkCuVSError(returnValue, "cuvsCagraUpdateDataset");
     }
   }
 

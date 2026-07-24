@@ -112,7 +112,7 @@ void cagra_build_search_simple()
   CHECK_CUVS(cuvsDatasetMakeDevicePadded(res, &device_dataset_tensor, &padded_owner));
   cuvsDatasetPaddedView_t padded_view = NULL;
   CHECK_CUVS(cuvsDatasetMakeViewFromOwningPadded(padded_owner, &padded_view));
-  CHECK_CUVS(cuvsCagraAttachDataset(res, padded_view, index));
+  CHECK_CUVS(cuvsCagraUpdateDataset(res, padded_view, index));
 
   // Search the CAGRA index
   cuvsCagraSearchParams_t search_params;

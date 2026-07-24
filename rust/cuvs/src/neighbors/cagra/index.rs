@@ -247,9 +247,9 @@ impl<'d> Index<'d> {
         }
     }
 
-    /// Attaches a user-owned padded device dataset and converts the index to
-    /// a search-ready padded-device layout.
-    pub fn attach_dataset(
+    /// Updates the index with a user-owned padded device dataset and leaves
+    /// the same index handle search-ready in padded-device layout.
+    pub fn update_dataset(
         &mut self,
         res: &Resources,
         padded_dataset: &PaddedDatasetView,
@@ -258,7 +258,7 @@ impl<'d> Index<'d> {
             return Err(CagraError::Validation("padded dataset view is uninitialized".to_string()));
         }
         unsafe {
-            check_cuvs(ffi::cuvsCagraAttachDataset(
+            check_cuvs(ffi::cuvsCagraUpdateDataset(
                 res.handle(),
                 padded_dataset.handle,
                 self.handle,

@@ -60,9 +60,10 @@ typedef struct {
 typedef cuvsDatasetStandard* cuvsDatasetStandard_t;
 
 /**
- * @brief Non-owning padded dataset view handle.
+ * @brief Non-owning dataset view handle.
  *
- * `addr` points to C API-owned metadata that references caller-provided tensor memory.
+ * `addr` points to C API-owned metadata that references caller-provided tensor memory. The
+ * `kind` and `layout` fields identify the concrete host/device and standard/padded view type.
  */
 typedef struct {
   uintptr_t addr;
@@ -70,21 +71,15 @@ typedef struct {
   cuvsDatasetViewKind_t kind;
   DLDataType dtype;
   cuvsDatasetLayout_t layout;
-} cuvsDatasetPaddedView;
-typedef cuvsDatasetPaddedView* cuvsDatasetPaddedView_t;
+} cuvsDatasetView;
+typedef cuvsDatasetView* cuvsDatasetView_t;
 
 /**
- * @brief Non-owning standard dataset view handle.
- *
- * `addr` points to C API-owned metadata that references caller-provided tensor memory.
+ * @brief Typed aliases for padded and standard non-owning dataset views.
  */
-typedef struct {
-  uintptr_t addr;
-  void (*destroy_addr)(void*);
-  cuvsDatasetViewKind_t kind;
-  DLDataType dtype;
-  cuvsDatasetLayout_t layout;
-} cuvsDatasetStandardView;
+typedef cuvsDatasetView cuvsDatasetPaddedView;
+typedef cuvsDatasetPaddedView* cuvsDatasetPaddedView_t;
+typedef cuvsDatasetView cuvsDatasetStandardView;
 typedef cuvsDatasetStandardView* cuvsDatasetStandardView_t;
 
 /**

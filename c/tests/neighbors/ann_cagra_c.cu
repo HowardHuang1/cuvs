@@ -79,6 +79,7 @@ TEST(CagraC, BuildSearch)
   cuvsDatasetStandardView_t dataset_view = nullptr;
   ASSERT_EQ(cuvsDatasetMakeHostStandardView(res, &dataset_tensor, &dataset_view), CUVS_SUCCESS);
   ASSERT_EQ(cuvsCagraBuildHostStandard(res, build_params, dataset_view, index), CUVS_SUCCESS);
+  EXPECT_EQ(cuvsCagraUpdateDataset(res, dataset_view, index), CUVS_ERROR);
 
   // Host build yields a host index. Attach a caller-provided device padded dataset
   // to produce a search-ready device padded index.
@@ -94,7 +95,8 @@ TEST(CagraC, BuildSearch)
   cuvsDatasetPaddedView_t padded_dataset_view = nullptr;
   ASSERT_EQ(cuvsDatasetMakeViewFromOwningPadded(padded_dataset_owner, &padded_dataset_view),
             CUVS_SUCCESS);
-  ASSERT_EQ(cuvsCagraAttachDataset(res, padded_dataset_view, index), CUVS_SUCCESS);
+  ASSERT_EQ(cuvsCagraUpdateDataset(res, padded_dataset_view, index), CUVS_SUCCESS);
+  ASSERT_EQ(cuvsCagraUpdateDataset(res, padded_dataset_view, index), CUVS_SUCCESS);
 
   // create queries DLTensor
   rmm::device_uvector<float> queries_d(4 * 2, stream);
@@ -163,6 +165,46 @@ TEST(CagraC, BuildSearch)
   cuvsDatasetPaddedDestroy(padded_dataset_owner);
   cuvsCagraIndexParamsDestroy(build_params);
   cuvsCagraIndexDestroy(index);
+  cuvsResourcesDestroy(res);
+}
+
+TEST(CagraC, UpdateHostPadded)
+{
+  cuvsResources_t res;
+  cuvsResourcesCreate(&res);
+  cudaStream_t stream;
+  cuvsStreamGet(res, &stream);
+
+  float host_dataset[16]  = {0, 0, 0, 0, 1, 1, 0, 0, 2, 2, 0, 0, 3, 3, 0, 0};
+  int64_t dataset_shape[] = {4, 4};
+  DLManagedTensor host_tensor{};
+  host_tensor.dl_tensor.data               = host_dataset;
+  host_tensor.dl_tensor.device.device_type = kDLCPU;
+  host_tensor.dl_tensor.ndim               = 2;
+  host_tensor.dl_tensor.dtype              = {kDLFloat, 32, 1};
+  host_tensor.dl_tensor.shape              = dataset_shape;
+
+  cuvsDatasetPaddedView_t host_view = nullptr;
+  ASSERT_EQ(cuvsDatasetMakeHostPaddedView(res, &host_tensor, &host_view), CUVS_SUCCESS);
+  cuvsCagraIndexParams_t build_params;
+  cuvsCagraIndexParamsCreate(&build_params);
+  cuvsCagraIndex_t index;
+  cuvsCagraIndexCreate(&index);
+  ASSERT_EQ(cuvsCagraBuildHostPadded(res, build_params, host_view, index), CUVS_SUCCESS);
+
+  rmm::device_uvector<float> device_dataset(16, stream);
+  raft::copy(device_dataset.data(), host_dataset, 16, stream);
+  DLManagedTensor device_tensor              = host_tensor;
+  device_tensor.dl_tensor.data               = device_dataset.data();
+  device_tensor.dl_tensor.device.device_type = kDLCUDA;
+  cuvsDatasetPaddedView_t device_view         = nullptr;
+  ASSERT_EQ(cuvsDatasetMakeDevicePaddedView(res, &device_tensor, &device_view), CUVS_SUCCESS);
+  ASSERT_EQ(cuvsCagraUpdateDataset(res, device_view, index), CUVS_SUCCESS);
+
+  cuvsDatasetPaddedViewDestroy(device_view);
+  cuvsDatasetPaddedViewDestroy(host_view);
+  cuvsCagraIndexDestroy(index);
+  cuvsCagraIndexParamsDestroy(build_params);
   cuvsResourcesDestroy(res);
 }
 
@@ -441,7 +483,7 @@ TEST(CagraC, BuildSearchFiltered)
   cuvsDatasetPaddedView_t padded_dataset_view = nullptr;
   ASSERT_EQ(cuvsDatasetMakeViewFromOwningPadded(padded_dataset_owner, &padded_dataset_view),
             CUVS_SUCCESS);
-  ASSERT_EQ(cuvsCagraAttachDataset(res, padded_dataset_view, index), CUVS_SUCCESS);
+  ASSERT_EQ(cuvsCagraUpdateDataset(res, padded_dataset_view, index), CUVS_SUCCESS);
 
   // create queries DLTensor
   rmm::device_uvector<float> queries_d(4 * 2, stream);
@@ -593,6 +635,7 @@ TEST(CagraC, BuildMergeSearch)
   ASSERT_EQ(cuvsCagraBuildDeviceStandard(
               res, build_params, additional_dataset_view, index_add),
             CUVS_SUCCESS);
+  EXPECT_EQ(cuvsCagraUpdateDataset(res, main_dataset_view, index_main), CUVS_ERROR);
 
   cuvsCagraIndex_t index_merged;
   cuvsCagraIndexCreate(&index_merged);
@@ -631,7 +674,7 @@ TEST(CagraC, BuildMergeSearch)
   cuvsDatasetPaddedView_t padded_dataset = nullptr;
   ASSERT_EQ(cuvsDatasetMakeViewFromOwningPadded(padded_dataset_owner, &padded_dataset),
             CUVS_SUCCESS);
-  ASSERT_EQ(cuvsCagraAttachDataset(res, padded_dataset, index_merged), CUVS_SUCCESS);
+  ASSERT_EQ(cuvsCagraUpdateDataset(res, padded_dataset, index_merged), CUVS_SUCCESS);
 
   int64_t merged_dim = -1;
   ASSERT_EQ(cuvsCagraIndexGetDims(index_merged, &merged_dim), CUVS_SUCCESS);
@@ -748,7 +791,7 @@ TEST(CagraC, BuildSearchACEMemory)
   cuvsDatasetPaddedView_t padded_dataset_view = nullptr;
   ASSERT_EQ(cuvsDatasetMakeViewFromOwningPadded(padded_dataset_owner, &padded_dataset_view),
             CUVS_SUCCESS);
-  ASSERT_EQ(cuvsCagraAttachDataset(res, padded_dataset_view, index), CUVS_SUCCESS);
+  ASSERT_EQ(cuvsCagraUpdateDataset(res, padded_dataset_view, index), CUVS_SUCCESS);
 
   // create queries DLTensor
   rmm::device_uvector<float> queries_d(4 * 2, stream);

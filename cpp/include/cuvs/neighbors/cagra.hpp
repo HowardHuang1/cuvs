@@ -198,7 +198,8 @@ struct index_params : cuvs::neighbors::index_params {
    * index, so the index is ready to search immediately after `build` returns.  The caller is
    * responsible for keeping the underlying dataset storage alive for as long as the index is used.
    *  - `false` means `build` only builds the graph and the caller is expected to attach the dataset
-   * separately via `cuvs::neighbors::cagra::update_dataset` before searching.
+   * separately via `cuvs::neighbors::cagra::index::update_device_dataset_same_layout` before
+   * searching.
    *
    * Unlike the legacy behavior, no copy of the dataset is made: the index always stores a view.
    * Setting `attach_dataset_on_build = false` is useful when the caller needs to apply specific
@@ -217,7 +218,7 @@ struct index_params : cuvs::neighbors::index_params {
    *   auto index = cagra::build(res, index_params, dataset->as_dataset_view());
    *   // ASSERT(index.size() == 0);  // no dataset yet
    *   // Attach with a view (storage owned by `dataset`).
-   *   index.update_dataset(res, dataset->as_dataset_view());
+   *   index.update_device_dataset_same_layout(res, dataset->as_dataset_view());
    *   cagra::search(res, search_params, index, queries, neighbors, distances);
    * @endcode
    */
@@ -573,7 +574,7 @@ struct CUVS_EXPORT index : cuvs::neighbors::index {
    * The index stores a copy of the view handle only (not the vector storage). The caller must
    * keep the underlying device data alive. Clears precomputed norms.
    */
-  void update_dataset(raft::resources const& res, DatasetViewT const& dataset)
+  void update_device_dataset_same_layout(raft::resources const& res, DatasetViewT const& dataset)
     requires cuvs::neighbors::is_device_dataset_view_v<DatasetViewT>
   {
     dataset_ = dataset;
@@ -4252,7 +4253,7 @@ auto convert_standard_to_padded_index(
   if (standard_idx.source_indices().has_value()) {
     out.update_source_indices(res, standard_idx.source_indices().value());
   }
-  out.update_dataset(res, padded_dataset);
+  out.update_device_dataset_same_layout(res, padded_dataset);
   return out;
 }
 
@@ -4264,7 +4265,7 @@ auto convert_standard_to_padded_index(
  * For host/standard index layouts, this function converts to and returns a new
  * `device_padded_index<T, IdxT>`.
  *
- * If `idx` is already a `device_padded_index`, call `idx.update_dataset(res,
+ * If `idx` is already a `device_padded_index`, call `idx.update_device_dataset_same_layout(res,
  * device_padded_dataset)` directly to avoid an unnecessary copy path.
  *
  * @param[in] res                     RAFT resources
@@ -4288,18 +4289,19 @@ auto attach_dataset(
     return convert_standard_to_padded_index(res, dev_std, device_padded_dataset);
   } else if constexpr (cuvs::neighbors::is_host_padded_dataset_view_v<IndexViewT>) {
     auto dev_pad = detail::convert_host_to_device_index(res, idx);
-    dev_pad.update_dataset(res, device_padded_dataset);
+    dev_pad.update_device_dataset_same_layout(res, device_padded_dataset);
     return dev_pad;
   } else if constexpr (cuvs::neighbors::is_device_standard_dataset_view_v<IndexViewT>) {
     return convert_standard_to_padded_index(res, idx, device_padded_dataset);
   } else if constexpr (cuvs::neighbors::is_device_padded_dataset_view_v<IndexViewT>) {
     RAFT_LOG_WARN(
       "cagra::attach_dataset called with an already device-padded index. "
-      "To avoid an unnecessary index copy, call index.update_dataset(res, device_padded_dataset) "
+      "To avoid an unnecessary index copy, call "
+      "index.update_device_dataset_same_layout(res, device_padded_dataset) "
       "directly on the original index.");
     RAFT_FAIL(
       "cagra::attach_dataset: device_padded_index input is not supported in this overload. "
-      "Call index.update_dataset(res, device_padded_dataset) directly.");
+      "Call index.update_device_dataset_same_layout(res, device_padded_dataset) directly.");
   } else {
     static_assert(!sizeof(IndexViewT), "Unsupported CAGRA index dataset view type");
   }

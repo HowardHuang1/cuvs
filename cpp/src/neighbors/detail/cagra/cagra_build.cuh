@@ -2339,7 +2339,7 @@ auto build_cagra_host_graph_from_knn_params(raft::resources const& res,
  * Build from a host row-major matrix without uploading the full dataset early when IVF-PQ graph
  * construction can consume host batches directly. The iterative path uploads and pads inside
  * `iterative_build_graph`. The returned index contains only the optimized graph; call
- * `index::update_dataset` with a device dataset view before search.
+ * `index::update_device_dataset_same_layout` with a device dataset view before search.
  */
 template <typename T, typename IdxT = uint32_t, typename DatasetViewT>
   requires cuvs::neighbors::is_host_dataset_view_v<DatasetViewT>
@@ -2388,7 +2388,8 @@ auto build_from_host_matrix(raft::resources const& res,
 /**
  * Build from a dense device `dataset_view` (padded or standard). VPQ views are rejected by
  * `cagra::build()` before this entry point is reached. Also used from ACE sub-builds and merge.
- * The returned index contains only the optimized graph; call `index::update_dataset` before search.
+ * The returned index contains only the optimized graph; call
+ * `index::update_device_dataset_same_layout` before search.
  */
 template <typename T, typename IdxT, typename DatasetViewT>
   requires cuvs::neighbors::is_dense_row_major_device_dataset_view_v<DatasetViewT>

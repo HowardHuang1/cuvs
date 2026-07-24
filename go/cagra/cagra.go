@@ -133,16 +133,16 @@ func (view *StandardDatasetView) Close() error {
 	return nil
 }
 
-// Attaches a caller-provided device padded dataset view and converts the index
-// in-place to a search-ready padded-device layout.
-func AttachDataset(Resources cuvs.Resource, paddedView *PaddedDatasetView, index *CagraIndex) error {
+// UpdateDataset updates any CAGRA index layout with a caller-provided device
+// padded dataset view and leaves the same handle search-ready.
+func UpdateDataset(Resources cuvs.Resource, paddedView *PaddedDatasetView, index *CagraIndex) error {
 	if !index.trained {
 		return errors.New("index needs to be built before attaching dataset")
 	}
 	if paddedView == nil || paddedView.view == nil {
 		return errors.New("device padded dataset view is nil")
 	}
-	err := cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsCagraAttachDataset(
+	err := cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsCagraUpdateDataset(
 		C.cuvsResources_t(Resources.Resource),
 		paddedView.view,
 		index.index,

@@ -70,7 +70,7 @@ def run_cagra_build_search_test(
                 base_padded_view = cagra.make_view_from_owning_padded(
                     base_padded_dataset
                 )
-                cagra.attach_dataset(index, base_padded_view)
+                cagra.update_dataset(index, base_padded_view)
                 extend_keepalive.extend(
                     [base_padded_dataset, base_padded_view]
                 )
@@ -135,7 +135,7 @@ def run_cagra_build_search_test(
         if layout == "standard":
             padded_dataset = cagra.make_device_padded_dataset(dataset_device)
             padded_view = cagra.make_view_from_owning_padded(padded_dataset)
-            cagra.attach_dataset(index, padded_view)
+            cagra.update_dataset(index, padded_view)
             index_keepalive = [out_dataset, padded_dataset, padded_view]
         else:
             index_keepalive = [out_dataset]
@@ -147,17 +147,17 @@ def run_cagra_build_search_test(
         if view_kind == "device_standard":
             padded_dataset = cagra.make_device_padded_dataset(dataset_device)
             padded_view = cagra.make_view_from_owning_padded(padded_dataset)
-            cagra.attach_dataset(index, padded_view)
+            cagra.update_dataset(index, padded_view)
             index_keepalive = [padded_dataset, padded_view]
         elif view_kind == "host_padded":
             padded_dataset = cagra.make_device_padded_dataset(dataset_device)
             padded_view = cagra.make_view_from_owning_padded(padded_dataset)
-            cagra.attach_dataset(index, padded_view)
+            cagra.update_dataset(index, padded_view)
             index_keepalive = [dataset_device, padded_dataset, padded_view]
         elif view_kind == "host_standard":
             padded_dataset = cagra.make_device_padded_dataset(dataset_device)
             padded_view = cagra.make_view_from_owning_padded(padded_dataset)
-            cagra.attach_dataset(index, padded_view)
+            cagra.update_dataset(index, padded_view)
             index_keepalive = [
                 dataset_device,
                 padded_dataset,
@@ -240,7 +240,7 @@ def run_cagra_build_search_test(
         reloaded_padded_view = cagra.make_view_from_owning_padded(
             reloaded_padded_dataset
         )
-        cagra.attach_dataset(reloaded_index, reloaded_padded_view)
+        cagra.update_dataset(reloaded_index, reloaded_padded_view)
         reloaded_keepalive = [
             reloaded_dataset_device,
             reloaded_padded_dataset,
@@ -385,7 +385,7 @@ def test_cagra_ivf_pq(
     if cagra.get_dataset_view_kind(dataset_device) == "device_standard":
         padded_dataset = cagra.make_device_padded_dataset(dataset_device)
         padded_view = cagra.make_view_from_owning_padded(padded_dataset)
-        cagra.attach_dataset(index, padded_view)
+        cagra.update_dataset(index, padded_view)
         keepalive = [padded_dataset, padded_view]
 
     assert keepalive is not None

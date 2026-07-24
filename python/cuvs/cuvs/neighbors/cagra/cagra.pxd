@@ -150,8 +150,10 @@ cdef extern from "cuvs/neighbors/cagra.h" nogil:
         CUVS_DATASET_VIEW_KIND_DEVICE_STANDARD
         CUVS_DATASET_VIEW_KIND_HOST_STANDARD
 
-    ctypedef struct cuvsDatasetPaddedView:
+    ctypedef struct cuvsDatasetView:
         pass
+    ctypedef cuvsDatasetView* cuvsDatasetView_t
+    ctypedef cuvsDatasetView cuvsDatasetPaddedView
     ctypedef cuvsDatasetPaddedView* cuvsDatasetPaddedView_t
 
     ctypedef struct cuvsDatasetPadded:
@@ -162,8 +164,7 @@ cdef extern from "cuvs/neighbors/cagra.h" nogil:
         pass
     ctypedef cuvsDatasetStandard* cuvsDatasetStandard_t
 
-    ctypedef struct cuvsDatasetStandardView:
-        pass
+    ctypedef cuvsDatasetView cuvsDatasetStandardView
     ctypedef cuvsDatasetStandardView* cuvsDatasetStandardView_t
 
     cuvsError_t cuvsDatasetMakeDevicePadded(cuvsResources_t res,
@@ -220,6 +221,10 @@ cdef extern from "cuvs/neighbors/cagra.h" nogil:
     cuvsError_t cuvsCagraAttachDataset(
         cuvsResources_t res,
         cuvsDatasetPaddedView_t device_padded_dataset,
+        cuvsCagraIndex_t index)
+    cuvsError_t cuvsCagraUpdateDataset(
+        cuvsResources_t res,
+        cuvsDatasetView_t device_padded_dataset,
         cuvsCagraIndex_t index)
 
     cuvsError_t cuvsCagraSerialize(cuvsResources_t res,
