@@ -1,5 +1,5 @@
 #
-# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # cython: language_level=3
@@ -21,6 +21,7 @@ from cuvs.common cimport cydlpack
 from cuvs.common.c_api cimport cuvsResources_t
 from cuvs.neighbors.cagra.cagra cimport (
     IndexParams as SingleGpuIndexParams,
+    PaddedDatasetView,
     SearchParams as SingleGpuSearchParams,
     cuvsCagraIndexParams_t,
     cuvsCagraIndexParamsDestroy,
@@ -44,6 +45,7 @@ from .cagra cimport (
     cuvsMultiGpuCagraSearchParamsCreate,
     cuvsMultiGpuCagraSearchParamsDestroy,
     cuvsMultiGpuCagraSerialize,
+    cuvsMultiGpuCagraUpdateDataset,
     cuvsMultiGpuDistributionMode,
     cuvsMultiGpuReplicatedSearchMode,
     cuvsMultiGpuShardedMergeMode,
@@ -150,6 +152,8 @@ def build(IndexParams index_params, dataset, resources=None):
     --------
 
     >>> import numpy as np
+    >>> from pylibraft.common import device_ndarray
+    >>> from cuvs.neighbors import cagra as sg_cagra
     >>> from cuvs.neighbors.mg import cagra
     >>> n_samples = 50000
     >>> n_features = 50
@@ -160,6 +164,10 @@ def build(IndexParams index_params, dataset, resources=None):
     ...     np.float32)
     >>> build_params = cagra.IndexParams(metric="sqeuclidean")
     >>> index = cagra.build(build_params, dataset)
+    >>> device_dataset = device_ndarray(dataset)
+    >>> padded_dataset = sg_cagra.make_device_padded_dataset(device_dataset)
+    >>> padded_view = sg_cagra.make_view_from_owning_padded(padded_dataset)
+    >>> _ = cagra.update_dataset(index, padded_view)
     >>> distances, neighbors = cagra.search(cagra.SearchParams(),
     ...                                         index, dataset, k)
     >>> # Results are already in host memory (NumPy arrays)
@@ -186,6 +194,31 @@ def build(IndexParams index_params, dataset, resources=None):
         idx.mg_trained = True
 
     return idx
+
+
+@auto_sync_multi_gpu_resources
+def update_dataset(Index index,
+                   PaddedDatasetView padded_dataset_view,
+                   resources=None):
+    """
+    Update a multi-GPU CAGRA index with a device-padded dataset view.
+
+    Standard indexes are converted to device-padded indexes. Existing
+    device-padded indexes are updated in place.
+    """
+    if not index.trained:
+        raise ValueError("Index needs to be built before updating the dataset.")
+    if padded_dataset_view is None or padded_dataset_view.view == NULL:
+        raise ValueError("padded_dataset_view is uninitialized")
+
+    cdef cuvsResources_t res = <cuvsResources_t>resources.get_c_obj()
+    with cuda_interruptible():
+        check_cuvs(cuvsMultiGpuCagraUpdateDataset(
+            res,
+            padded_dataset_view.view,
+            index.mg_index
+        ))
+    return index
 
 
 cdef class SearchParams(SingleGpuSearchParams):

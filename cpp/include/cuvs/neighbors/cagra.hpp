@@ -3295,8 +3295,7 @@ auto build(const raft::resources& clique,
 /**
  * @brief Convert a standard MG CAGRA index into a padded MG CAGRA index for search.
  *
- * This API enforces the explicit contract: users build/deserialize/distribute a standard index,
- * then attach a padded dataset before calling `search`.
+ * This returns a new padded index because standard and padded MG indexes have different C++ types.
  */
 auto attach_dataset(
   const raft::resources& clique,
@@ -3325,6 +3324,29 @@ auto attach_dataset(
     mg_index<cagra::device_standard_index<uint8_t, uint32_t>, uint8_t, uint32_t>& idx,
   cuvs::neighbors::device_padded_dataset_view<uint8_t, int64_t> const& padded_dataset)
   -> cuvs::neighbors::mg_index<cagra::device_padded_index<uint8_t, uint32_t>, uint8_t, uint32_t>;
+
+/**
+ * @brief Update an existing padded MG CAGRA index with a padded dataset of the same layout.
+ */
+void update_device_dataset_same_layout(
+  const raft::resources& clique,
+  cuvs::neighbors::mg_index<cagra::device_padded_index<float, uint32_t>, float, uint32_t>& idx,
+  cuvs::neighbors::device_padded_dataset_view<float, int64_t> const& padded_dataset);
+
+void update_device_dataset_same_layout(
+  const raft::resources& clique,
+  cuvs::neighbors::mg_index<cagra::device_padded_index<half, uint32_t>, half, uint32_t>& idx,
+  cuvs::neighbors::device_padded_dataset_view<half, int64_t> const& padded_dataset);
+
+void update_device_dataset_same_layout(
+  const raft::resources& clique,
+  cuvs::neighbors::mg_index<cagra::device_padded_index<int8_t, uint32_t>, int8_t, uint32_t>& idx,
+  cuvs::neighbors::device_padded_dataset_view<int8_t, int64_t> const& padded_dataset);
+
+void update_device_dataset_same_layout(
+  const raft::resources& clique,
+  cuvs::neighbors::mg_index<cagra::device_padded_index<uint8_t, uint32_t>, uint8_t, uint32_t>& idx,
+  cuvs::neighbors::device_padded_dataset_view<uint8_t, int64_t> const& padded_dataset);
 
 /// \defgroup mg_cpp_index_extend ANN MG index extend
 
