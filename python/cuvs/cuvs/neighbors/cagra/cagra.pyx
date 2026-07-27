@@ -561,31 +561,6 @@ def build(IndexParams index_params, dataset, resources=None):
     return idx
 
 
-def get_dataset_view_kind(dataset):
-    """
-    Return dataset view kind as one of:
-    "device_padded", "device_standard", "host_padded", "host_standard".
-    """
-    dataset_ai = wrap_array(dataset)
-    _check_input_array(dataset_ai, [np.dtype('float32'),
-                                    np.dtype('float16'),
-                                    np.dtype('byte'),
-                                    np.dtype('ubyte')])
-    cdef cydlpack.DLManagedTensor* dataset_dlpack = \
-        cydlpack.dlpack_c(dataset_ai)
-    cdef cuvsDatasetMemType_t mem_type
-    cdef cuvsDatasetLayout_t layout
-    with cuda_interruptible():
-        check_cuvs(cuvsCagraGetDatasetMemTypeAndLayout(
-            dataset_dlpack, &mem_type, &layout))
-
-    mem_name = ("device" if mem_type == CUVS_DATASET_MEM_TYPE_DEVICE
-                else "host")
-    layout_name = ("padded" if layout == CUVS_DATASET_LAYOUT_PADDED
-                   else "standard")
-    return f"{mem_name}_{layout_name}"
-
-
 @auto_sync_resources
 def make_device_padded_dataset(dataset, resources=None):
     """

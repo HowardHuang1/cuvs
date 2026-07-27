@@ -175,72 +175,51 @@ func CreateIndex() (*CagraIndex, error) {
 func BuildIndex[T any](Resources cuvs.Resource, params *IndexParams, dataset *cuvs.Tensor[T], index *CagraIndex) error {
 	datasetTensor := (*C.DLManagedTensor)(unsafe.Pointer(dataset.C_tensor))
 
-	var memType C.cuvsDatasetMemType_t
-	var layout C.cuvsDatasetLayout_t
-	err := cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsCagraGetDatasetMemTypeAndLayout(
-		datasetTensor, &memType, &layout,
-	)))
+	isDevice := datasetTensor.dl_tensor.device.device_type == C.DLDeviceType(C.kDLCUDA)
+
+	shape := unsafe.Slice(datasetTensor.dl_tensor.shape, 2)
+	dim := int(shape[1])
+	itemsize := int(datasetTensor.dl_tensor.dtype.bits) / 8
+	actualRowWidth := dim
+	if datasetTensor.dl_tensor.strides != nil {
+		strides := unsafe.Slice(datasetTensor.dl_tensor.strides, 2)
+		actualRowWidth = int(strides[0])
+	}
+	requiredBytes := ((dim*itemsize + 15) / 16) * 16
+	requiredRowWidth := requiredBytes / itemsize
+	isPadded := actualRowWidth == requiredRowWidth
+
+	var view C.cuvsDatasetView_t
+	var err error
+	switch {
+	case isDevice && isPadded:
+		err = cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsDatasetDevicePaddedViewMake(
+			C.cuvsResources_t(Resources.Resource), datasetTensor, &view,
+		)))
+	case isDevice && !isPadded:
+		err = cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsDatasetDeviceStandardViewMake(
+			C.cuvsResources_t(Resources.Resource), datasetTensor, &view,
+		)))
+	case !isDevice && isPadded:
+		err = cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsDatasetHostPaddedViewMake(
+			C.cuvsResources_t(Resources.Resource), datasetTensor, &view,
+		)))
+	default:
+		err = cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsDatasetHostStandardViewMake(
+			C.cuvsResources_t(Resources.Resource), datasetTensor, &view,
+		)))
+	}
 	if err != nil {
 		return err
 	}
-
-	var paddedView C.cuvsDatasetView_t
-	var standardView C.cuvsDatasetView_t
 	defer func() {
-		if paddedView != nil {
-			_ = cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsDatasetViewDestroy(paddedView)))
-		}
-		if standardView != nil {
-			_ = cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsDatasetViewDestroy(standardView)))
-		}
+		_ = cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsDatasetViewDestroy(view)))
 	}()
-
-	switch viewKind {
-	case C.CUVS_DATASET_VIEW_KIND_DEVICE_PADDED:
-		err = cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsDatasetDevicePaddedViewMake(
-			C.cuvsResources_t(Resources.Resource), datasetTensor, &paddedView,
-		)))
-		if err != nil {
-			return err
-		}
-		err = cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsCagraBuildDevicePadded(
-			C.cuvsResources_t(Resources.Resource), params.params, paddedView, index.index,
-		)))
-	case C.CUVS_DATASET_VIEW_KIND_DEVICE_STANDARD:
-		err = cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsDatasetDeviceStandardViewMake(
-			C.cuvsResources_t(Resources.Resource), datasetTensor, &standardView,
-		)))
-		if err != nil {
-			return err
-		}
-		err = cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsCagraBuildDeviceStandard(
-			C.cuvsResources_t(Resources.Resource), params.params, standardView, index.index,
-		)))
-	case C.CUVS_DATASET_VIEW_KIND_HOST_PADDED:
-		err = cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsDatasetHostPaddedViewMake(
-			C.cuvsResources_t(Resources.Resource), datasetTensor, &paddedView,
-		)))
-		if err != nil {
-			return err
-		}
-		err = cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsCagraBuildHostPadded(
-			C.cuvsResources_t(Resources.Resource), params.params, paddedView, index.index,
-		)))
-	case C.CUVS_DATASET_VIEW_KIND_HOST_STANDARD:
-		err = cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsDatasetHostStandardViewMake(
-			C.cuvsResources_t(Resources.Resource), datasetTensor, &standardView,
-		)))
-		if err != nil {
-			return err
-		}
-		defer C.cuvsDatasetViewDestroy(standardView)
-		datasetView = (C.cuvsDatasetView_t)(unsafe.Pointer(standardView))
-	}
 
 	err = cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsCagraBuild(
 		C.cuvsResources_t(Resources.Resource),
 		params.params,
-		datasetView,
+		view,
 		index.index,
 	)))
 	if err != nil {
