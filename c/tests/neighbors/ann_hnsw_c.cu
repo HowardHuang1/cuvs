@@ -14,6 +14,7 @@
 
 #include <cuda_runtime.h>
 #include <gtest/gtest.h>
+#include <rmm/device_uvector.hpp>
 #include <sys/types.h>
 #include <vector>
 
@@ -34,6 +35,8 @@ TEST(CagraHnswC, BuildSearch)
   // create cuvsResources_t
   cuvsResources_t res;
   cuvsResourcesCreate(&res);
+  cudaStream_t stream;
+  cuvsStreamGet(res, &stream);
 
   // create dataset DLTensor
   DLManagedTensor dataset_tensor;
@@ -107,20 +110,27 @@ TEST(CagraHnswC, BuildSearch)
   cuvsHnswIndexParamsCreate(&hnsw_params);
   // Use NONE hierarchy since cuvsCagraSerializeToHnswlib creates a base-layer-only index
   hnsw_params->hierarchy = NONE;
-  cuvsHnswDeserialize(res, hnsw_params, "/tmp/cagra_hnswlib.index", 2, L2Expanded, hnsw_index);
+  ASSERT_EQ(
+    cuvsHnswDeserialize(res, hnsw_params, "/tmp/cagra_hnswlib.index", 2, L2Expanded, hnsw_index),
+    CUVS_SUCCESS);
 
   // search index
   cuvsHnswSearchParams_t search_params;
   cuvsHnswSearchParamsCreate(&search_params);
-  cuvsHnswSearch(
-    res, search_params, hnsw_index, &queries_tensor, &neighbors_tensor, &distances_tensor);
+  ASSERT_EQ(cuvsHnswSearch(
+              res, search_params, hnsw_index, &queries_tensor, &neighbors_tensor, &distances_tensor),
+            CUVS_SUCCESS);
 
   // verify output
   ASSERT_TRUE(cuvs::hostVecMatch(neighbors_exp, neighbors, cuvs::Compare<uint64_t>()));
   ASSERT_TRUE(cuvs::hostVecMatch(distances_exp, distances, cuvs::CompareApprox<float>(0.001f)));
 
+  cuvsDatasetStandardViewDestroy(dataset_view);
+  cuvsDatasetPaddedViewDestroy(padded_dataset_view);
+  cuvsDatasetPaddedDestroy(padded_dataset_owner);
   cuvsCagraIndexParamsDestroy(build_params);
   cuvsCagraIndexDestroy(index);
+  cuvsHnswIndexParamsDestroy(hnsw_params);
   cuvsHnswSearchParamsDestroy(search_params);
   cuvsHnswIndexDestroy(hnsw_index);
   cuvsResourcesDestroy(res);

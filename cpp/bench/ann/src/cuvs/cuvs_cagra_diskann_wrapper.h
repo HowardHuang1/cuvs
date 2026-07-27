@@ -169,7 +169,7 @@ void cuvs_cagra_diskann<T, IdxT>::save(const std::string& file) const
   try {
     auto const* idx_ptr                                    = cagra_build_.get_index();
     std::optional<raft::host_matrix<T, int64_t>> h_dataset = std::nullopt;
-    auto const& data_view                                  = idx_ptr->data();
+    auto const& data_view                                  = idx_ptr->dataset();
     if constexpr (cuvs::neighbors::is_padded_dataset_view_v<std::decay_t<decltype(data_view)>>) {
       auto const& v = data_view;
       auto n_rows   = v.n_rows();
