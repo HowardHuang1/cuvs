@@ -300,16 +300,13 @@ pub struct cuvsDataset {
 const _: () = {
     ["Size of cuvsDataset"][::std::mem::size_of::<cuvsDataset>() - 32usize];
     ["Alignment of cuvsDataset"][::std::mem::align_of::<cuvsDataset>() - 8usize];
-    ["Offset of field: cuvsDataset::addr"]
-        [::std::mem::offset_of!(cuvsDataset, addr) - 0usize];
+    ["Offset of field: cuvsDataset::addr"][::std::mem::offset_of!(cuvsDataset, addr) - 0usize];
     ["Offset of field: cuvsDataset::destroy_addr"]
         [::std::mem::offset_of!(cuvsDataset, destroy_addr) - 8usize];
-    ["Offset of field: cuvsDataset::dtype"]
-        [::std::mem::offset_of!(cuvsDataset, dtype) - 16usize];
+    ["Offset of field: cuvsDataset::dtype"][::std::mem::offset_of!(cuvsDataset, dtype) - 16usize];
     ["Offset of field: cuvsDataset::mem_type"]
         [::std::mem::offset_of!(cuvsDataset, mem_type) - 20usize];
-    ["Offset of field: cuvsDataset::layout"]
-        [::std::mem::offset_of!(cuvsDataset, layout) - 24usize];
+    ["Offset of field: cuvsDataset::layout"][::std::mem::offset_of!(cuvsDataset, layout) - 24usize];
 };
 pub type cuvsDataset_t = *mut cuvsDataset;
 #[repr(C)]
@@ -325,8 +322,7 @@ pub struct cuvsDatasetView {
 #[allow(clippy::unnecessary_operation, clippy::identity_op)]
 const _: () = {
     ["Size of cuvsDatasetView"][::std::mem::size_of::<cuvsDatasetView>() - 32usize];
-    ["Alignment of cuvsDatasetView"]
-        [::std::mem::align_of::<cuvsDatasetView>() - 8usize];
+    ["Alignment of cuvsDatasetView"][::std::mem::align_of::<cuvsDatasetView>() - 8usize];
     ["Offset of field: cuvsDatasetView::addr"]
         [::std::mem::offset_of!(cuvsDatasetView, addr) - 0usize];
     ["Offset of field: cuvsDatasetView::destroy_addr"]

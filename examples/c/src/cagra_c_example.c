@@ -108,7 +108,7 @@ void cagra_build_search_simple()
   device_dataset_tensor.dl_tensor.data               = dataset_d;
   device_dataset_tensor.dl_tensor.device.device_type = kDLCUDA;
   device_dataset_tensor.dl_tensor.device.device_id   = 0;
-  cuvsDatasetView_t device_dataset_view      = NULL;
+  cuvsDatasetView_t device_dataset_view              = NULL;
   CHECK_CUVS(cuvsDatasetDeviceStandardViewMake(res, &device_dataset_tensor, &device_dataset_view));
   CHECK_CUVS(cuvsCagraAttachDeviceStandardDatasetOnHostIndex(res, device_dataset_view, index));
   cuvsDataset_t padded_owner = NULL;
