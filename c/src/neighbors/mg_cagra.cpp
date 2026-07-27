@@ -362,6 +362,40 @@ extern "C" cuvsError_t cuvsMultiGpuCagraBuild(cuvsResources_t res,
   });
 }
 
+extern "C" cuvsError_t cuvsMultiGpuCagraUpdateDataset(
+  cuvsResources_t res,
+  cuvsDatasetView_t device_padded_dataset,
+  cuvsMultiGpuCagraIndex_t index)
+{
+  return cuvs::core::translate_exceptions([=] {
+    RAFT_EXPECTS(index != nullptr, "cuvsMultiGpuCagraUpdateDataset: null index handle");
+    RAFT_EXPECTS(index->addr != 0, "cuvsMultiGpuCagraUpdateDataset: null index storage");
+    RAFT_EXPECTS(device_padded_dataset != nullptr,
+                 "cuvsMultiGpuCagraUpdateDataset: null dataset view");
+    RAFT_EXPECTS(device_padded_dataset->addr != 0,
+                 "cuvsMultiGpuCagraUpdateDataset: null dataset view storage");
+    RAFT_EXPECTS(device_padded_dataset->kind == CUVS_DATASET_VIEW_KIND_DEVICE_PADDED,
+                 "cuvsMultiGpuCagraUpdateDataset: dataset view must be device padded");
+    RAFT_EXPECTS(index->dtype.code == device_padded_dataset->dtype.code &&
+                   index->dtype.bits == device_padded_dataset->dtype.bits,
+                 "cuvsMultiGpuCagraUpdateDataset: dtype mismatch between index and dataset");
+
+    if (index->dtype.code == kDLFloat && index->dtype.bits == 32) {
+      _mg_update_dataset<float>(res, device_padded_dataset, index);
+    } else if (index->dtype.code == kDLFloat && index->dtype.bits == 16) {
+      _mg_update_dataset<half>(res, device_padded_dataset, index);
+    } else if (index->dtype.code == kDLInt && index->dtype.bits == 8) {
+      _mg_update_dataset<int8_t>(res, device_padded_dataset, index);
+    } else if (index->dtype.code == kDLUInt && index->dtype.bits == 8) {
+      _mg_update_dataset<uint8_t>(res, device_padded_dataset, index);
+    } else {
+      RAFT_FAIL("Unsupported index dtype: %d and bits: %d",
+                index->dtype.code,
+                index->dtype.bits);
+    }
+  });
+}
+
 extern "C" cuvsError_t cuvsMultiGpuCagraSearch(cuvsResources_t res,
                                                cuvsMultiGpuCagraSearchParams_t params,
                                                cuvsMultiGpuCagraIndex_t index,

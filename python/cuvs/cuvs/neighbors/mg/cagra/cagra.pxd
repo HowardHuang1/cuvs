@@ -1,5 +1,5 @@
 #
-# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # cython: language_level=3
@@ -16,6 +16,7 @@ from cuvs.neighbors.cagra.cagra cimport (
     SearchParams as SingleGpuSearchParams,
     cuvsCagraIndexParams_t,
     cuvsCagraSearchParams_t,
+    cuvsDatasetView_t,
 )
 
 
@@ -73,6 +74,11 @@ cdef extern from "cuvs/neighbors/mg_cagra.h" nogil:
                                        cuvsMultiGpuCagraIndexParams_t params,
                                        DLManagedTensor* dataset_tensor,
                                        cuvsMultiGpuCagraIndex_t index) except +
+
+    cuvsError_t cuvsMultiGpuCagraUpdateDataset(
+        cuvsResources_t res,
+        cuvsDatasetView_t device_padded_dataset,
+        cuvsMultiGpuCagraIndex_t index) except +
 
     cuvsError_t cuvsMultiGpuCagraSearch(
         cuvsResources_t res,

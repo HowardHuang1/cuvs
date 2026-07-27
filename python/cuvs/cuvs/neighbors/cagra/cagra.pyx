@@ -490,6 +490,9 @@ def build(IndexParams index_params, dataset, resources=None):
     ...                                   dtype=cp.float32)
     >>> build_params = cagra.IndexParams(metric="sqeuclidean")
     >>> index = cagra.build(build_params, dataset)
+    >>> padded_dataset = cagra.make_device_padded_dataset(dataset)
+    >>> padded_view = cagra.make_view_from_owning_padded(padded_dataset)
+    >>> _ = cagra.update_dataset(index, padded_view)
     >>> queries = cp.random.random_sample((n_queries, n_features),
     ...                                   dtype=cp.float32)
     >>> distances, neighbors = cagra.search(cagra.SearchParams(),
@@ -526,6 +529,9 @@ def build(IndexParams index_params, dataset, resources=None):
     cdef cydlpack.DLManagedTensor* dataset_dlpack = \
         cydlpack.dlpack_c(dataset_ai)
     cdef cuvsCagraIndexParams* params = index_params.params
+    cdef cuvsDatasetPaddedView_t padded_view = NULL
+    cdef cuvsDatasetStandardView_t standard_view = NULL
+    cdef cuvsDatasetViewKind_t view_kind
 
     cdef cuvsResources_t res = <cuvsResources_t>resources.get_c_obj()
 
@@ -943,6 +949,9 @@ def search(SearchParams search_params,
     ...                                   dtype=cp.float32)
     >>> # Build index
     >>> index = cagra.build(cagra.IndexParams(), dataset)
+    >>> padded_dataset = cagra.make_device_padded_dataset(dataset)
+    >>> padded_view = cagra.make_view_from_owning_padded(padded_dataset)
+    >>> _ = cagra.update_dataset(index, padded_view)
     >>> # Search using the built index
     >>> queries = cp.random.random_sample((n_queries, n_features),
     ...                                   dtype=cp.float32)
