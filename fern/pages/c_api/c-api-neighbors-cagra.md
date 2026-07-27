@@ -671,7 +671,7 @@ Build a CAGRA index from a dataset view handle. Acceptable underlying types are:
 3. `kDLDataType.code == kDLInt` and `kDLDataType.bits = 8`
 4. `kDLDataType.code == kDLUInt` and `kDLDataType.bits = 8`
 
-The memory space and layout `dataset` was constructed with select the C++ build overload. Build the handle with the matching `cuvsDataset*ViewMake` function.
+The memory space and layout `dataset` was constructed with select the C++ build overload. Build the handle with the matching `cuvsDatasetMake*View` function; `cuvsCagraGetDatasetMemTypeAndLayout` resolves which one an input tensor calls for.
 
 ```c
 cuvsError_t cuvsCagraBuild(cuvsResources_t res,

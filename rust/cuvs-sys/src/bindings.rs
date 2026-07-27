@@ -1418,6 +1418,14 @@ unsafe extern "C" {
 }
 unsafe extern "C" {
     #[must_use]
+    pub fn cuvsCagraGetDatasetMemTypeAndLayout(
+        dataset: *mut DLManagedTensor,
+        mem_type: *mut cuvsDatasetMemType_t,
+        layout: *mut cuvsDatasetLayout_t,
+    ) -> cuvsError_t;
+}
+unsafe extern "C" {
+    #[must_use]
     pub fn cuvsCagraBuild(
         res: cuvsResources_t,
         params: cuvsCagraIndexParams_t,

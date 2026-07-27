@@ -9,7 +9,6 @@ from pylibraft.common import device_ndarray
 from cuvs.neighbors import brute_force, cagra, ivf_flat, ivf_pq
 from cuvs.tests.ann_utils import (
     calc_recall,
-    dataset_view_kind,
     generate_data,
 )
 
@@ -47,7 +46,10 @@ def run_save_load(ann_module, dtype):
         index = ann_module.build(build_params, dataset_device)
         keepalive = []
         if ann_module == cagra:
-            if dataset_view_kind(dataset_device) == "device_standard":
+            if (
+                ann_module.get_dataset_view_kind(dataset_device)
+                == "device_standard"
+            ):
                 padded_dataset = ann_module.make_device_padded_dataset(
                     dataset_device
                 )
@@ -63,7 +65,7 @@ def run_save_load(ann_module, dtype):
     ann_module.save(filename, index)
     if ann_module == cagra:
         loaded_index = ann_module.Index()
-        view_kind = dataset_view_kind(dataset_device)
+        view_kind = ann_module.get_dataset_view_kind(dataset_device)
         layout = "standard" if view_kind.endswith("standard") else "padded"
         out_dataset = (
             ann_module.StandardDataset()

@@ -15,7 +15,6 @@ from sklearn.preprocessing import normalize
 from cuvs.neighbors import cagra, hnsw
 from cuvs.tests.ann_utils import (
     calc_recall,
-    dataset_view_kind,
     generate_data,
 )
 
@@ -78,7 +77,7 @@ def run_cagra_ace_build_search_test(
 
             # Transfer queries to device for search
             queries_device = device_ndarray(queries)
-            dataset_kind = dataset_view_kind(dataset)
+            dataset_kind = cagra.get_dataset_view_kind(dataset)
             dataset_device = device_ndarray(dataset)
             if dataset_kind == "host_padded":
                 padded_dataset = cagra.make_device_padded_dataset(

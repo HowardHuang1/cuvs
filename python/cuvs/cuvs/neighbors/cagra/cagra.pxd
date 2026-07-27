@@ -183,6 +183,10 @@ cdef extern from "cuvs/neighbors/cagra.h" nogil:
                                cuvsCagraIndexParams_t params,
                                cuvsDatasetView_t dataset,
                                cuvsCagraIndex_t index)
+    cuvsError_t cuvsCagraGetDatasetMemTypeAndLayout(
+        DLManagedTensor* dataset,
+        cuvsDatasetMemType_t* mem_type,
+        cuvsDatasetLayout_t* layout)
 
     cuvsError_t cuvsCagraSearch(cuvsResources_t res,
                                 cuvsCagraSearchParams* params,

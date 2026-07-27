@@ -14,7 +14,6 @@ from sklearn.preprocessing import normalize
 from cuvs.neighbors import cagra, ivf_pq
 from cuvs.tests.ann_utils import (
     calc_recall,
-    dataset_view_kind,
     generate_data,
     run_filtered_search_test,
 )
@@ -64,7 +63,7 @@ def run_cagra_build_search_test(
             # 1) Ensure the index is device_padded before extend.
             # 2) Prepare a padded view for additional dataset via factories.
             extend_keepalive = []
-            if dataset_view_kind(index.dataset) == "device_standard":
+            if cagra.get_dataset_view_kind(index.dataset) == "device_standard":
                 base_padded_dataset = cagra.make_device_padded_dataset(
                     dataset_1_device
                 )
@@ -117,7 +116,7 @@ def run_cagra_build_search_test(
         cagra.save(temp_filename, index)
         layout = (
             "standard"
-            if dataset_view_kind(
+            if cagra.get_dataset_view_kind(
                 dataset_device if array_type == "device" else dataset
             ).endswith("standard")
             else "padded"
@@ -142,7 +141,7 @@ def run_cagra_build_search_test(
             index_keepalive = [out_dataset]
     else:
         index_keepalive = []
-        view_kind = dataset_view_kind(
+        view_kind = cagra.get_dataset_view_kind(
             dataset_device if array_type == "device" else dataset
         )
         if view_kind == "device_standard":
@@ -233,7 +232,7 @@ def run_cagra_build_search_test(
         graph, reloaded_dataset_device, metric=metric
     )
     reloaded_keepalive = [reloaded_dataset_device]
-    reloaded_kind = dataset_view_kind(reloaded_dataset_device)
+    reloaded_kind = cagra.get_dataset_view_kind(reloaded_dataset_device)
     if reloaded_kind == "device_standard":
         reloaded_padded_dataset = cagra.make_device_padded_dataset(
             reloaded_dataset_device
@@ -383,7 +382,7 @@ def test_cagra_ivf_pq(
     assert np.isclose(build_params.refinement_rate, 1.2)
     index = cagra.build(build_params, dataset_device)
     keepalive = []
-    if dataset_view_kind(dataset_device) == "device_standard":
+    if cagra.get_dataset_view_kind(dataset_device) == "device_standard":
         padded_dataset = cagra.make_device_padded_dataset(dataset_device)
         padded_view = cagra.make_view_from_owning_padded(padded_dataset)
         cagra.update_dataset(index, padded_view)

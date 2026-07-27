@@ -177,30 +177,22 @@ fn path_to_cstring(path: &Path) -> Result<CString> {
 }
 
 /// Resolve the dataset layout CAGRA requires for `dataset`.
-///
-/// This mirrors `matrix_row_width_matches_cagra_required`: the layout is padded
-/// when the row stride already equals CAGRA's required 16-byte aligned row
-/// width, otherwise standard. It is derived from the tensor's own shape,
-/// strides, and dtype, so no runtime C classification is needed. Every supported
-/// dtype (1/2/4-byte elements) divides 16, so the aligned byte width is always a
-/// whole number of elements.
 fn dataset_layout<T>(dataset: &T) -> Result<ffi::cuvsDatasetLayout_t>
 where
     T: AsDlTensor + ?Sized,
 {
     let dataset = dataset.as_dl_tensor()?;
-    let dim = dataset.shape()[1] as usize;
-    let itemsize = (dataset.dtype().bits as usize) / 8;
-    let actual_row_width = match dataset.strides() {
-        Some(strides) => strides[0] as usize,
-        None => dim,
-    };
-    let required_row_width = (dim * itemsize).div_ceil(16) * 16 / itemsize;
-    Ok(if actual_row_width == required_row_width {
-        ffi::cuvsDatasetLayout_t::CUVS_DATASET_LAYOUT_PADDED
-    } else {
-        ffi::cuvsDatasetLayout_t::CUVS_DATASET_LAYOUT_STANDARD
-    })
+    unsafe {
+        let mut dataset_c = dataset.to_c();
+        let mut mem_type = std::mem::MaybeUninit::<ffi::cuvsDatasetMemType_t>::uninit();
+        let mut layout = std::mem::MaybeUninit::<ffi::cuvsDatasetLayout_t>::uninit();
+        check_cuvs(ffi::cuvsCagraGetDatasetMemTypeAndLayout(
+            dataset_c.as_mut_ptr(),
+            mem_type.as_mut_ptr(),
+            layout.as_mut_ptr(),
+        ))?;
+        Ok(layout.assume_init())
+    }
 }
 
 impl<'d> Index<'d> {

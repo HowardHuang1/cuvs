@@ -21,23 +21,6 @@ def generate_data(shape, dtype):
     return x
 
 
-def dataset_view_kind(dataset):
-    """Infer a CAGRA dataset view kind ("<mem>_<layout>") from an array."""
-    if hasattr(dataset, "__cuda_array_interface__"):
-        mem = "device"
-        ai = dataset.__cuda_array_interface__
-    else:
-        mem = "host"
-        ai = dataset.__array_interface__
-    itemsize = np.dtype(ai["typestr"]).itemsize
-    dim = ai["shape"][1]
-    strides = ai.get("strides")
-    actual_row_width = dim if strides is None else strides[0] // itemsize
-    required_row_width = ((dim * itemsize + 15) // 16) * 16 // itemsize
-    layout = "padded" if actual_row_width == required_row_width else "standard"
-    return f"{mem}_{layout}"
-
-
 def calc_recall(ann_idx, true_nn_idx):
     assert ann_idx.shape == true_nn_idx.shape
     n = 0
@@ -104,7 +87,7 @@ def run_filtered_search_test(
     index = search_module.build(build_params, dataset_device)
     keepalive = []
     if is_cagra:
-        view_kind = dataset_view_kind(dataset_device)
+        view_kind = search_module.get_dataset_view_kind(dataset_device)
         if view_kind == "device_standard":
             padded_dataset = search_module.make_device_padded_dataset(
                 dataset_device
