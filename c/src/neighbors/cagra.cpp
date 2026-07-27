@@ -280,7 +280,7 @@ static void destroy_merged_dataset_typed(uintptr_t addr)
 template <typename T>
 static void make_device_padded_dataset(raft::resources* res_ptr,
                                        DLManagedTensor* dataset_tensor,
-                                       cuvsDatasetPadded_t* output_padded_dataset)
+                                       cuvsDataset_t* output_padded_dataset)
 {
   auto dataset = dataset_tensor->dl_tensor;
   RAFT_EXPECTS(cuvs::core::is_dlpack_device_compatible(dataset),
@@ -288,19 +288,20 @@ static void make_device_padded_dataset(raft::resources* res_ptr,
   using mdspan_type = raft::device_matrix_view<T const, int64_t, raft::row_major>;
   auto mds          = cuvs::core::from_dlpack<mdspan_type>(dataset_tensor);
   auto owner = cuvs::neighbors::make_device_padded_dataset(*res_ptr, mds);
-  auto* out  = new cuvsDatasetPadded{};
+  auto* out  = new cuvsDataset{};
   out->addr  = reinterpret_cast<uintptr_t>(owner.release());
   out->destroy_addr =
     &destroy_typed_addr<cuvs::neighbors::device_padded_dataset<T, int64_t>>;
   out->dtype    = dataset.dtype;
   out->mem_type = CUVS_DATASET_MEM_TYPE_DEVICE;
+  out->layout   = CUVS_DATASET_LAYOUT_PADDED;
   *output_padded_dataset = out;
 }
 
 template <typename T>
 static void make_host_padded_dataset(raft::resources* res_ptr,
                                      DLManagedTensor* dataset_tensor,
-                                     cuvsDatasetPadded_t* output_padded_dataset)
+                                     cuvsDataset_t* output_padded_dataset)
 {
   auto dataset = dataset_tensor->dl_tensor;
   RAFT_EXPECTS(cuvs::core::is_dlpack_host_compatible(dataset),
@@ -308,22 +309,23 @@ static void make_host_padded_dataset(raft::resources* res_ptr,
   using mdspan_type = raft::host_matrix_view<T const, int64_t, raft::row_major>;
   auto mds          = cuvs::core::from_dlpack<mdspan_type>(dataset_tensor);
   auto owner = cuvs::neighbors::make_host_padded_dataset(*res_ptr, mds);
-  auto* out  = new cuvsDatasetPadded{};
+  auto* out  = new cuvsDataset{};
   out->addr  = reinterpret_cast<uintptr_t>(owner.release());
   out->destroy_addr =
     &destroy_typed_addr<cuvs::neighbors::host_padded_dataset<T, int64_t>>;
   out->dtype    = dataset.dtype;
   out->mem_type = CUVS_DATASET_MEM_TYPE_HOST;
+  out->layout   = CUVS_DATASET_LAYOUT_PADDED;
   *output_padded_dataset = out;
 }
 
 template <typename T>
 static void make_device_padded_dataset_view(raft::resources* res_ptr,
                                             DLManagedTensor* dataset_tensor,
-                                            cuvsDatasetPaddedView_t* output_padded_dataset)
+                                            cuvsDatasetView_t* output_padded_dataset)
 {
   auto dataset = dataset_tensor->dl_tensor;
-  auto* out    = new cuvsDatasetPaddedView{};
+  auto* out    = new cuvsDatasetView{};
   if (!cuvs::core::is_dlpack_device_compatible(dataset)) {
     delete out;
     RAFT_FAIL("cuvsDatasetDevicePaddedViewMake: dataset must have device-compatible memory");
@@ -341,8 +343,8 @@ static void make_device_padded_dataset_view(raft::resources* res_ptr,
 }
 
 template <typename T>
-static void make_view_from_owning_padded(cuvsDatasetPadded_t padded_dataset,
-                                         cuvsDatasetPaddedView_t* output_padded_view)
+static void make_view_from_owning_padded(cuvsDataset_t padded_dataset,
+                                         cuvsDatasetView_t* output_padded_view)
 {
   RAFT_EXPECTS(padded_dataset != nullptr,
                "cuvsDatasetViewFromOwningPaddedMake: null padded dataset");
@@ -354,7 +356,7 @@ static void make_view_from_owning_padded(cuvsDatasetPadded_t padded_dataset,
   auto ds_view = owner->as_dataset_view();
 
   auto* ds_view_holder = new decltype(ds_view){ds_view};
-  auto* out            = new cuvsDatasetPaddedView{reinterpret_cast<uintptr_t>(ds_view_holder),
+  auto* out            = new cuvsDatasetView{reinterpret_cast<uintptr_t>(ds_view_holder),
                                          &destroy_typed_addr<decltype(ds_view)>,
                                          padded_dataset->dtype,
                                          CUVS_DATASET_MEM_TYPE_DEVICE,
@@ -365,10 +367,10 @@ static void make_view_from_owning_padded(cuvsDatasetPadded_t padded_dataset,
 template <typename T>
 static void make_host_padded_dataset_view(raft::resources*,
                                           DLManagedTensor* dataset_tensor,
-                                          cuvsDatasetPaddedView_t* output_padded_dataset)
+                                          cuvsDatasetView_t* output_padded_dataset)
 {
   auto dataset = dataset_tensor->dl_tensor;
-  auto* out    = new cuvsDatasetPaddedView{};
+  auto* out    = new cuvsDatasetView{};
   if (!cuvs::core::is_dlpack_host_compatible(dataset)) {
     delete out;
     RAFT_FAIL("cuvsDatasetHostPaddedViewMake: dataset must have host-compatible memory");
@@ -388,10 +390,10 @@ static void make_host_padded_dataset_view(raft::resources*,
 template <typename T>
 static void make_device_standard_dataset_view(raft::resources*,
                                               DLManagedTensor* dataset_tensor,
-                                              cuvsDatasetStandardView_t* output_standard_dataset)
+                                              cuvsDatasetView_t* output_standard_dataset)
 {
   auto dataset = dataset_tensor->dl_tensor;
-  auto* out    = new cuvsDatasetStandardView{};
+  auto* out    = new cuvsDatasetView{};
   if (!cuvs::core::is_dlpack_device_compatible(dataset)) {
     delete out;
     RAFT_FAIL("cuvsDatasetDeviceStandardViewMake: dataset must have device-compatible memory");
@@ -411,10 +413,10 @@ static void make_device_standard_dataset_view(raft::resources*,
 template <typename T>
 static void make_host_standard_dataset_view(raft::resources*,
                                             DLManagedTensor* dataset_tensor,
-                                            cuvsDatasetStandardView_t* output_standard_dataset)
+                                            cuvsDatasetView_t* output_standard_dataset)
 {
   auto dataset = dataset_tensor->dl_tensor;
-  auto* out    = new cuvsDatasetStandardView{};
+  auto* out    = new cuvsDatasetView{};
   if (!cuvs::core::is_dlpack_host_compatible(dataset)) {
     delete out;
     RAFT_FAIL("cuvsDatasetHostStandardViewMake: dataset must have host-compatible memory");
@@ -433,7 +435,7 @@ static void make_host_standard_dataset_view(raft::resources*,
 
 template <typename T>
 static void attach_dataset(raft::resources* res_ptr,
-                           cuvsDatasetPaddedView_t device_padded_dataset_view,
+                           cuvsDatasetView_t device_padded_dataset_view,
                            cuvsCagraIndex_t index)
 {
   RAFT_EXPECTS(device_padded_dataset_view != nullptr, "cuvsCagraUpdateDataset: null padded dataset");
@@ -649,8 +651,8 @@ template <typename T>
 void _extend(cuvsResources_t res,
              cuvsCagraExtendParams params,
              cuvsCagraIndex index,
-             cuvsDatasetPaddedView_t additional_dataset,
-             cuvsDatasetPaddedView_t extended_dataset)
+             cuvsDatasetView_t additional_dataset,
+             cuvsDatasetView_t extended_dataset)
 {
   auto* box      = reinterpret_cast<sg_cagra_c_api_index_box*>(index.addr);
   auto res_ptr   = reinterpret_cast<raft::resources*>(res);
@@ -809,7 +811,7 @@ template <typename T>
 void _deserialize_padded(cuvsResources_t res,
                          const char* filename,
                          cuvsCagraIndex_t output_index,
-                         cuvsDatasetPadded_t* out_padded_dataset)
+                         cuvsDataset_t* out_padded_dataset)
 {
   auto res_ptr = reinterpret_cast<raft::resources*>(res);
   using view_t          = cuvs::neighbors::device_padded_dataset_view<T, int64_t>;
@@ -823,11 +825,12 @@ void _deserialize_padded(cuvsResources_t res,
     RAFT_EXPECTS(out_padded_dataset != nullptr,
                  "cuvsCagraDeserializePadded: out_padded_dataset must be non-null when "
                  "deserializing a padded dataset payload");
-    auto* out      = new cuvsDatasetPadded{};
+    auto* out      = new cuvsDataset{};
     out->addr      = reinterpret_cast<uintptr_t>(out_dataset.release());
     out->destroy_addr = &destroy_typed_addr<owner_dataset_t>;
     out->dtype     = output_index->dtype;
     out->mem_type  = CUVS_DATASET_MEM_TYPE_DEVICE;
+    out->layout    = CUVS_DATASET_LAYOUT_PADDED;
     *out_padded_dataset = out;
   }
   bind_index_lifetime_holder_to_C_index<T, view_t>(output_index, output_index->dtype, holder.release());
@@ -837,7 +840,7 @@ template <typename T>
 void _deserialize_standard(cuvsResources_t res,
                            const char* filename,
                            cuvsCagraIndex_t output_index,
-                           cuvsDatasetStandard_t* out_standard_dataset)
+                           cuvsDataset_t* out_standard_dataset)
 {
   auto res_ptr = reinterpret_cast<raft::resources*>(res);
   using view_t          = cuvs::neighbors::device_standard_dataset_view<T, int64_t>;
@@ -851,11 +854,12 @@ void _deserialize_standard(cuvsResources_t res,
     RAFT_EXPECTS(out_standard_dataset != nullptr,
                  "cuvsCagraDeserializeStandard: out_standard_dataset must be non-null when "
                  "deserializing a standard dataset payload");
-    auto* out      = new cuvsDatasetStandard{};
+    auto* out      = new cuvsDataset{};
     out->addr      = reinterpret_cast<uintptr_t>(out_dataset.release());
     out->destroy_addr = &destroy_typed_addr<owner_dataset_t>;
     out->dtype     = output_index->dtype;
     out->mem_type  = CUVS_DATASET_MEM_TYPE_DEVICE;
+    out->layout    = CUVS_DATASET_LAYOUT_STANDARD;
     *out_standard_dataset = out;
   }
   bind_index_lifetime_holder_to_C_index<T, view_t>(output_index, output_index->dtype, holder.release());
@@ -1226,7 +1230,7 @@ extern "C" cuvsError_t cuvsCagraIndexGetGraph(cuvsCagraIndex_t index, DLManagedT
 
 extern "C" cuvsError_t cuvsDatasetDevicePaddedMake(cuvsResources_t res,
                                                    DLManagedTensor* dataset_tensor,
-                                                   cuvsDatasetPadded_t* padded_dataset)
+                                                   cuvsDataset_t* padded_dataset)
 {
   return cuvs::core::translate_exceptions([=] {
     auto dataset  = dataset_tensor->dl_tensor;
@@ -1249,7 +1253,7 @@ extern "C" cuvsError_t cuvsDatasetDevicePaddedMake(cuvsResources_t res,
 
 extern "C" cuvsError_t cuvsDatasetHostPaddedMake(cuvsResources_t res,
                                                  DLManagedTensor* dataset_tensor,
-                                                 cuvsDatasetPadded_t* padded_dataset)
+                                                 cuvsDataset_t* padded_dataset)
 {
   return cuvs::core::translate_exceptions([=] {
     auto dataset  = dataset_tensor->dl_tensor;
@@ -1272,7 +1276,7 @@ extern "C" cuvsError_t cuvsDatasetHostPaddedMake(cuvsResources_t res,
 
 extern "C" cuvsError_t cuvsDatasetDevicePaddedViewMake(cuvsResources_t res,
                                                        DLManagedTensor* dataset_tensor,
-                                                       cuvsDatasetPaddedView_t* padded_dataset)
+                                                       cuvsDatasetView_t* padded_dataset)
 {
   return cuvs::core::translate_exceptions([=] {
     auto dataset  = dataset_tensor->dl_tensor;
@@ -1295,7 +1299,7 @@ extern "C" cuvsError_t cuvsDatasetDevicePaddedViewMake(cuvsResources_t res,
 
 extern "C" cuvsError_t cuvsDatasetHostPaddedViewMake(cuvsResources_t res,
                                                      DLManagedTensor* dataset_tensor,
-                                                     cuvsDatasetPaddedView_t* padded_dataset)
+                                                     cuvsDatasetView_t* padded_dataset)
 {
   return cuvs::core::translate_exceptions([=] {
     auto dataset  = dataset_tensor->dl_tensor;
@@ -1317,7 +1321,7 @@ extern "C" cuvsError_t cuvsDatasetHostPaddedViewMake(cuvsResources_t res,
 }
 
 extern "C" cuvsError_t cuvsDatasetViewFromOwningPaddedMake(
-  cuvsDatasetPadded_t padded_dataset, cuvsDatasetPaddedView_t* padded_view)
+  cuvsDataset_t padded_dataset, cuvsDatasetView_t* padded_view)
 {
   return cuvs::core::translate_exceptions([=] {
     RAFT_EXPECTS(padded_dataset != nullptr,
@@ -1341,44 +1345,31 @@ extern "C" cuvsError_t cuvsDatasetViewFromOwningPaddedMake(
   });
 }
 
-extern "C" cuvsError_t cuvsDatasetPaddedDestroy(cuvsDatasetPadded_t padded_dataset)
+extern "C" cuvsError_t cuvsDatasetDestroy(cuvsDataset_t dataset)
 {
   return cuvs::core::translate_exceptions([=] {
-    if (padded_dataset == nullptr) { return; }
-    if (padded_dataset->destroy_addr != nullptr && padded_dataset->addr != 0) {
-      padded_dataset->destroy_addr(reinterpret_cast<void*>(padded_dataset->addr));
+    if (dataset == nullptr) { return; }
+    if (dataset->destroy_addr != nullptr && dataset->addr != 0) {
+      dataset->destroy_addr(reinterpret_cast<void*>(dataset->addr));
     }
-    delete padded_dataset;
+    delete dataset;
   });
 }
 
-extern "C" cuvsError_t cuvsDatasetStandardDestroy(cuvsDatasetStandard_t standard_dataset)
+extern "C" cuvsError_t cuvsDatasetViewDestroy(cuvsDatasetView_t dataset_view)
 {
   return cuvs::core::translate_exceptions([=] {
-    if (standard_dataset == nullptr) { return; }
-    if (standard_dataset->destroy_addr != nullptr && standard_dataset->addr != 0) {
-      standard_dataset->destroy_addr(reinterpret_cast<void*>(standard_dataset->addr));
+    if (dataset_view == nullptr) { return; }
+    if (dataset_view->destroy_addr != nullptr && dataset_view->addr != 0) {
+      dataset_view->destroy_addr(reinterpret_cast<void*>(dataset_view->addr));
     }
-    delete standard_dataset;
-  });
-}
-
-extern "C" cuvsError_t cuvsDatasetPaddedViewDestroy(cuvsDatasetPaddedView_t padded_dataset)
-{
-  return cuvs::core::translate_exceptions([=] {
-    if (padded_dataset == nullptr) { return; }
-    RAFT_EXPECTS(padded_dataset->layout == CUVS_DATASET_LAYOUT_PADDED,
-                 "cuvsDatasetPaddedViewDestroy: dataset handle layout must be PADDED");
-    if (padded_dataset->destroy_addr != nullptr && padded_dataset->addr != 0) {
-      padded_dataset->destroy_addr(reinterpret_cast<void*>(padded_dataset->addr));
-    }
-    delete padded_dataset;
+    delete dataset_view;
   });
 }
 
 extern "C" cuvsError_t cuvsDatasetDeviceStandardViewMake(cuvsResources_t res,
                                                          DLManagedTensor* dataset_tensor,
-                                                         cuvsDatasetStandardView_t* standard_dataset)
+                                                         cuvsDatasetView_t* standard_dataset)
 {
   return cuvs::core::translate_exceptions([=] {
     auto dataset  = dataset_tensor->dl_tensor;
@@ -1401,7 +1392,7 @@ extern "C" cuvsError_t cuvsDatasetDeviceStandardViewMake(cuvsResources_t res,
 
 extern "C" cuvsError_t cuvsDatasetHostStandardViewMake(cuvsResources_t res,
                                                        DLManagedTensor* dataset_tensor,
-                                                       cuvsDatasetStandardView_t* standard_dataset)
+                                                       cuvsDatasetView_t* standard_dataset)
 {
   return cuvs::core::translate_exceptions([=] {
     auto dataset  = dataset_tensor->dl_tensor;
@@ -1422,21 +1413,8 @@ extern "C" cuvsError_t cuvsDatasetHostStandardViewMake(cuvsResources_t res,
   });
 }
 
-extern "C" cuvsError_t cuvsDatasetStandardViewDestroy(cuvsDatasetStandardView_t standard_dataset)
-{
-  return cuvs::core::translate_exceptions([=] {
-    if (standard_dataset == nullptr) { return; }
-    RAFT_EXPECTS(standard_dataset->layout == CUVS_DATASET_LAYOUT_STANDARD,
-                 "cuvsDatasetStandardViewDestroy: dataset handle layout must be STANDARD");
-    if (standard_dataset->destroy_addr != nullptr && standard_dataset->addr != 0) {
-      standard_dataset->destroy_addr(reinterpret_cast<void*>(standard_dataset->addr));
-    }
-    delete standard_dataset;
-  });
-}
-
 static cuvsError_t dispatch_attach_dataset(cuvsResources_t res,
-                                           cuvsDatasetPaddedView_t device_padded_dataset,
+                                           cuvsDatasetView_t device_padded_dataset,
                                            cuvsCagraIndex_t index)
 {
   return cuvs::core::translate_exceptions([=] {
@@ -1742,8 +1720,8 @@ extern "C" cuvsError_t cuvsCagraIndexFromArgs(cuvsResources_t res,
 
 extern "C" cuvsError_t cuvsCagraExtend(cuvsResources_t res,
                                        cuvsCagraExtendParams_t params,
-                                       cuvsDatasetPaddedView_t additional_dataset,
-                                       cuvsDatasetPaddedView_t extended_dataset,
+                                       cuvsDatasetView_t additional_dataset,
+                                       cuvsDatasetView_t extended_dataset,
                                        cuvsCagraIndex_t index_c_ptr)
 {
   return cuvs::core::translate_exceptions([=] {
@@ -2006,7 +1984,7 @@ extern "C" cuvsError_t cuvsCagraSearchParamsDestroy(cuvsCagraSearchParams_t para
 extern "C" cuvsError_t cuvsCagraDeserializePadded(cuvsResources_t res,
                                                   const char* filename,
                                                   cuvsCagraIndex_t index,
-                                                  cuvsDatasetPadded_t* out_padded_dataset)
+                                                  cuvsDataset_t* out_padded_dataset)
 {
   return cuvs::core::translate_exceptions([=] {
     if (out_padded_dataset != nullptr) { *out_padded_dataset = nullptr; }
@@ -2046,7 +2024,7 @@ extern "C" cuvsError_t cuvsCagraDeserializePadded(cuvsResources_t res,
 extern "C" cuvsError_t cuvsCagraDeserializeStandard(cuvsResources_t res,
                                                     const char* filename,
                                                     cuvsCagraIndex_t index,
-                                                    cuvsDatasetStandard_t* out_standard_dataset)
+                                                    cuvsDataset_t* out_standard_dataset)
 {
   return cuvs::core::translate_exceptions([=] {
     if (out_standard_dataset != nullptr) { *out_standard_dataset = nullptr; }

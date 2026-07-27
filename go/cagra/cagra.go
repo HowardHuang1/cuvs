@@ -18,17 +18,17 @@ type CagraIndex struct {
 
 // Owning padded dataset handle for explicit CAGRA dataset management.
 type PaddedDataset struct {
-	dataset C.cuvsDatasetPadded_t
+	dataset C.cuvsDataset_t
 }
 
 // Non-owning padded dataset view handle.
 type PaddedDatasetView struct {
-	view C.cuvsDatasetPaddedView_t
+	view C.cuvsDatasetView_t
 }
 
 // Non-owning standard dataset view handle.
 type StandardDatasetView struct {
-	view C.cuvsDatasetStandardView_t
+	view C.cuvsDatasetView_t
 }
 
 // Creates an owning device padded dataset from a device tensor.
@@ -37,7 +37,7 @@ func MakeDevicePaddedDataset[T any](Resources cuvs.Resource, dataset *cuvs.Tenso
 		return nil, errors.New("dataset is nil")
 	}
 	datasetTensor := (*C.DLManagedTensor)(unsafe.Pointer(dataset.C_tensor))
-	var paddedDataset C.cuvsDatasetPadded_t
+	var paddedDataset C.cuvsDataset_t
 	err := cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsDatasetDevicePaddedMake(
 		C.cuvsResources_t(Resources.Resource), datasetTensor, &paddedDataset,
 	)))
@@ -52,7 +52,7 @@ func MakeViewFromOwningPadded(paddedDataset *PaddedDataset) (*PaddedDatasetView,
 	if paddedDataset == nil || paddedDataset.dataset == nil {
 		return nil, errors.New("paddedDataset is nil")
 	}
-	var paddedView C.cuvsDatasetPaddedView_t
+	var paddedView C.cuvsDatasetView_t
 	err := cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsDatasetViewFromOwningPaddedMake(
 		paddedDataset.dataset, &paddedView,
 	)))
@@ -68,7 +68,7 @@ func MakeDevicePaddedDatasetView[T any](Resources cuvs.Resource, dataset *cuvs.T
 		return nil, errors.New("dataset is nil")
 	}
 	datasetTensor := (*C.DLManagedTensor)(unsafe.Pointer(dataset.C_tensor))
-	var paddedView C.cuvsDatasetPaddedView_t
+	var paddedView C.cuvsDatasetView_t
 	err := cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsDatasetDevicePaddedViewMake(
 		C.cuvsResources_t(Resources.Resource), datasetTensor, &paddedView,
 	)))
@@ -83,7 +83,7 @@ func (dataset *PaddedDataset) Close() error {
 	if dataset == nil || dataset.dataset == nil {
 		return nil
 	}
-	err := cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsDatasetPaddedDestroy(dataset.dataset)))
+	err := cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsDatasetDestroy(dataset.dataset)))
 	if err != nil {
 		return err
 	}
@@ -96,7 +96,7 @@ func (view *PaddedDatasetView) Close() error {
 	if view == nil || view.view == nil {
 		return nil
 	}
-	err := cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsDatasetPaddedViewDestroy(view.view)))
+	err := cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsDatasetViewDestroy(view.view)))
 	if err != nil {
 		return err
 	}
@@ -110,7 +110,7 @@ func MakeDeviceStandardDatasetView[T any](Resources cuvs.Resource, dataset *cuvs
 		return nil, errors.New("dataset is nil")
 	}
 	datasetTensor := (*C.DLManagedTensor)(unsafe.Pointer(dataset.C_tensor))
-	var standardView C.cuvsDatasetStandardView_t
+	var standardView C.cuvsDatasetView_t
 	err := cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsDatasetDeviceStandardViewMake(
 		C.cuvsResources_t(Resources.Resource), datasetTensor, &standardView,
 	)))
@@ -125,7 +125,7 @@ func (view *StandardDatasetView) Close() error {
 	if view == nil || view.view == nil {
 		return nil
 	}
-	err := cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsDatasetStandardViewDestroy(view.view)))
+	err := cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsDatasetViewDestroy(view.view)))
 	if err != nil {
 		return err
 	}
@@ -184,14 +184,14 @@ func BuildIndex[T any](Resources cuvs.Resource, params *IndexParams, dataset *cu
 		return err
 	}
 
-	var paddedView C.cuvsDatasetPaddedView_t
-	var standardView C.cuvsDatasetStandardView_t
+	var paddedView C.cuvsDatasetView_t
+	var standardView C.cuvsDatasetView_t
 	defer func() {
 		if paddedView != nil {
-			_ = cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsDatasetPaddedViewDestroy(paddedView)))
+			_ = cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsDatasetViewDestroy(paddedView)))
 		}
 		if standardView != nil {
-			_ = cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsDatasetStandardViewDestroy(standardView)))
+			_ = cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsDatasetViewDestroy(standardView)))
 		}
 	}()
 
@@ -233,7 +233,7 @@ func BuildIndex[T any](Resources cuvs.Resource, params *IndexParams, dataset *cu
 		if err != nil {
 			return err
 		}
-		defer C.cuvsDatasetStandardViewDestroy(standardView)
+		defer C.cuvsDatasetViewDestroy(standardView)
 		datasetView = (C.cuvsDatasetView_t)(unsafe.Pointer(standardView))
 	}
 

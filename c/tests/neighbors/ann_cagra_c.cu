@@ -73,8 +73,8 @@ cuvsError_t build_from_tensor(cuvsResources_t res,
 
   status = cuvsCagraBuild(res, params, view, index);
 
-  cuvsError_t destroy_status = is_padded ? cuvsDatasetPaddedViewDestroy(view)
-                                         : cuvsDatasetStandardViewDestroy(view);
+  cuvsError_t destroy_status = is_padded ? cuvsDatasetViewDestroy(view)
+                                         : cuvsDatasetViewDestroy(view);
   return status != CUVS_SUCCESS ? status : destroy_status;
 }
 
@@ -105,7 +105,7 @@ TEST(CagraC, BuildSearch)
   // build index
   cuvsCagraIndexParams_t build_params;
   cuvsCagraIndexParamsCreate(&build_params);
-  cuvsDatasetStandardView_t dataset_view = nullptr;
+  cuvsDatasetView_t dataset_view = nullptr;
   ASSERT_EQ(cuvsDatasetHostStandardViewMake(res, &dataset_tensor, &dataset_view), CUVS_SUCCESS);
   ASSERT_EQ(cuvsCagraBuildHostStandard(res, build_params, dataset_view, index), CUVS_SUCCESS);
 
@@ -117,15 +117,15 @@ TEST(CagraC, BuildSearch)
   device_dataset_tensor.dl_tensor.data               = dataset_d.data();
   device_dataset_tensor.dl_tensor.device.device_type = kDLCUDA;
   device_dataset_tensor.dl_tensor.device.device_id   = 0;
-  cuvsDatasetStandardView_t device_dataset_view = nullptr;
+  cuvsDatasetView_t device_dataset_view = nullptr;
   ASSERT_EQ(cuvsDatasetDeviceStandardViewMake(res, &device_dataset_tensor, &device_dataset_view),
             CUVS_SUCCESS);
   ASSERT_EQ(cuvsCagraAttachDeviceStandardDatasetOnHostIndex(res, device_dataset_view, index),
             CUVS_SUCCESS);
-  cuvsDatasetPadded_t padded_dataset_owner = nullptr;
+  cuvsDataset_t padded_dataset_owner = nullptr;
   ASSERT_EQ(cuvsDatasetDevicePaddedMake(res, &device_dataset_tensor, &padded_dataset_owner),
             CUVS_SUCCESS);
-  cuvsDatasetPaddedView_t padded_dataset_view = nullptr;
+  cuvsDatasetView_t padded_dataset_view = nullptr;
   ASSERT_EQ(cuvsDatasetViewFromOwningPaddedMake(padded_dataset_owner, &padded_dataset_view),
             CUVS_SUCCESS);
   ASSERT_EQ(cuvsCagraUpdateDataset(res, padded_dataset_view, index), CUVS_SUCCESS);
@@ -193,8 +193,8 @@ TEST(CagraC, BuildSearch)
 
   // de-allocate index and res
   cuvsCagraSearchParamsDestroy(search_params);
-  cuvsDatasetPaddedViewDestroy(padded_dataset_view);
-  cuvsDatasetPaddedDestroy(padded_dataset_owner);
+  cuvsDatasetViewDestroy(padded_dataset_view);
+  cuvsDatasetDestroy(padded_dataset_owner);
   cuvsCagraIndexParamsDestroy(build_params);
   cuvsCagraIndexDestroy(index);
   cuvsResourcesDestroy(res);
@@ -216,7 +216,7 @@ TEST(CagraC, UpdateHostPadded)
   host_tensor.dl_tensor.dtype              = {kDLFloat, 32, 1};
   host_tensor.dl_tensor.shape              = dataset_shape;
 
-  cuvsDatasetPaddedView_t host_view = nullptr;
+  cuvsDatasetView_t host_view = nullptr;
   ASSERT_EQ(cuvsDatasetMakeHostPaddedView(res, &host_tensor, &host_view), CUVS_SUCCESS);
   cuvsCagraIndexParams_t build_params;
   cuvsCagraIndexParamsCreate(&build_params);
@@ -229,12 +229,12 @@ TEST(CagraC, UpdateHostPadded)
   DLManagedTensor device_tensor              = host_tensor;
   device_tensor.dl_tensor.data               = device_dataset.data();
   device_tensor.dl_tensor.device.device_type = kDLCUDA;
-  cuvsDatasetPaddedView_t device_view         = nullptr;
+  cuvsDatasetView_t device_view         = nullptr;
   ASSERT_EQ(cuvsDatasetMakeDevicePaddedView(res, &device_tensor, &device_view), CUVS_SUCCESS);
   ASSERT_EQ(cuvsCagraUpdateDataset(res, device_view, index), CUVS_SUCCESS);
 
-  cuvsDatasetPaddedViewDestroy(device_view);
-  cuvsDatasetPaddedViewDestroy(host_view);
+  cuvsDatasetViewDestroy(device_view);
+  cuvsDatasetViewDestroy(host_view);
   cuvsCagraIndexDestroy(index);
   cuvsCagraIndexParamsDestroy(build_params);
   cuvsResourcesDestroy(res);
@@ -318,7 +318,7 @@ TEST(CagraC, BuildExtendSearch)
   // build index
   cuvsCagraIndexParams_t build_params;
   cuvsCagraIndexParamsCreate(&build_params);
-  cuvsDatasetPaddedView_t dataset_view = nullptr;
+  cuvsDatasetView_t dataset_view = nullptr;
   ASSERT_EQ(cuvsDatasetDevicePaddedViewMake(res, &dataset_tensor, &dataset_view), CUVS_SUCCESS);
   ASSERT_EQ(cuvsCagraBuildDevicePadded(res, build_params, dataset_view, index), CUVS_SUCCESS);
 
@@ -327,7 +327,7 @@ TEST(CagraC, BuildExtendSearch)
   // extend index
   cuvsCagraExtendParams_t extend_params;
   cuvsCagraExtendParamsCreate(&extend_params);
-  cuvsDatasetPaddedView_t additional_padded_dataset_view = nullptr;
+  cuvsDatasetView_t additional_padded_dataset_view = nullptr;
   ASSERT_EQ(cuvsDatasetDevicePaddedViewMake(
               res, &additional_dataset_tensor, &additional_padded_dataset_view),
             CUVS_SUCCESS);
@@ -343,7 +343,7 @@ TEST(CagraC, BuildExtendSearch)
                                                            dimensions};
   extended_dataset_tensor.dl_tensor.shape              = extended_dataset_shape;
   extended_dataset_tensor.dl_tensor.strides            = nullptr;
-  cuvsDatasetPaddedView_t extended_dataset_view        = nullptr;
+  cuvsDatasetView_t extended_dataset_view        = nullptr;
   ASSERT_EQ(cuvsDatasetDevicePaddedViewMake(res, &extended_dataset_tensor, &extended_dataset_view),
             CUVS_SUCCESS);
   ASSERT_EQ(cuvsCagraExtend(
@@ -461,8 +461,8 @@ TEST(CagraC, BuildExtendSearch)
 
   // de-allocate index and res
   cuvsCagraSearchParamsDestroy(search_params);
-  cuvsDatasetPaddedViewDestroy(additional_padded_dataset_view);
-  cuvsDatasetPaddedViewDestroy(extended_dataset_view);
+  cuvsDatasetViewDestroy(additional_padded_dataset_view);
+  cuvsDatasetViewDestroy(extended_dataset_view);
   cuvsCagraExtendParamsDestroy(extend_params);
   cuvsCagraIndexParamsDestroy(build_params);
   cuvsCagraIndexDestroy(index);
@@ -496,7 +496,7 @@ TEST(CagraC, BuildSearchFiltered)
   // build index
   cuvsCagraIndexParams_t build_params;
   cuvsCagraIndexParamsCreate(&build_params);
-  cuvsDatasetStandardView_t dataset_view = nullptr;
+  cuvsDatasetView_t dataset_view = nullptr;
   ASSERT_EQ(cuvsDatasetHostStandardViewMake(res, &dataset_tensor, &dataset_view), CUVS_SUCCESS);
   ASSERT_EQ(cuvsCagraBuildHostStandard(res, build_params, dataset_view, index), CUVS_SUCCESS);
 
@@ -508,15 +508,15 @@ TEST(CagraC, BuildSearchFiltered)
   device_dataset_tensor.dl_tensor.data               = dataset_d.data();
   device_dataset_tensor.dl_tensor.device.device_type = kDLCUDA;
   device_dataset_tensor.dl_tensor.device.device_id   = 0;
-  cuvsDatasetStandardView_t device_dataset_view = nullptr;
+  cuvsDatasetView_t device_dataset_view = nullptr;
   ASSERT_EQ(cuvsDatasetDeviceStandardViewMake(res, &device_dataset_tensor, &device_dataset_view),
             CUVS_SUCCESS);
   ASSERT_EQ(cuvsCagraAttachDeviceStandardDatasetOnHostIndex(res, device_dataset_view, index),
             CUVS_SUCCESS);
-  cuvsDatasetPadded_t padded_dataset_owner = nullptr;
+  cuvsDataset_t padded_dataset_owner = nullptr;
   ASSERT_EQ(cuvsDatasetDevicePaddedMake(res, &device_dataset_tensor, &padded_dataset_owner),
             CUVS_SUCCESS);
-  cuvsDatasetPaddedView_t padded_dataset_view = nullptr;
+  cuvsDatasetView_t padded_dataset_view = nullptr;
   ASSERT_EQ(cuvsDatasetViewFromOwningPaddedMake(padded_dataset_owner, &padded_dataset_view),
             CUVS_SUCCESS);
   ASSERT_EQ(cuvsCagraUpdateDataset(res, padded_dataset_view, index), CUVS_SUCCESS);
@@ -598,8 +598,8 @@ TEST(CagraC, BuildSearchFiltered)
 
   // de-allocate index and res
   cuvsCagraSearchParamsDestroy(search_params);
-  cuvsDatasetPaddedViewDestroy(padded_dataset_view);
-  cuvsDatasetPaddedDestroy(padded_dataset_owner);
+  cuvsDatasetViewDestroy(padded_dataset_view);
+  cuvsDatasetDestroy(padded_dataset_owner);
   cuvsCagraIndexParamsDestroy(build_params);
   cuvsCagraIndexDestroy(index);
   cuvsResourcesDestroy(res);
@@ -658,8 +658,8 @@ TEST(CagraC, BuildMergeSearch)
   cuvsCagraIndex_t index_main, index_add;
   cuvsCagraIndexCreate(&index_main);
   cuvsCagraIndexCreate(&index_add);
-  cuvsDatasetStandardView_t main_dataset_view = nullptr;
-  cuvsDatasetStandardView_t additional_dataset_view = nullptr;
+  cuvsDatasetView_t main_dataset_view = nullptr;
+  cuvsDatasetView_t additional_dataset_view = nullptr;
   ASSERT_EQ(cuvsDatasetDeviceStandardViewMake(res, &main_dataset_tensor, &main_dataset_view),
             CUVS_SUCCESS);
   ASSERT_EQ(cuvsDatasetDeviceStandardViewMake(
@@ -702,10 +702,10 @@ TEST(CagraC, BuildMergeSearch)
   merged_dataset_tensor.dl_tensor.shape              = merged_shape;
   merged_dataset_tensor.dl_tensor.strides            = nullptr;
 
-  cuvsDatasetPadded_t padded_dataset_owner = nullptr;
+  cuvsDataset_t padded_dataset_owner = nullptr;
   ASSERT_EQ(cuvsDatasetDevicePaddedMake(res, &merged_dataset_tensor, &padded_dataset_owner),
             CUVS_SUCCESS);
-  cuvsDatasetPaddedView_t padded_dataset = nullptr;
+  cuvsDatasetView_t padded_dataset = nullptr;
   ASSERT_EQ(cuvsDatasetViewFromOwningPaddedMake(padded_dataset_owner, &padded_dataset),
             CUVS_SUCCESS);
   ASSERT_EQ(cuvsCagraUpdateDataset(res, padded_dataset, index_merged), CUVS_SUCCESS);
@@ -759,8 +759,8 @@ TEST(CagraC, BuildMergeSearch)
   EXPECT_NEAR(distance_host, 0.0f, 1e-6);
 
   cuvsCagraSearchParamsDestroy(search_params);
-  cuvsDatasetPaddedViewDestroy(padded_dataset);
-  cuvsDatasetPaddedDestroy(padded_dataset_owner);
+  cuvsDatasetViewDestroy(padded_dataset);
+  cuvsDatasetDestroy(padded_dataset_owner);
   cuvsDatasetStorageDestroy(merged_dataset);
   cuvsCagraIndexParamsDestroy(build_params);
   cuvsCagraIndexDestroy(index_merged);
@@ -805,7 +805,7 @@ TEST(CagraC, BuildSearchACEMemory)
   ace_params->use_disk = false;
 
   build_params->graph_build_params = ace_params;
-  cuvsDatasetStandardView_t dataset_view = nullptr;
+  cuvsDatasetView_t dataset_view = nullptr;
   ASSERT_EQ(cuvsDatasetHostStandardViewMake(res, &dataset_tensor, &dataset_view), CUVS_SUCCESS);
   ASSERT_EQ(cuvsCagraBuildHostStandard(res, build_params, dataset_view, index), CUVS_SUCCESS);
 
@@ -817,15 +817,15 @@ TEST(CagraC, BuildSearchACEMemory)
   device_dataset_tensor.dl_tensor.data               = dataset_d.data();
   device_dataset_tensor.dl_tensor.device.device_type = kDLCUDA;
   device_dataset_tensor.dl_tensor.device.device_id   = 0;
-  cuvsDatasetStandardView_t device_dataset_view = nullptr;
+  cuvsDatasetView_t device_dataset_view = nullptr;
   ASSERT_EQ(cuvsDatasetDeviceStandardViewMake(res, &device_dataset_tensor, &device_dataset_view),
             CUVS_SUCCESS);
   ASSERT_EQ(cuvsCagraAttachDeviceStandardDatasetOnHostIndex(res, device_dataset_view, index),
             CUVS_SUCCESS);
-  cuvsDatasetPadded_t padded_dataset_owner = nullptr;
+  cuvsDataset_t padded_dataset_owner = nullptr;
   ASSERT_EQ(cuvsDatasetDevicePaddedMake(res, &device_dataset_tensor, &padded_dataset_owner),
             CUVS_SUCCESS);
-  cuvsDatasetPaddedView_t padded_dataset_view = nullptr;
+  cuvsDatasetView_t padded_dataset_view = nullptr;
   ASSERT_EQ(cuvsDatasetViewFromOwningPaddedMake(padded_dataset_owner, &padded_dataset_view),
             CUVS_SUCCESS);
   ASSERT_EQ(cuvsCagraUpdateDataset(res, padded_dataset_view, index), CUVS_SUCCESS);
@@ -892,8 +892,8 @@ TEST(CagraC, BuildSearchACEMemory)
 
   // de-allocate index and res
   cuvsCagraSearchParamsDestroy(search_params);
-  cuvsDatasetPaddedViewDestroy(padded_dataset_view);
-  cuvsDatasetPaddedDestroy(padded_dataset_owner);
+  cuvsDatasetViewDestroy(padded_dataset_view);
+  cuvsDatasetDestroy(padded_dataset_owner);
   cuvsCagraIndexParamsDestroy(build_params);
   cuvsCagraIndexDestroy(index);
   cuvsResourcesDestroy(res);
@@ -934,7 +934,7 @@ TEST(CagraC, BuildSearchACEDisk)
   ace_params->build_dir = strdup("/tmp/cagra_ace_test_disk");
 
   build_params->graph_build_params = ace_params;
-  cuvsDatasetStandardView_t dataset_view = nullptr;
+  cuvsDatasetView_t dataset_view = nullptr;
   ASSERT_EQ(cuvsDatasetHostStandardViewMake(res, &dataset_tensor, &dataset_view), CUVS_SUCCESS);
   ASSERT_EQ(cuvsCagraBuildHostStandard(res, build_params, dataset_view, index), CUVS_SUCCESS);
 

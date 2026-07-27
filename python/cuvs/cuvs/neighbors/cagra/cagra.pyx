@@ -413,7 +413,7 @@ cdef class PaddedDataset:
 
     def __dealloc__(self):
         if self.dataset != NULL:
-            check_cuvs(cuvsDatasetPaddedDestroy(self.dataset))
+            check_cuvs(cuvsDatasetDestroy(self.dataset))
 
 
 cdef class StandardDataset:
@@ -422,7 +422,7 @@ cdef class StandardDataset:
 
     def __dealloc__(self):
         if self.dataset != NULL:
-            check_cuvs(cuvsDatasetStandardDestroy(self.dataset))
+            check_cuvs(cuvsDatasetDestroy(self.dataset))
 
 
 cdef class PaddedDatasetView:
@@ -431,7 +431,7 @@ cdef class PaddedDatasetView:
 
     def __dealloc__(self):
         if self.view != NULL:
-            check_cuvs(cuvsDatasetPaddedViewDestroy(self.view))
+            check_cuvs(cuvsDatasetViewDestroy(self.view))
 
 
 cdef class StandardDatasetView:
@@ -440,7 +440,7 @@ cdef class StandardDatasetView:
 
     def __dealloc__(self):
         if self.view != NULL:
-            check_cuvs(cuvsDatasetStandardViewDestroy(self.view))
+            check_cuvs(cuvsDatasetViewDestroy(self.view))
 
 
 @auto_sync_resources
@@ -554,9 +554,9 @@ def build(IndexParams index_params, dataset, resources=None):
             idx.active_index_type = dataset_ai.dtype.name
         finally:
             if padded_view != NULL:
-                cuvsDatasetPaddedViewDestroy(padded_view)
+                cuvsDatasetViewDestroy(padded_view)
             if standard_view != NULL:
-                cuvsDatasetStandardViewDestroy(standard_view)
+                cuvsDatasetViewDestroy(standard_view)
 
     return idx
 
@@ -1082,10 +1082,10 @@ def load(index, filename, out_dataset=None, resources=None):
     cdef Index idx = index
     cdef cuvsResources_t res = <cuvsResources_t>resources.get_c_obj()
     cdef string c_filename = filename.encode('utf-8')
-    cdef cuvsDatasetPadded_t out_padded_dataset = NULL
-    cdef cuvsDatasetStandard_t out_standard_dataset = NULL
-    cdef cuvsDatasetPadded_t* out_padded_ptr
-    cdef cuvsDatasetStandard_t* out_standard_ptr
+    cdef cuvsDataset_t out_padded_dataset = NULL
+    cdef cuvsDataset_t out_standard_dataset = NULL
+    cdef cuvsDataset_t* out_padded_ptr
+    cdef cuvsDataset_t* out_standard_ptr
 
     if isinstance(out_dataset, PaddedDataset):
         out_padded_ptr = &out_padded_dataset
@@ -1216,14 +1216,14 @@ def extend(ExtendParams params, Index index, additional_dataset, extended_datase
             "Create it explicitly via make_device_padded_dataset_view() or "
             "make_device_padded_dataset() + make_view_from_owning_padded()."
         )
-    cdef cuvsDatasetPaddedView_t padded_view = (<PaddedDatasetView>additional_dataset).view
+    cdef cuvsDatasetView_t padded_view = (<PaddedDatasetView>additional_dataset).view
     if padded_view == NULL:
         raise ValueError("additional_dataset padded view is uninitialized")
     if not isinstance(extended_dataset, PaddedDatasetView):
         raise TypeError(
             "extended_dataset must be a device PaddedDatasetView."
         )
-    cdef cuvsDatasetPaddedView_t out_extended_dataset = (<PaddedDatasetView>extended_dataset).view
+    cdef cuvsDatasetView_t out_extended_dataset = (<PaddedDatasetView>extended_dataset).view
     if out_extended_dataset == NULL:
         raise ValueError("extended_dataset padded view is uninitialized")
 

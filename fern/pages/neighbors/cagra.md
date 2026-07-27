@@ -33,7 +33,7 @@ cuvsDatasetMakeDeviceStandardView(res, dataset, &dataset_view);
 
 cuvsCagraBuild(res, index_params, dataset_view, index);
 
-cuvsDatasetStandardViewDestroy(dataset_view);
+cuvsDatasetViewDestroy(dataset_view);
 cuvsCagraIndexDestroy(index);
 cuvsCagraIndexParamsDestroy(index_params);
 cuvsResourcesDestroy(res);
@@ -566,7 +566,7 @@ cuvsCagraBuild(res, cagra_params, dataset_view, cagra_index);
 cuvsHnswFromCagra(res, hnsw_params, cagra_index, hnsw_index);
 cuvsHnswSearch(res, hnsw_search_params, hnsw_index, queries, neighbors, distances);
 
-cuvsDatasetStandardViewDestroy(dataset_view);
+cuvsDatasetViewDestroy(dataset_view);
 cuvsHnswSearchParamsDestroy(hnsw_search_params);
 cuvsHnswIndexDestroy(hnsw_index);
 cuvsHnswIndexParamsDestroy(hnsw_params);
@@ -759,7 +759,7 @@ cuvsDatasetMakeDeviceStandardView(res, dataset, &dataset_view);
 
 cuvsCagraBuild(res, index_params, dataset_view, index);
 
-cuvsDatasetStandardViewDestroy(dataset_view);
+cuvsDatasetViewDestroy(dataset_view);
 
 // Create a device uint32 bitset with one bit per indexed vector. Bit 1 means
 // allowed; bit 0 means filtered out.

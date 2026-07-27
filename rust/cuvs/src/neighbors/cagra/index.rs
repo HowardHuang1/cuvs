@@ -43,19 +43,19 @@ fn is_host_compatible(device_type: ffi::DLDeviceType) -> bool {
 /// and keep it alive for as long as attached indices need it.
 #[derive(Debug)]
 pub struct PaddedDataset {
-    handle: ffi::cuvsDatasetPadded_t,
+    handle: ffi::cuvsDataset_t,
 }
 
 /// User-owned standard dataset handle returned by CAGRA deserialization.
 #[derive(Debug)]
 pub struct StandardDataset {
-    handle: ffi::cuvsDatasetStandard_t,
+    handle: ffi::cuvsDataset_t,
 }
 
 /// Non-owning padded dataset view handle.
 #[derive(Debug)]
 pub struct PaddedDatasetView {
-    handle: ffi::cuvsDatasetPaddedView_t,
+    handle: ffi::cuvsDatasetView_t,
 }
 
 impl PaddedDataset {
@@ -68,7 +68,7 @@ impl PaddedDataset {
         unsafe {
             let mut dataset_c = dataset.to_c();
             let device_type = dataset_c.inner.dl_tensor.device.device_type;
-            let mut padded = std::mem::MaybeUninit::<ffi::cuvsDatasetPadded_t>::uninit();
+            let mut padded = std::mem::MaybeUninit::<ffi::cuvsDataset_t>::uninit();
             if is_device_compatible(device_type) {
                 check_cuvs(ffi::cuvsDatasetDevicePaddedMake(
                     res.handle(),
@@ -101,7 +101,7 @@ impl PaddedDatasetView {
         unsafe {
             let mut dataset_c = dataset.to_c();
             let device_type = dataset_c.inner.dl_tensor.device.device_type;
-            let mut padded = std::mem::MaybeUninit::<ffi::cuvsDatasetPaddedView_t>::uninit();
+            let mut padded = std::mem::MaybeUninit::<ffi::cuvsDatasetView_t>::uninit();
             if is_device_compatible(device_type) {
                 check_cuvs(ffi::cuvsDatasetDevicePaddedViewMake(
                     res.handle(),
@@ -127,7 +127,7 @@ impl PaddedDatasetView {
 /// Non-owning standard dataset view handle for symmetry with C API dataset handles.
 #[derive(Debug)]
 pub struct StandardDatasetView {
-    handle: ffi::cuvsDatasetStandardView_t,
+    handle: ffi::cuvsDatasetView_t,
 }
 
 /// Typed output selector for CAGRA deserialization.
@@ -147,7 +147,7 @@ impl StandardDatasetView {
         unsafe {
             let mut dataset_c = dataset.to_c();
             let device_type = dataset_c.inner.dl_tensor.device.device_type;
-            let mut standard = std::mem::MaybeUninit::<ffi::cuvsDatasetStandardView_t>::uninit();
+            let mut standard = std::mem::MaybeUninit::<ffi::cuvsDatasetView_t>::uninit();
             if is_device_compatible(device_type) {
                 check_cuvs(ffi::cuvsDatasetDeviceStandardViewMake(
                     res.handle(),
@@ -429,7 +429,7 @@ impl<'d> Index<'d> {
         out_dataset: &mut Option<PaddedDataset>,
     ) -> Result<()> {
         let c_filename = path_to_cstring(filename.as_ref())?;
-        let mut out: ffi::cuvsDatasetPadded_t = std::ptr::null_mut();
+        let mut out: ffi::cuvsDataset_t = std::ptr::null_mut();
         unsafe {
             check_cuvs(ffi::cuvsCagraDeserializePadded(
                 res.handle(),
@@ -449,7 +449,7 @@ impl<'d> Index<'d> {
         out_dataset: &mut Option<StandardDataset>,
     ) -> Result<()> {
         let c_filename = path_to_cstring(filename.as_ref())?;
-        let mut out: ffi::cuvsDatasetStandard_t = std::ptr::null_mut();
+        let mut out: ffi::cuvsDataset_t = std::ptr::null_mut();
         unsafe {
             check_cuvs(ffi::cuvsCagraDeserializeStandard(
                 res.handle(),
@@ -474,8 +474,8 @@ impl Drop for Index<'_> {
 
 impl Drop for PaddedDataset {
     fn drop(&mut self) {
-        if let Err(e) = check_cuvs(unsafe { ffi::cuvsDatasetPaddedDestroy(self.handle) }) {
-            write!(stderr(), "failed to call cuvsDatasetPaddedDestroy {:?}", e)
+        if let Err(e) = check_cuvs(unsafe { ffi::cuvsDatasetDestroy(self.handle) }) {
+            write!(stderr(), "failed to call cuvsDatasetDestroy {:?}", e)
                 .expect("failed to write to stderr");
         }
     }
@@ -483,8 +483,8 @@ impl Drop for PaddedDataset {
 
 impl Drop for PaddedDatasetView {
     fn drop(&mut self) {
-        if let Err(e) = check_cuvs(unsafe { ffi::cuvsDatasetPaddedViewDestroy(self.handle) }) {
-            write!(stderr(), "failed to call cuvsDatasetPaddedViewDestroy {:?}", e)
+        if let Err(e) = check_cuvs(unsafe { ffi::cuvsDatasetViewDestroy(self.handle) }) {
+            write!(stderr(), "failed to call cuvsDatasetViewDestroy {:?}", e)
                 .expect("failed to write to stderr");
         }
     }
@@ -492,8 +492,8 @@ impl Drop for PaddedDatasetView {
 
 impl Drop for StandardDataset {
     fn drop(&mut self) {
-        if let Err(e) = check_cuvs(unsafe { ffi::cuvsDatasetStandardDestroy(self.handle) }) {
-            write!(stderr(), "failed to call cuvsDatasetStandardDestroy {:?}", e)
+        if let Err(e) = check_cuvs(unsafe { ffi::cuvsDatasetDestroy(self.handle) }) {
+            write!(stderr(), "failed to call cuvsDatasetDestroy {:?}", e)
                 .expect("failed to write to stderr");
         }
     }
@@ -501,8 +501,8 @@ impl Drop for StandardDataset {
 
 impl Drop for StandardDatasetView {
     fn drop(&mut self) {
-        if let Err(e) = check_cuvs(unsafe { ffi::cuvsDatasetStandardViewDestroy(self.handle) }) {
-            write!(stderr(), "failed to call cuvsDatasetStandardViewDestroy {:?}", e)
+        if let Err(e) = check_cuvs(unsafe { ffi::cuvsDatasetViewDestroy(self.handle) }) {
+            write!(stderr(), "failed to call cuvsDatasetViewDestroy {:?}", e)
                 .expect("failed to write to stderr");
         }
     }

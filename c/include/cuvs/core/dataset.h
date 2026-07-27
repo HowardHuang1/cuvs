@@ -32,32 +32,19 @@ typedef enum {
 } cuvsDatasetMemType_t;
 
 /**
- * @brief Owning padded dataset handle.
+ * @brief Owning dataset handle.
  *
- * `addr` points to C++ owning dataset storage managed by the C API. The layout is implied by
- * the handle type; `mem_type` identifies the memory space.
+ * `addr` points to C++ owning dataset storage managed by the C API. `mem_type` identifies the
+ * memory space and `layout` identifies the data layout (standard or padded).
  */
 typedef struct {
   uintptr_t addr;
   void (*destroy_addr)(void*);
   DLDataType dtype;
   cuvsDatasetMemType_t mem_type;
-} cuvsDatasetPadded;
-typedef cuvsDatasetPadded* cuvsDatasetPadded_t;
-
-/**
- * @brief Owning standard dataset handle.
- *
- * `addr` points to C++ owning dataset storage managed by the C API. The layout is implied by
- * the handle type; `mem_type` identifies the memory space.
- */
-typedef struct {
-  uintptr_t addr;
-  void (*destroy_addr)(void*);
-  DLDataType dtype;
-  cuvsDatasetMemType_t mem_type;
-} cuvsDatasetStandard;
-typedef cuvsDatasetStandard* cuvsDatasetStandard_t;
+  cuvsDatasetLayout_t layout;
+} cuvsDataset;
+typedef cuvsDataset* cuvsDataset_t;
 
 /**
  * @brief Non-owning dataset view handle.
@@ -73,14 +60,6 @@ typedef struct {
   cuvsDatasetLayout_t layout;
 } cuvsDatasetView;
 typedef cuvsDatasetView* cuvsDatasetView_t;
-
-/**
- * @brief Typed aliases for padded and standard non-owning dataset views.
- */
-typedef cuvsDatasetView cuvsDatasetPaddedView;
-typedef cuvsDatasetPaddedView* cuvsDatasetPaddedView_t;
-typedef cuvsDatasetView cuvsDatasetStandardView;
-typedef cuvsDatasetStandardView* cuvsDatasetStandardView_t;
 
 /**
  * @brief Generic storage kind for operation-specific dataset storage.
@@ -107,15 +86,15 @@ typedef struct cuvsCagraIndex* cuvsCagraIndex_t;
 
 CUVS_EXPORT cuvsError_t cuvsDatasetDevicePaddedMake(cuvsResources_t res,
                                                     DLManagedTensor* dataset,
-                                                    cuvsDatasetPadded_t* padded_dataset);
+                                                    cuvsDataset_t* padded_dataset);
 
 CUVS_EXPORT cuvsError_t cuvsDatasetHostPaddedMake(cuvsResources_t res,
                                                   DLManagedTensor* dataset,
-                                                  cuvsDatasetPadded_t* padded_dataset);
+                                                  cuvsDataset_t* padded_dataset);
 
 CUVS_EXPORT cuvsError_t cuvsDatasetDevicePaddedViewMake(cuvsResources_t res,
                                                         DLManagedTensor* dataset,
-                                                        cuvsDatasetPaddedView_t* padded_dataset);
+                                                        cuvsDatasetView_t* padded_dataset);
 
 /**
  * @brief Create a non-owning device padded view handle from an owning device padded dataset.
@@ -127,25 +106,25 @@ CUVS_EXPORT cuvsError_t cuvsDatasetDevicePaddedViewMake(cuvsResources_t res,
  * @param[out] padded_view output padded view handle
  */
 CUVS_EXPORT cuvsError_t cuvsDatasetViewFromOwningPaddedMake(
-  cuvsDatasetPadded_t padded_dataset, cuvsDatasetPaddedView_t* padded_view);
+  cuvsDataset_t padded_dataset, cuvsDatasetView_t* padded_view);
 
 CUVS_EXPORT cuvsError_t cuvsDatasetHostPaddedViewMake(cuvsResources_t res,
                                                       DLManagedTensor* dataset,
-                                                      cuvsDatasetPaddedView_t* padded_dataset);
-
-CUVS_EXPORT cuvsError_t cuvsDatasetPaddedDestroy(cuvsDatasetPadded_t padded_dataset);
-CUVS_EXPORT cuvsError_t cuvsDatasetStandardDestroy(cuvsDatasetStandard_t standard_dataset);
-CUVS_EXPORT cuvsError_t cuvsDatasetPaddedViewDestroy(cuvsDatasetPaddedView_t padded_dataset);
+                                                      cuvsDatasetView_t* padded_dataset);
 
 CUVS_EXPORT cuvsError_t cuvsDatasetDeviceStandardViewMake(cuvsResources_t res,
                                                           DLManagedTensor* dataset,
-                                                          cuvsDatasetStandardView_t* standard_dataset);
+                                                          cuvsDatasetView_t* standard_dataset);
 
 CUVS_EXPORT cuvsError_t cuvsDatasetHostStandardViewMake(cuvsResources_t res,
                                                         DLManagedTensor* dataset,
-                                                        cuvsDatasetStandardView_t* standard_dataset);
+                                                        cuvsDatasetView_t* standard_dataset);
 
-CUVS_EXPORT cuvsError_t cuvsDatasetStandardViewDestroy(cuvsDatasetStandardView_t standard_dataset);
+/** @brief Destroy an owning dataset handle created by a `cuvsDataset*Make` function. */
+CUVS_EXPORT cuvsError_t cuvsDatasetDestroy(cuvsDataset_t dataset);
+
+/** @brief Destroy a non-owning dataset view handle created by a `cuvsDataset*ViewMake` function. */
+CUVS_EXPORT cuvsError_t cuvsDatasetViewDestroy(cuvsDatasetView_t dataset_view);
 
 CUVS_EXPORT cuvsError_t cuvsMergedStorageMake(cuvsResources_t res,
                                               cuvsCagraIndex_t* indices,

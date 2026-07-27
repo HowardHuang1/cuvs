@@ -137,7 +137,7 @@ cuvsDatasetMakeDeviceStandardView(res, dataset, &dataset_view);
 
 cuvsCagraBuild(res, index_params, dataset_view, index);
 
-cuvsDatasetStandardViewDestroy(dataset_view);
+cuvsDatasetViewDestroy(dataset_view);
 cuvsCagraIndexDestroy(index);
 cuvsCagraIndexParamsDestroy(index_params);
 cuvsResourcesDestroy(res);

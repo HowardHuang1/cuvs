@@ -568,7 +568,7 @@ CUVS_EXPORT cuvsError_t cuvsCagraIndexGetGraph(cuvsCagraIndex_t index, DLManaged
  * \p device_padded_dataset and must keep it alive while \p index uses it.
  *
  * @param[in] res             cuvsResources_t opaque C handle
- * @param[in] padded_dataset  padded dataset view handle created by \ref cuvsDatasetPaddedViewMake
+ * @param[in] padded_dataset  padded dataset view handle created by \ref cuvsDatasetDevicePaddedViewMake
  * @param[inout] index        CAGRA index handle
  * @return cuvsError_t
  */
@@ -644,7 +644,7 @@ CUVS_EXPORT cuvsError_t cuvsCagraGetDatasetMemTypeAndLayout(DLManagedTensor* dat
  * cuvsError_t build_status = cuvsCagraBuild(res, params, dataset_view, index);
  *
  * // de-allocate `dataset_view`, `params`, `index` and `res`
- * cuvsError_t view_destroy_status = cuvsDatasetPaddedViewDestroy(dataset_view);
+ * cuvsError_t view_destroy_status = cuvsDatasetViewDestroy(dataset_view);
  * cuvsError_t params_destroy_status = cuvsCagraIndexParamsDestroy(params);
  * cuvsError_t index_destroy_status = cuvsCagraIndexDestroy(index);
  * cuvsError_t res_destroy_status = cuvsResourcesDestroy(res);
@@ -676,7 +676,7 @@ CUVS_EXPORT cuvsError_t cuvsCagraBuild(cuvsResources_t res,
  *
  * @param[in] res cuvsResources_t opaque C handle
  * @param[in] params cuvsCagraExtendParams_t used to extend CAGRA index
- * @param[in] additional_dataset cuvsDatasetPaddedView_t additional dataset
+ * @param[in] additional_dataset cuvsDatasetView_t additional dataset
  * @param[in,out] extended_dataset caller-owned writable device-padded dataset view receiving the
  * extended rows
  * @param[in,out] index cuvsCagraIndex_t CAGRA index
@@ -684,8 +684,8 @@ CUVS_EXPORT cuvsError_t cuvsCagraBuild(cuvsResources_t res,
  */
 CUVS_EXPORT cuvsError_t cuvsCagraExtend(cuvsResources_t res,
                             cuvsCagraExtendParams_t params,
-                            cuvsDatasetPaddedView_t additional_dataset,
-                            cuvsDatasetPaddedView_t extended_dataset,
+                            cuvsDatasetView_t additional_dataset,
+                            cuvsDatasetView_t extended_dataset,
                             cuvsCagraIndex_t index);
 
 /**
@@ -831,7 +831,7 @@ CUVS_EXPORT cuvsError_t cuvsCagraSerializeToHnswlib(cuvsResources_t res,
 CUVS_EXPORT cuvsError_t cuvsCagraDeserializePadded(cuvsResources_t res,
                                                     const char* filename,
                                                     cuvsCagraIndex_t index,
-                                                    cuvsDatasetPadded_t* out_padded_dataset);
+                                                    cuvsDataset_t* out_padded_dataset);
 
 /**
  * Load standard-layout index from file.
@@ -846,7 +846,7 @@ CUVS_EXPORT cuvsError_t cuvsCagraDeserializePadded(cuvsResources_t res,
 CUVS_EXPORT cuvsError_t cuvsCagraDeserializeStandard(cuvsResources_t res,
                                                      const char* filename,
                                                      cuvsCagraIndex_t index,
-                                                     cuvsDatasetStandard_t* out_standard_dataset);
+                                                     cuvsDataset_t* out_standard_dataset);
 
 /**
  * Load index from a dataset and graph
