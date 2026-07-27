@@ -63,11 +63,11 @@ cuvsError_t build_from_tensor(cuvsResources_t res,
   bool const is_padded   = layout == CUVS_DATASET_LAYOUT_PADDED;
   cuvsDatasetView_t view = nullptr;
   if (mem_type == CUVS_DATASET_MEM_TYPE_DEVICE) {
-    status = is_padded ? cuvsDatasetMakeDevicePaddedView(res, tensor, &view)
-                       : cuvsDatasetMakeDeviceStandardView(res, tensor, &view);
+    status = is_padded ? cuvsDatasetDevicePaddedViewMake(res, tensor, &view)
+                       : cuvsDatasetDeviceStandardViewMake(res, tensor, &view);
   } else {
-    status = is_padded ? cuvsDatasetMakeHostPaddedView(res, tensor, &view)
-                       : cuvsDatasetMakeHostStandardView(res, tensor, &view);
+    status = is_padded ? cuvsDatasetHostPaddedViewMake(res, tensor, &view)
+                       : cuvsDatasetHostStandardViewMake(res, tensor, &view);
   }
   if (status != CUVS_SUCCESS) { return status; }
 
@@ -217,7 +217,7 @@ TEST(CagraC, UpdateHostPadded)
   host_tensor.dl_tensor.shape              = dataset_shape;
 
   cuvsDatasetView_t host_view = nullptr;
-  ASSERT_EQ(cuvsDatasetMakeHostPaddedView(res, &host_tensor, &host_view), CUVS_SUCCESS);
+  ASSERT_EQ(cuvsDatasetHostPaddedViewMake(res, &host_tensor, &host_view), CUVS_SUCCESS);
   cuvsCagraIndexParams_t build_params;
   cuvsCagraIndexParamsCreate(&build_params);
   cuvsCagraIndex_t index;
@@ -230,7 +230,7 @@ TEST(CagraC, UpdateHostPadded)
   device_tensor.dl_tensor.data               = device_dataset.data();
   device_tensor.dl_tensor.device.device_type = kDLCUDA;
   cuvsDatasetView_t device_view         = nullptr;
-  ASSERT_EQ(cuvsDatasetMakeDevicePaddedView(res, &device_tensor, &device_view), CUVS_SUCCESS);
+  ASSERT_EQ(cuvsDatasetDevicePaddedViewMake(res, &device_tensor, &device_view), CUVS_SUCCESS);
   ASSERT_EQ(cuvsCagraUpdateDataset(res, device_view, index), CUVS_SUCCESS);
 
   cuvsDatasetViewDestroy(device_view);

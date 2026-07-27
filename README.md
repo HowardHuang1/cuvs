@@ -133,7 +133,7 @@ cuvsCagraIndexParamsCreate(&index_params);
 cuvsCagraIndexCreate(&index);
 
 cuvsDatasetView_t dataset_view;
-cuvsDatasetMakeDeviceStandardView(res, dataset, &dataset_view);
+cuvsDatasetDeviceStandardViewMake(res, dataset, &dataset_view);
 
 cuvsCagraBuild(res, index_params, dataset_view, index);
 

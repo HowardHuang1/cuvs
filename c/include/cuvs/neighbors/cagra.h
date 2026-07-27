@@ -630,7 +630,7 @@ CUVS_EXPORT cuvsError_t cuvsCagraGetDatasetMemTypeAndLayout(DLManagedTensor* dat
  *
  * // Wrap it in a dataset view handle
  * cuvsDatasetView_t dataset_view;
- * cuvsError_t view_create_status = cuvsDatasetMakeDevicePaddedView(res, &dataset, &dataset_view);
+ * cuvsError_t view_create_status = cuvsDatasetDevicePaddedViewMake(res, &dataset, &dataset_view);
  *
  * // Create default index params
  * cuvsCagraIndexParams_t params;
