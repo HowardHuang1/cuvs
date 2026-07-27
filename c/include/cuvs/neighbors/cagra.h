@@ -567,10 +567,9 @@ CUVS_EXPORT cuvsError_t cuvsCagraIndexGetGraph(cuvsCagraIndex_t index, DLManaged
  * device-padded index. Caller retains ownership of
  * \p device_padded_dataset and must keep it alive while \p index uses it.
  *
- * @param[in] res                    cuvsResources_t opaque C handle
- * @param[in] device_padded_dataset  replacement device-padded dataset view
- * handle
- * @param[in,out] index              CAGRA index handle of any layout
+ * @param[in] res             cuvsResources_t opaque C handle
+ * @param[in] padded_dataset  padded dataset view handle created by \ref cuvsDatasetPaddedViewMake
+ * @param[inout] index        CAGRA index handle
  * @return cuvsError_t
  */
 CUVS_EXPORT cuvsError_t cuvsCagraUpdateDataset(cuvsResources_t res,

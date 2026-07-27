@@ -165,27 +165,27 @@ cdef extern from "cuvs/neighbors/cagra.h" nogil:
     ctypedef cuvsDatasetView cuvsDatasetStandardView
     ctypedef cuvsDatasetStandardView* cuvsDatasetStandardView_t
 
-    cuvsError_t cuvsDatasetMakeDevicePadded(cuvsResources_t res,
+    cuvsError_t cuvsDatasetDevicePaddedMake(cuvsResources_t res,
                                             DLManagedTensor* dataset,
                                             cuvsDatasetPadded_t* padded_dataset)
     cuvsError_t cuvsDatasetPaddedDestroy(cuvsDatasetPadded_t padded_dataset)
     cuvsError_t cuvsDatasetStandardDestroy(cuvsDatasetStandard_t standard_dataset)
-    cuvsError_t cuvsDatasetMakeViewFromOwningPadded(
+    cuvsError_t cuvsDatasetViewFromOwningPaddedMake(
         cuvsDatasetPadded_t padded_dataset,
         cuvsDatasetPaddedView_t* padded_view)
 
-    cuvsError_t cuvsDatasetMakeDevicePaddedView(cuvsResources_t res,
+    cuvsError_t cuvsDatasetDevicePaddedViewMake(cuvsResources_t res,
                                                 DLManagedTensor* dataset,
                                                 cuvsDatasetPaddedView_t* padded_dataset)
-    cuvsError_t cuvsDatasetMakeHostPaddedView(cuvsResources_t res,
+    cuvsError_t cuvsDatasetHostPaddedViewMake(cuvsResources_t res,
                                               DLManagedTensor* dataset,
                                               cuvsDatasetPaddedView_t* padded_dataset)
     cuvsError_t cuvsDatasetPaddedViewDestroy(cuvsDatasetPaddedView_t padded_dataset)
 
-    cuvsError_t cuvsDatasetMakeDeviceStandardView(cuvsResources_t res,
+    cuvsError_t cuvsDatasetDeviceStandardViewMake(cuvsResources_t res,
                                                   DLManagedTensor* dataset,
                                                   cuvsDatasetStandardView_t* standard_dataset)
-    cuvsError_t cuvsDatasetMakeHostStandardView(cuvsResources_t res,
+    cuvsError_t cuvsDatasetHostStandardViewMake(cuvsResources_t res,
                                                 DLManagedTensor* dataset,
                                                 cuvsDatasetStandardView_t* standard_dataset)
     cuvsError_t cuvsDatasetStandardViewDestroy(cuvsDatasetStandardView_t standard_dataset)

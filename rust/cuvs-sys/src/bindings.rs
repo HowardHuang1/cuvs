@@ -416,7 +416,7 @@ pub type cuvsDatasetStorage_t = *mut cuvsDatasetStorage;
 pub type cuvsCagraIndex_t = *mut cuvsCagraIndex;
 unsafe extern "C" {
     #[must_use]
-    pub fn cuvsDatasetMakeDevicePadded(
+    pub fn cuvsDatasetDevicePaddedMake(
         res: cuvsResources_t,
         dataset: *mut DLManagedTensor,
         padded_dataset: *mut cuvsDatasetPadded_t,
@@ -424,7 +424,7 @@ unsafe extern "C" {
 }
 unsafe extern "C" {
     #[must_use]
-    pub fn cuvsDatasetMakeHostPadded(
+    pub fn cuvsDatasetHostPaddedMake(
         res: cuvsResources_t,
         dataset: *mut DLManagedTensor,
         padded_dataset: *mut cuvsDatasetPadded_t,
@@ -432,7 +432,7 @@ unsafe extern "C" {
 }
 unsafe extern "C" {
     #[must_use]
-    pub fn cuvsDatasetMakeDevicePaddedView(
+    pub fn cuvsDatasetDevicePaddedViewMake(
         res: cuvsResources_t,
         dataset: *mut DLManagedTensor,
         padded_dataset: *mut cuvsDatasetPaddedView_t,
@@ -440,14 +440,14 @@ unsafe extern "C" {
 }
 unsafe extern "C" {
     #[must_use]
-    pub fn cuvsDatasetMakeViewFromOwningPadded(
+    pub fn cuvsDatasetViewFromOwningPaddedMake(
         padded_dataset: cuvsDatasetPadded_t,
         padded_view: *mut cuvsDatasetPaddedView_t,
     ) -> cuvsError_t;
 }
 unsafe extern "C" {
     #[must_use]
-    pub fn cuvsDatasetMakeHostPaddedView(
+    pub fn cuvsDatasetHostPaddedViewMake(
         res: cuvsResources_t,
         dataset: *mut DLManagedTensor,
         padded_dataset: *mut cuvsDatasetPaddedView_t,
@@ -467,7 +467,7 @@ unsafe extern "C" {
 }
 unsafe extern "C" {
     #[must_use]
-    pub fn cuvsDatasetMakeDeviceStandardView(
+    pub fn cuvsDatasetDeviceStandardViewMake(
         res: cuvsResources_t,
         dataset: *mut DLManagedTensor,
         standard_dataset: *mut cuvsDatasetStandardView_t,
@@ -475,7 +475,7 @@ unsafe extern "C" {
 }
 unsafe extern "C" {
     #[must_use]
-    pub fn cuvsDatasetMakeHostStandardView(
+    pub fn cuvsDatasetHostStandardViewMake(
         res: cuvsResources_t,
         dataset: *mut DLManagedTensor,
         standard_dataset: *mut cuvsDatasetStandardView_t,
@@ -489,7 +489,7 @@ unsafe extern "C" {
 }
 unsafe extern "C" {
     #[must_use]
-    pub fn cuvsMakeMergedStorage(
+    pub fn cuvsMergedStorageMake(
         res: cuvsResources_t,
         indices: *mut cuvsCagraIndex_t,
         num_indices: usize,

@@ -54,22 +54,10 @@ TEST(CagraHnswC, BuildSearch)
   // build index
   cuvsCagraIndexParams_t build_params;
   cuvsCagraIndexParamsCreate(&build_params);
-  cuvsDatasetMemType_t mem_type;
-  cuvsDatasetLayout_t layout;
-  cuvsCagraGetDatasetMemTypeAndLayout(&dataset_tensor, &mem_type, &layout);
-  bool const is_padded           = layout == CUVS_DATASET_LAYOUT_PADDED;
-  cuvsDatasetView_t dataset_view = nullptr;
-  if (is_padded) {
-    cuvsDatasetMakeHostPaddedView(res, &dataset_tensor, &dataset_view);
-  } else {
-    cuvsDatasetMakeHostStandardView(res, &dataset_tensor, &dataset_view);
-  }
-  cuvsCagraBuild(res, build_params, dataset_view, index);
-  if (is_padded) {
-    cuvsDatasetPaddedViewDestroy(dataset_view);
-  } else {
-    cuvsDatasetStandardViewDestroy(dataset_view);
-  }
+  cuvsDatasetStandardView_t dataset_view;
+  cuvsDatasetHostStandardViewMake(res, &dataset_tensor, &dataset_view);
+  cuvsCagraBuildHostStandard(res, build_params, dataset_view, index);
+  cuvsDatasetStandardViewDestroy(dataset_view);
   cuvsCagraSerializeToHnswlib(res, "/tmp/cagra_hnswlib.index", index);
 
   DLManagedTensor queries_tensor;

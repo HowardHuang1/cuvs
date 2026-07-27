@@ -53,14 +53,9 @@ void cagra_build_search_simple()
   cuvsCagraIndex_t index;
   CHECK_CUVS(cuvsCagraIndexCreate(&index));
 
-  // Wrap the dataset in the view handle `cuvsCagraBuild` takes. `dataset` is compact and in host
-  // memory, so a host standard view describes it.
-  cuvsDatasetView_t dataset_view;
-  CHECK_CUVS(cuvsDatasetMakeHostStandardView(res, &dataset_tensor, &dataset_view));
-
-  CHECK_CUVS(cuvsCagraBuild(res, index_params, dataset_view, index));
-
-  CHECK_CUVS(cuvsDatasetStandardViewDestroy(dataset_view));
+  cuvsDatasetStandardView_t host_dataset_view = NULL;
+  CHECK_CUVS(cuvsDatasetHostStandardViewMake(res, &dataset_tensor, &host_dataset_view));
+  CHECK_CUVS(cuvsCagraBuildHostStandard(res, index_params, host_dataset_view, index));
 
   // Allocate memory for `queries`, `neighbors` and `distances` output
   uint32_t* neighbors;
@@ -113,11 +108,14 @@ void cagra_build_search_simple()
   device_dataset_tensor.dl_tensor.data               = dataset_d;
   device_dataset_tensor.dl_tensor.device.device_type = kDLCUDA;
   device_dataset_tensor.dl_tensor.device.device_id   = 0;
-  cuvsDatasetPadded_t padded_owner                   = NULL;
-  CHECK_CUVS(cuvsDatasetMakeDevicePadded(res, &device_dataset_tensor, &padded_owner));
+  cuvsDatasetStandardView_t device_dataset_view      = NULL;
+  CHECK_CUVS(cuvsDatasetDeviceStandardViewMake(res, &device_dataset_tensor, &device_dataset_view));
+  CHECK_CUVS(cuvsCagraAttachDeviceStandardDatasetOnHostIndex(res, device_dataset_view, index));
+  cuvsDatasetPadded_t padded_owner = NULL;
+  CHECK_CUVS(cuvsDatasetDevicePaddedMake(res, &device_dataset_tensor, &padded_owner));
   cuvsDatasetPaddedView_t padded_view = NULL;
-  CHECK_CUVS(cuvsDatasetMakeViewFromOwningPadded(padded_owner, &padded_view));
-  CHECK_CUVS(cuvsCagraUpdateDataset(res, padded_view, index));
+  CHECK_CUVS(cuvsDatasetViewFromOwningPaddedMake(padded_owner, &padded_view));
+  CHECK_CUVS(cuvsCagraAttachPaddedDatasetForSearch(res, padded_view, index));
 
   // Search the CAGRA index
   cuvsCagraSearchParams_t search_params;

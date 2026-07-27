@@ -70,13 +70,13 @@ impl PaddedDataset {
             let device_type = dataset_c.inner.dl_tensor.device.device_type;
             let mut padded = std::mem::MaybeUninit::<ffi::cuvsDatasetPadded_t>::uninit();
             if is_device_compatible(device_type) {
-                check_cuvs(ffi::cuvsDatasetMakeDevicePadded(
+                check_cuvs(ffi::cuvsDatasetDevicePaddedMake(
                     res.handle(),
                     dataset_c.as_mut_ptr(),
                     padded.as_mut_ptr(),
                 ))?;
             } else if is_host_compatible(device_type) {
-                check_cuvs(ffi::cuvsDatasetMakeHostPadded(
+                check_cuvs(ffi::cuvsDatasetHostPaddedMake(
                     res.handle(),
                     dataset_c.as_mut_ptr(),
                     padded.as_mut_ptr(),
@@ -103,13 +103,13 @@ impl PaddedDatasetView {
             let device_type = dataset_c.inner.dl_tensor.device.device_type;
             let mut padded = std::mem::MaybeUninit::<ffi::cuvsDatasetPaddedView_t>::uninit();
             if is_device_compatible(device_type) {
-                check_cuvs(ffi::cuvsDatasetMakeDevicePaddedView(
+                check_cuvs(ffi::cuvsDatasetDevicePaddedViewMake(
                     res.handle(),
                     dataset_c.as_mut_ptr(),
                     padded.as_mut_ptr(),
                 ))?;
             } else if is_host_compatible(device_type) {
-                check_cuvs(ffi::cuvsDatasetMakeHostPaddedView(
+                check_cuvs(ffi::cuvsDatasetHostPaddedViewMake(
                     res.handle(),
                     dataset_c.as_mut_ptr(),
                     padded.as_mut_ptr(),
@@ -149,13 +149,13 @@ impl StandardDatasetView {
             let device_type = dataset_c.inner.dl_tensor.device.device_type;
             let mut standard = std::mem::MaybeUninit::<ffi::cuvsDatasetStandardView_t>::uninit();
             if is_device_compatible(device_type) {
-                check_cuvs(ffi::cuvsDatasetMakeDeviceStandardView(
+                check_cuvs(ffi::cuvsDatasetDeviceStandardViewMake(
                     res.handle(),
                     dataset_c.as_mut_ptr(),
                     standard.as_mut_ptr(),
                 ))?;
             } else if is_host_compatible(device_type) {
-                check_cuvs(ffi::cuvsDatasetMakeHostStandardView(
+                check_cuvs(ffi::cuvsDatasetHostStandardViewMake(
                     res.handle(),
                     dataset_c.as_mut_ptr(),
                     standard.as_mut_ptr(),
