@@ -56,7 +56,7 @@ TEST(CagraHnswC, BuildSearch)
   cuvsCagraIndexParamsCreate(&build_params);
   cuvsDatasetView_t dataset_view;
   cuvsDatasetHostStandardViewMake(res, &dataset_tensor, &dataset_view);
-  cuvsCagraBuildHostStandard(res, build_params, dataset_view, index);
+  cuvsCagraBuild(res, build_params, dataset_view, index);
   cuvsDatasetViewDestroy(dataset_view);
   cuvsCagraSerializeToHnswlib(res, "/tmp/cagra_hnswlib.index", index);
 

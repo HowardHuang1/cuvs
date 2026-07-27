@@ -369,7 +369,7 @@ int run_mg_cagra_test(mg_test_params params,
   // Create index
   cuvsMultiGpuCagraIndex_t index;
   cuvsMultiGpuCagraIndexCreate(&index);
-  cuvsDatasetPaddedView_t padded_view = NULL;
+  cuvsDatasetView_t padded_view = NULL;
   cuvsMultiGpuCagraSearchParams_t search_params = NULL;
   void* device_dataset_data = NULL;
 
@@ -421,7 +421,7 @@ int run_mg_cagra_test(mg_test_params params,
   device_dataset_tensor.dl_tensor.device.device_type = kDLCUDA;
   device_dataset_tensor.dl_tensor.device.device_id = 0;
   cuvsError_t padded_result =
-    cuvsDatasetMakeDevicePaddedView(res, &device_dataset_tensor, &padded_view);
+    cuvsDatasetDevicePaddedViewMake(res, &device_dataset_tensor, &padded_view);
   if (padded_result != CUVS_SUCCESS) {
     printf("MG CAGRA padded dataset view creation failed\n");
     goto cleanup;
@@ -484,7 +484,7 @@ int run_mg_cagra_test(mg_test_params params,
   printf("MG CAGRA test completed successfully\n");
 
 cleanup:
-  cuvsDatasetPaddedViewDestroy(padded_view);
+  cuvsDatasetViewDestroy(padded_view);
   cudaFree(device_dataset_data);
   cuvsMultiGpuCagraSearchParamsDestroy(search_params);
   cuvsMultiGpuCagraIndexParamsDestroy(build_params);

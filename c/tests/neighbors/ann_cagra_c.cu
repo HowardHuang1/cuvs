@@ -88,11 +88,6 @@ TEST(CagraC, BuildSearch)
   device_dataset_tensor.dl_tensor.data               = dataset_d.data();
   device_dataset_tensor.dl_tensor.device.device_type = kDLCUDA;
   device_dataset_tensor.dl_tensor.device.device_id   = 0;
-  cuvsDatasetView_t device_dataset_view = nullptr;
-  ASSERT_EQ(cuvsDatasetDeviceStandardViewMake(res, &device_dataset_tensor, &device_dataset_view),
-            CUVS_SUCCESS);
-  ASSERT_EQ(cuvsCagraAttachDeviceStandardDatasetOnHostIndex(res, device_dataset_view, index),
-            CUVS_SUCCESS);
   cuvsDataset_t padded_dataset_owner = nullptr;
   ASSERT_EQ(cuvsDatasetDevicePaddedMake(res, &device_dataset_tensor, &padded_dataset_owner),
             CUVS_SUCCESS);
@@ -479,11 +474,6 @@ TEST(CagraC, BuildSearchFiltered)
   device_dataset_tensor.dl_tensor.data               = dataset_d.data();
   device_dataset_tensor.dl_tensor.device.device_type = kDLCUDA;
   device_dataset_tensor.dl_tensor.device.device_id   = 0;
-  cuvsDatasetView_t device_dataset_view = nullptr;
-  ASSERT_EQ(cuvsDatasetDeviceStandardViewMake(res, &device_dataset_tensor, &device_dataset_view),
-            CUVS_SUCCESS);
-  ASSERT_EQ(cuvsCagraAttachDeviceStandardDatasetOnHostIndex(res, device_dataset_view, index),
-            CUVS_SUCCESS);
   cuvsDataset_t padded_dataset_owner = nullptr;
   ASSERT_EQ(cuvsDatasetDevicePaddedMake(res, &device_dataset_tensor, &padded_dataset_owner),
             CUVS_SUCCESS);
@@ -788,11 +778,6 @@ TEST(CagraC, BuildSearchACEMemory)
   device_dataset_tensor.dl_tensor.data               = dataset_d.data();
   device_dataset_tensor.dl_tensor.device.device_type = kDLCUDA;
   device_dataset_tensor.dl_tensor.device.device_id   = 0;
-  cuvsDatasetView_t device_dataset_view = nullptr;
-  ASSERT_EQ(cuvsDatasetDeviceStandardViewMake(res, &device_dataset_tensor, &device_dataset_view),
-            CUVS_SUCCESS);
-  ASSERT_EQ(cuvsCagraAttachDeviceStandardDatasetOnHostIndex(res, device_dataset_view, index),
-            CUVS_SUCCESS);
   cuvsDataset_t padded_dataset_owner = nullptr;
   ASSERT_EQ(cuvsDatasetDevicePaddedMake(res, &device_dataset_tensor, &padded_dataset_owner),
             CUVS_SUCCESS);
@@ -979,7 +964,7 @@ TEST(CagraC, BuildSearchACEDisk)
   ASSERT_TRUE(cuvs::hostVecMatch(distances_exp_disk, distances, cuvs::CompareApprox<float>(0.001f)));
 
   cuvsCagraIndexParamsDestroy(build_params);
-  cuvsDatasetStandardViewDestroy(dataset_view);
+  cuvsDatasetViewDestroy(dataset_view);
   cuvsCagraIndexDestroy(index);
   cuvsHnswSearchParamsDestroy(search_params);
   cuvsHnswIndexParamsDestroy(hnsw_params);
