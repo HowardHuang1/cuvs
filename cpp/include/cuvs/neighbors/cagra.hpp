@@ -4015,14 +4015,14 @@ void distribute(const raft::resources& clique,
  * Usage example:
  * @code{.cpp}
  *   using namespace cuvs::neighbors;
- *   // use default index parameters based on shape of the dataset
- *   ivf_pq::index_params build_params = ivf_pq::index_params::from_dataset(dataset);
- *   ivf_pq::search_params search_params;
- *   auto knn_graph      = raft::make_host_matrix<IdxT, IdxT>(dataset.extent(0), 128);
+ *   // raft::host_matrix_view<const float, int64_t, raft::row_major> dataset;
+ *   auto metric       = cuvs::distance::DistanceType::L2Expanded;
+ *   auto build_params = cagra::graph_build_params::ivf_pq_params(dataset.extents(), metric);
+ *   auto knn_graph = raft::make_host_matrix<uint32_t, int64_t>(dataset.extent(0), 128);
  *   // create knn graph
- *   cagra::build_knn_graph(res, dataset, knn_graph.view(), 2, build_params, search_params);
- *   auto optimized_gaph = raft::make_host_matrix<IdxT, IdxT>(dataset.extent(0), 64);
- *   cagra::optimize(res, dataset, knn_graph.view(), optimized_graph.view());
+ *   cagra::build_knn_graph(res, dataset, knn_graph.view(), build_params);
+ *   auto optimized_graph = raft::make_host_matrix<uint32_t, int64_t>(dataset.extent(0), 64);
+ *   cagra::helpers::optimize(res, knn_graph.view(), optimized_graph.view());
  *   // Construct an index from dataset and optimized knn_graph
  *   auto index = cagra::device_padded_index<T, IdxT>(res, build_params.metric(), dataset,
  *                                      optimized_graph.view());
@@ -4055,14 +4055,14 @@ void build_knn_graph(raft::resources const& res,
  * Usage example:
  * @code{.cpp}
  *   using namespace cuvs::neighbors;
- *   // use default index parameters based on shape of the dataset
- *   ivf_pq::index_params build_params = ivf_pq::index_params::from_dataset(dataset);
- *   ivf_pq::search_params search_params;
- *   auto knn_graph      = raft::make_host_matrix<IdxT, IdxT>(dataset.extent(0), 128);
+ *   // raft::host_matrix_view<const half, int64_t, raft::row_major> dataset;
+ *   auto metric       = cuvs::distance::DistanceType::L2Expanded;
+ *   auto build_params = cagra::graph_build_params::ivf_pq_params(dataset.extents(), metric);
+ *   auto knn_graph = raft::make_host_matrix<uint32_t, int64_t>(dataset.extent(0), 128);
  *   // create knn graph
- *   cagra::build_knn_graph(res, dataset, knn_graph.view(), 2, build_params, search_params);
- *   auto optimized_gaph = raft::make_host_matrix<IdxT, IdxT>(dataset.extent(0), 64);
- *   cagra::optimize(res, dataset, knn_graph.view(), optimized_graph.view());
+ *   cagra::build_knn_graph(res, dataset, knn_graph.view(), build_params);
+ *   auto optimized_graph = raft::make_host_matrix<uint32_t, int64_t>(dataset.extent(0), 64);
+ *   cagra::helpers::optimize(res, knn_graph.view(), optimized_graph.view());
  *   // Construct an index from dataset and optimized knn_graph
  *   auto index = cagra::device_padded_index<T, IdxT>(res, build_params.metric(), dataset,
  *                                      optimized_graph.view());
@@ -4095,14 +4095,14 @@ void build_knn_graph(raft::resources const& res,
  * Usage example:
  * @code{.cpp}
  *   using namespace cuvs::neighbors;
- *   // use default index parameters based on shape of the dataset
- *   ivf_pq::index_params build_params = ivf_pq::index_params::from_dataset(dataset);
- *   ivf_pq::search_params search_params;
- *   auto knn_graph      = raft::make_host_matrix<IdxT, IdxT>(dataset.extent(0), 128);
+ *   // raft::host_matrix_view<const int8_t, int64_t, raft::row_major> dataset;
+ *   auto metric       = cuvs::distance::DistanceType::L2Expanded;
+ *   auto build_params = cagra::graph_build_params::ivf_pq_params(dataset.extents(), metric);
+ *   auto knn_graph = raft::make_host_matrix<uint32_t, int64_t>(dataset.extent(0), 128);
  *   // create knn graph
- *   cagra::build_knn_graph(res, dataset, knn_graph.view(), 2, build_params, search_params);
- *   auto optimized_gaph = raft::make_host_matrix<IdxT, IdxT>(dataset.extent(0), 64);
- *   cagra::optimize(res, dataset, knn_graph.view(), optimized_graph.view());
+ *   cagra::build_knn_graph(res, dataset, knn_graph.view(), build_params);
+ *   auto optimized_graph = raft::make_host_matrix<uint32_t, int64_t>(dataset.extent(0), 64);
+ *   cagra::helpers::optimize(res, knn_graph.view(), optimized_graph.view());
  *   // Construct an index from dataset and optimized knn_graph
  *   auto index = cagra::device_padded_index<T, IdxT>(res, build_params.metric(), dataset,
  *                                      optimized_graph.view());
@@ -4135,14 +4135,14 @@ void build_knn_graph(raft::resources const& res,
  * Usage example:
  * @code{.cpp}
  *   using namespace cuvs::neighbors;
- *   // use default index parameters based on shape of the dataset
- *   ivf_pq::index_params build_params = ivf_pq::index_params::from_dataset(dataset);
- *   ivf_pq::search_params search_params;
- *   auto knn_graph      = raft::make_host_matrix<IdxT, IdxT>(dataset.extent(0), 128);
+ *   // raft::host_matrix_view<const uint8_t, int64_t, raft::row_major> dataset;
+ *   auto metric       = cuvs::distance::DistanceType::L2Expanded;
+ *   auto build_params = cagra::graph_build_params::ivf_pq_params(dataset.extents(), metric);
+ *   auto knn_graph = raft::make_host_matrix<uint32_t, int64_t>(dataset.extent(0), 128);
  *   // create knn graph
- *   cagra::build_knn_graph(res, dataset, knn_graph.view(), 2, build_params, search_params);
- *   auto optimized_gaph = raft::make_host_matrix<IdxT, IdxT>(dataset.extent(0), 64);
- *   cagra::optimize(res, dataset, knn_graph.view(), optimized_graph.view());
+ *   cagra::build_knn_graph(res, dataset, knn_graph.view(), build_params);
+ *   auto optimized_graph = raft::make_host_matrix<uint32_t, int64_t>(dataset.extent(0), 64);
+ *   cagra::helpers::optimize(res, knn_graph.view(), optimized_graph.view());
  *   // Construct an index from dataset and optimized knn_graph
  *   auto index = cagra::device_padded_index<T, IdxT>(res, build_params.metric(), dataset,
  *                                      optimized_graph.view());

@@ -979,6 +979,7 @@ TEST(CagraC, BuildSearchACEDisk)
   ASSERT_TRUE(cuvs::hostVecMatch(distances_exp_disk, distances, cuvs::CompareApprox<float>(0.001f)));
 
   cuvsCagraIndexParamsDestroy(build_params);
+  cuvsDatasetStandardViewDestroy(dataset_view);
   cuvsCagraIndexDestroy(index);
   cuvsHnswSearchParamsDestroy(search_params);
   cuvsHnswIndexParamsDestroy(hnsw_params);
