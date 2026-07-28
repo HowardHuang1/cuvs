@@ -5,6 +5,48 @@
 
 #include <neighbors/mg/snmg.cuh>
 
+namespace cuvs::neighbors::cagra::detail {
+
+template <typename T, typename IdxT, typename AnnIndexT, typename RankUpdate>
+void distribute_padded_dataset(
+  const raft::resources& res,
+  const cuvs::neighbors::mg_index<AnnIndexT, T, IdxT>& idx,
+  cuvs::neighbors::device_padded_dataset_view<T, int64_t> const& padded_dataset,
+  RankUpdate&& rank_update)
+{
+  auto padded_mds                 = padded_dataset.view();
+  auto stride                     = padded_mds.extent(1);
+  const raft::resources& root_res = raft::resource::set_current_device_to_root_rank(res);
+  auto padded_host =
+    raft::make_host_matrix<T, int64_t, raft::row_major>(padded_mds.extent(0), padded_mds.extent(1));
+  raft::copy(padded_host.data_handle(),
+             padded_mds.data_handle(),
+             padded_mds.size(),
+             raft::resource::get_cuda_stream(root_res));
+  raft::resource::sync_stream(root_res);
+
+  int64_t offset = 0;
+  for (int rank = 0; rank < idx.num_ranks_; rank++) {
+    const raft::resources& dev_res = raft::resource::set_current_device_to_rank(res, rank);
+    const auto& ann_if             = idx.ann_interfaces_[rank];
+    RAFT_EXPECTS(ann_if.index_.has_value(), "MG CAGRA dataset distribution: missing rank index");
+    int64_t rank_rows   = static_cast<int64_t>(ann_if.index_.value().size());
+    int64_t rank_offset = (idx.mode_ == cuvs::neighbors::SHARDED) ? offset : 0;
+    const T* rank_ptr   = padded_host.data_handle() + rank_offset * stride;
+    auto rank_host_mds =
+      raft::make_host_matrix_view<const T, int64_t, raft::row_major>(rank_ptr, rank_rows, stride);
+    auto rank_device_matrix =
+      raft::make_device_matrix<T, int64_t, raft::row_major>(dev_res, rank_rows, stride);
+    raft::copy(dev_res, rank_device_matrix.view(), rank_host_mds);
+    auto rank_device_padded = std::make_unique<cuvs::neighbors::device_padded_dataset<T, int64_t>>(
+      std::move(rank_device_matrix), padded_dataset.dim());
+    rank_update(dev_res, rank, std::move(rank_device_padded));
+    if (idx.mode_ == cuvs::neighbors::SHARDED) { offset += rank_rows; }
+  }
+}
+
+}  // namespace cuvs::neighbors::cagra::detail
+
 #define CUVS_INST_MG_CAGRA(T, IdxT)                                                               \
   namespace cuvs::neighbors::cagra {                                                              \
   using namespace cuvs::neighbors;                                                                \
@@ -46,41 +88,16 @@
   {                                                                                               \
     cuvs::neighbors::mg_index<cagra::device_padded_index<T, IdxT>, T, IdxT> out(res, idx.mode_);  \
     out.ann_interfaces_.resize(idx.num_ranks_);                                                   \
-    auto padded_mds                 = padded_dataset.view();                                      \
-    auto stride                     = padded_mds.extent(1);                                       \
-    const raft::resources& root_res = raft::resource::set_current_device_to_root_rank(res);       \
-    auto padded_host =                                                                            \
-      raft::make_host_matrix<T, int64_t, row_major>(padded_mds.extent(0), padded_mds.extent(1));  \
-    raft::copy(padded_host.data_handle(),                                                         \
-               padded_mds.data_handle(),                                                          \
-               padded_mds.size(),                                                                 \
-               raft::resource::get_cuda_stream(root_res));                                        \
-    raft::resource::sync_stream(root_res);                                                        \
-    int64_t offset = 0;                                                                           \
-    for (int rank = 0; rank < idx.num_ranks_; rank++) {                                           \
-      const raft::resources& dev_res = raft::resource::set_current_device_to_rank(res, rank);     \
-      const auto& in_if              = idx.ann_interfaces_[rank];                                 \
-      auto& out_if                   = out.ann_interfaces_[rank];                                 \
-      RAFT_EXPECTS(in_if.index_.has_value(), "attach_dataset: missing rank index");               \
-      auto const& standard_idx = in_if.index_.value();                                            \
-      int64_t rank_rows        = static_cast<int64_t>(standard_idx.size());                       \
-      int64_t rank_offset      = (idx.mode_ == SHARDED) ? offset : 0;                             \
-      const T* rank_ptr        = padded_host.data_handle() + rank_offset * stride;                \
-      auto rank_host_mds =                                                                        \
-        raft::make_host_matrix_view<const T, int64_t, row_major>(rank_ptr, rank_rows, stride);    \
-      auto rank_device_matrix =                                                                   \
-        raft::make_device_matrix<T, int64_t, row_major>(dev_res, rank_rows, stride);              \
-      raft::copy(dev_res, rank_device_matrix.view(), rank_host_mds);                              \
-      auto rank_device_padded =                                                                   \
-        std::make_unique<cuvs::neighbors::device_padded_dataset<T, int64_t>>(                     \
-          std::move(rank_device_matrix), padded_dataset.dim());                                   \
-      auto padded_idx = cuvs::neighbors::cagra::attach_dataset(                                   \
-        dev_res, standard_idx, rank_device_padded->as_dataset_view());                            \
-      out_if.cagra_owned_padded_dataset_ = std::move(rank_device_padded);                         \
-      out_if.cagra_owned_standard_dataset_.reset();                                               \
-      out_if.index_.emplace(std::move(padded_idx));                                               \
-      if (idx.mode_ == SHARDED) { offset += rank_rows; }                                          \
-    }                                                                                             \
+    detail::distribute_padded_dataset(                                                            \
+      res, idx, padded_dataset, [&](const raft::resources& dev_res, int rank, auto dataset) {     \
+        const auto& in_if = idx.ann_interfaces_[rank];                                            \
+        auto& out_if      = out.ann_interfaces_[rank];                                            \
+        auto padded_idx   = cuvs::neighbors::cagra::attach_dataset(                               \
+          dev_res, in_if.index_.value(), dataset->as_dataset_view());                           \
+        out_if.cagra_owned_padded_dataset_ = std::move(dataset);                                  \
+        out_if.cagra_owned_standard_dataset_.reset();                                             \
+        out_if.index_.emplace(std::move(padded_idx));                                             \
+      });                                                                                         \
     return out;                                                                                   \
   }                                                                                               \
                                                                                                   \
@@ -89,40 +106,14 @@
     cuvs::neighbors::mg_index<cagra::device_padded_index<T, IdxT>, T, IdxT>& idx,                 \
     cuvs::neighbors::device_padded_dataset_view<T, int64_t> const& padded_dataset)                \
   {                                                                                               \
-    auto padded_mds                 = padded_dataset.view();                                      \
-    auto stride                     = padded_mds.extent(1);                                       \
-    const raft::resources& root_res = raft::resource::set_current_device_to_root_rank(res);       \
-    auto padded_host =                                                                            \
-      raft::make_host_matrix<T, int64_t, row_major>(padded_mds.extent(0), padded_mds.extent(1));  \
-    raft::copy(padded_host.data_handle(),                                                         \
-               padded_mds.data_handle(),                                                          \
-               padded_mds.size(),                                                                 \
-               raft::resource::get_cuda_stream(root_res));                                        \
-    raft::resource::sync_stream(root_res);                                                        \
-    int64_t offset = 0;                                                                           \
-    for (int rank = 0; rank < idx.num_ranks_; rank++) {                                           \
-      const raft::resources& dev_res = raft::resource::set_current_device_to_rank(res, rank);     \
-      auto& ann_if                   = idx.ann_interfaces_[rank];                                 \
-      RAFT_EXPECTS(ann_if.index_.has_value(),                                                     \
-                   "update_device_dataset_same_layout: missing rank index");                      \
-      auto& padded_idx    = ann_if.index_.value();                                                \
-      int64_t rank_rows   = static_cast<int64_t>(padded_idx.size());                              \
-      int64_t rank_offset = (idx.mode_ == SHARDED) ? offset : 0;                                  \
-      const T* rank_ptr   = padded_host.data_handle() + rank_offset * stride;                     \
-      auto rank_host_mds =                                                                        \
-        raft::make_host_matrix_view<const T, int64_t, row_major>(rank_ptr, rank_rows, stride);    \
-      auto rank_device_matrix =                                                                   \
-        raft::make_device_matrix<T, int64_t, row_major>(dev_res, rank_rows, stride);              \
-      raft::copy(dev_res, rank_device_matrix.view(), rank_host_mds);                              \
-      auto rank_device_padded =                                                                   \
-        std::make_unique<cuvs::neighbors::device_padded_dataset<T, int64_t>>(                     \
-          std::move(rank_device_matrix), padded_dataset.dim());                                   \
-      padded_idx.update_device_dataset_same_layout(dev_res,                                       \
-                                                   rank_device_padded->as_dataset_view());        \
-      ann_if.cagra_owned_padded_dataset_ = std::move(rank_device_padded);                         \
-      ann_if.cagra_owned_standard_dataset_.reset();                                               \
-      if (idx.mode_ == SHARDED) { offset += rank_rows; }                                          \
-    }                                                                                             \
+    detail::distribute_padded_dataset(                                                            \
+      res, idx, padded_dataset, [&](const raft::resources& dev_res, int rank, auto dataset) {     \
+        auto& ann_if     = idx.ann_interfaces_[rank];                                             \
+        auto& padded_idx = ann_if.index_.value();                                                 \
+        padded_idx.update_device_dataset_same_layout(dev_res, dataset->as_dataset_view());        \
+        ann_if.cagra_owned_padded_dataset_ = std::move(dataset);                                  \
+        ann_if.cagra_owned_standard_dataset_.reset();                                             \
+      });                                                                                         \
   }                                                                                               \
                                                                                                   \
   void extend(const raft::resources& res,                                                         \
