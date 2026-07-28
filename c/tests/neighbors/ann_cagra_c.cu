@@ -79,6 +79,7 @@ TEST(CagraC, BuildSearch)
   cuvsDatasetView_t dataset_view = nullptr;
   ASSERT_EQ(cuvsDatasetHostStandardViewMake(res, &dataset_tensor, &dataset_view), CUVS_SUCCESS);
   ASSERT_EQ(cuvsCagraBuild(res, build_params, dataset_view, index), CUVS_SUCCESS);
+  EXPECT_EQ(cuvsCagraUpdateDataset(res, dataset_view, index), CUVS_ERROR);
 
   // Host build yields a host index. Attach a caller-provided device padded dataset
   // to produce a search-ready device padded index.
@@ -160,6 +161,7 @@ TEST(CagraC, BuildSearch)
   // de-allocate index and res
   cuvsCagraSearchParamsDestroy(search_params);
   cuvsDatasetViewDestroy(padded_dataset_view);
+  cuvsDatasetViewDestroy(dataset_view);
   cuvsDatasetDestroy(padded_dataset_owner);
   cuvsCagraIndexParamsDestroy(build_params);
   cuvsCagraIndexDestroy(index);
@@ -427,6 +429,7 @@ TEST(CagraC, BuildExtendSearch)
 
   // de-allocate index and res
   cuvsCagraSearchParamsDestroy(search_params);
+  cuvsDatasetViewDestroy(dataset_view);
   cuvsDatasetViewDestroy(additional_padded_dataset_view);
   cuvsDatasetViewDestroy(extended_dataset_view);
   cuvsCagraExtendParamsDestroy(extend_params);
@@ -560,6 +563,7 @@ TEST(CagraC, BuildSearchFiltered)
   // de-allocate index and res
   cuvsCagraSearchParamsDestroy(search_params);
   cuvsDatasetViewDestroy(padded_dataset_view);
+  cuvsDatasetViewDestroy(dataset_view);
   cuvsDatasetDestroy(padded_dataset_owner);
   cuvsCagraIndexParamsDestroy(build_params);
   cuvsCagraIndexDestroy(index);
@@ -631,6 +635,7 @@ TEST(CagraC, BuildMergeSearch)
   ASSERT_EQ(cuvsCagraBuild(
               res, build_params, additional_dataset_view, index_add),
             CUVS_SUCCESS);
+  EXPECT_EQ(cuvsCagraUpdateDataset(res, main_dataset_view, index_main), CUVS_ERROR);
 
   cuvsCagraIndex_t index_merged;
   cuvsCagraIndexCreate(&index_merged);
@@ -721,6 +726,8 @@ TEST(CagraC, BuildMergeSearch)
 
   cuvsCagraSearchParamsDestroy(search_params);
   cuvsDatasetViewDestroy(padded_dataset);
+  cuvsDatasetViewDestroy(additional_dataset_view);
+  cuvsDatasetViewDestroy(main_dataset_view);
   cuvsDatasetDestroy(padded_dataset_owner);
   cuvsDatasetStorageDestroy(merged_dataset);
   cuvsCagraIndexParamsDestroy(build_params);
@@ -849,6 +856,7 @@ TEST(CagraC, BuildSearchACEMemory)
   // de-allocate index and res
   cuvsCagraSearchParamsDestroy(search_params);
   cuvsDatasetViewDestroy(padded_dataset_view);
+  cuvsDatasetViewDestroy(dataset_view);
   cuvsDatasetDestroy(padded_dataset_owner);
   cuvsCagraIndexParamsDestroy(build_params);
   cuvsCagraIndexDestroy(index);

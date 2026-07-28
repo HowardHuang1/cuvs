@@ -3296,7 +3296,8 @@ auto build(const raft::resources& clique,
  * @brief Convert a standard MG CAGRA index into a padded MG CAGRA index for search.
  *
  * This API enforces the explicit contract: users build/deserialize/distribute a standard index,
- * then attach a padded dataset before calling `search`.
+ * then attach a padded dataset before calling `search`. A new index is returned because standard
+ * and padded MG indexes have different C++ types.
  */
 auto attach_dataset(
   const raft::resources& clique,
@@ -4047,8 +4048,9 @@ void distribute(const raft::resources& clique,
  *   auto optimized_graph = raft::make_host_matrix<uint32_t, int64_t>(dataset.extent(0), 64);
  *   cagra::helpers::optimize(res, knn_graph.view(), optimized_graph.view());
  *   // Construct an index from dataset and optimized knn_graph
- *   auto index = cagra::device_padded_index<T, IdxT>(res, build_params.metric(), dataset,
- *                                      optimized_graph.view());
+ *   auto dataset_view = make_host_standard_dataset_view(dataset);
+ *   auto index = cagra::host_standard_index<float, uint32_t>(
+ *     res, metric, dataset_view, raft::make_const_mdspan(optimized_graph.view()));
  * @endcode
  *
  * @param[in] res raft resources
@@ -4087,8 +4089,9 @@ void build_knn_graph(raft::resources const& res,
  *   auto optimized_graph = raft::make_host_matrix<uint32_t, int64_t>(dataset.extent(0), 64);
  *   cagra::helpers::optimize(res, knn_graph.view(), optimized_graph.view());
  *   // Construct an index from dataset and optimized knn_graph
- *   auto index = cagra::device_padded_index<T, IdxT>(res, build_params.metric(), dataset,
- *                                      optimized_graph.view());
+ *   auto dataset_view = make_host_standard_dataset_view(dataset);
+ *   auto index = cagra::host_standard_index<half, uint32_t>(
+ *     res, metric, dataset_view, raft::make_const_mdspan(optimized_graph.view()));
  * @endcode
  *
  * @param[in] res raft resources
@@ -4127,8 +4130,9 @@ void build_knn_graph(raft::resources const& res,
  *   auto optimized_graph = raft::make_host_matrix<uint32_t, int64_t>(dataset.extent(0), 64);
  *   cagra::helpers::optimize(res, knn_graph.view(), optimized_graph.view());
  *   // Construct an index from dataset and optimized knn_graph
- *   auto index = cagra::device_padded_index<T, IdxT>(res, build_params.metric(), dataset,
- *                                      optimized_graph.view());
+ *   auto dataset_view = make_host_standard_dataset_view(dataset);
+ *   auto index = cagra::host_standard_index<int8_t, uint32_t>(
+ *     res, metric, dataset_view, raft::make_const_mdspan(optimized_graph.view()));
  * @endcode
  *
  * @param[in] res raft resources
@@ -4167,8 +4171,9 @@ void build_knn_graph(raft::resources const& res,
  *   auto optimized_graph = raft::make_host_matrix<uint32_t, int64_t>(dataset.extent(0), 64);
  *   cagra::helpers::optimize(res, knn_graph.view(), optimized_graph.view());
  *   // Construct an index from dataset and optimized knn_graph
- *   auto index = cagra::device_padded_index<T, IdxT>(res, build_params.metric(), dataset,
- *                                      optimized_graph.view());
+ *   auto dataset_view = make_host_standard_dataset_view(dataset);
+ *   auto index = cagra::host_standard_index<uint8_t, uint32_t>(
+ *     res, metric, dataset_view, raft::make_const_mdspan(optimized_graph.view()));
  * @endcode
  *
  * @param[in] res raft resources
