@@ -3295,9 +3295,7 @@ auto build(const raft::resources& clique,
 /**
  * @brief Convert a standard MG CAGRA index into a padded MG CAGRA index for search.
  *
- * This API enforces the explicit contract: users build/deserialize/distribute a standard index,
- * then attach a padded dataset before calling `search`. A new index is returned because standard
- * and padded MG indexes have different C++ types.
+ * This returns a new padded index because standard and padded MG indexes have different C++ types.
  */
 auto attach_dataset(
   const raft::resources& clique,
