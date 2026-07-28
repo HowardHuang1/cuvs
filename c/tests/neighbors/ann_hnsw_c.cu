@@ -58,10 +58,27 @@ TEST(CagraHnswC, BuildSearch)
   cuvsCagraIndexParams_t build_params;
   cuvsCagraIndexParamsCreate(&build_params);
   cuvsDatasetView_t dataset_view;
-  cuvsDatasetHostStandardViewMake(res, &dataset_tensor, &dataset_view);
-  cuvsCagraBuild(res, build_params, dataset_view, index);
-  cuvsDatasetViewDestroy(dataset_view);
-  cuvsCagraSerializeToHnswlib(res, "/tmp/cagra_hnswlib.index", index);
+  ASSERT_EQ(cuvsDatasetHostStandardViewMake(res, &dataset_tensor, &dataset_view), CUVS_SUCCESS);
+  ASSERT_EQ(cuvsCagraBuild(res, build_params, dataset_view, index), CUVS_SUCCESS);
+  ASSERT_EQ(cuvsDatasetViewDestroy(dataset_view), CUVS_SUCCESS);
+
+  // A host build yields a graph-only host index. The hnswlib format stores the vectors alongside
+  // the graph, so attach a device padded dataset before serializing.
+  rmm::device_uvector<float> dataset_d(4 * 2, stream);
+  raft::copy(dataset_d.data(), (float*)dataset, 4 * 2, stream);
+  DLManagedTensor device_dataset_tensor              = dataset_tensor;
+  device_dataset_tensor.dl_tensor.data               = dataset_d.data();
+  device_dataset_tensor.dl_tensor.device.device_type = kDLCUDA;
+  device_dataset_tensor.dl_tensor.device.device_id   = 0;
+  cuvsDataset_t padded_dataset_owner                 = nullptr;
+  ASSERT_EQ(cuvsDatasetDevicePaddedMake(res, &device_dataset_tensor, &padded_dataset_owner),
+            CUVS_SUCCESS);
+  cuvsDatasetView_t padded_dataset_view = nullptr;
+  ASSERT_EQ(cuvsDatasetViewFromOwningPaddedMake(padded_dataset_owner, &padded_dataset_view),
+            CUVS_SUCCESS);
+  ASSERT_EQ(cuvsCagraUpdateDataset(res, padded_dataset_view, index), CUVS_SUCCESS);
+
+  ASSERT_EQ(cuvsCagraSerializeToHnswlib(res, "/tmp/cagra_hnswlib.index", index), CUVS_SUCCESS);
 
   DLManagedTensor queries_tensor;
   queries_tensor.dl_tensor.data               = queries;
@@ -125,9 +142,8 @@ TEST(CagraHnswC, BuildSearch)
   ASSERT_TRUE(cuvs::hostVecMatch(neighbors_exp, neighbors, cuvs::Compare<uint64_t>()));
   ASSERT_TRUE(cuvs::hostVecMatch(distances_exp, distances, cuvs::CompareApprox<float>(0.001f)));
 
-  cuvsDatasetStandardViewDestroy(dataset_view);
-  cuvsDatasetPaddedViewDestroy(padded_dataset_view);
-  cuvsDatasetPaddedDestroy(padded_dataset_owner);
+  cuvsDatasetViewDestroy(padded_dataset_view);
+  cuvsDatasetDestroy(padded_dataset_owner);
   cuvsCagraIndexParamsDestroy(build_params);
   cuvsCagraIndexDestroy(index);
   cuvsHnswIndexParamsDestroy(hnsw_params);

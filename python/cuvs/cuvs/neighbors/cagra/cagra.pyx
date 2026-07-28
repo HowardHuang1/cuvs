@@ -529,40 +529,37 @@ def build(IndexParams index_params, dataset, resources=None):
     cdef cydlpack.DLManagedTensor* dataset_dlpack = \
         cydlpack.dlpack_c(dataset_ai)
     cdef cuvsCagraIndexParams* params = index_params.params
-    cdef cuvsDatasetPaddedView_t padded_view = NULL
-    cdef cuvsDatasetStandardView_t standard_view = NULL
-    cdef cuvsDatasetViewKind_t view_kind
 
     cdef cuvsResources_t res = <cuvsResources_t>resources.get_c_obj()
 
     cdef cuvsDatasetMemType_t mem_type
     cdef cuvsDatasetLayout_t layout
-    cdef PaddedDatasetView padded_view
-    cdef StandardDatasetView standard_view
-    cdef cuvsDatasetView_t dataset_view
+    cdef cuvsDatasetView_t dataset_view = NULL
 
     with cuda_interruptible():
         try:
-            check_cuvs(cuvsCagraGetDatasetViewKind(dataset_dlpack, &view_kind))
-            if view_kind == CUVS_DATASET_VIEW_KIND_DEVICE_PADDED:
-                check_cuvs(cuvsDatasetDevicePaddedViewMake(res, dataset_dlpack, &padded_view))
-                check_cuvs(cuvsCagraBuildDevicePadded(res, params, padded_view, idx.index))
-            elif view_kind == CUVS_DATASET_VIEW_KIND_DEVICE_STANDARD:
-                check_cuvs(cuvsDatasetDeviceStandardViewMake(res, dataset_dlpack, &standard_view))
-                check_cuvs(cuvsCagraBuildDeviceStandard(res, params, standard_view, idx.index))
-            elif view_kind == CUVS_DATASET_VIEW_KIND_HOST_PADDED:
-                check_cuvs(cuvsDatasetHostPaddedViewMake(res, dataset_dlpack, &padded_view))
-                check_cuvs(cuvsCagraBuildHostPadded(res, params, padded_view, idx.index))
+            check_cuvs(cuvsCagraGetDatasetMemTypeAndLayout(
+                dataset_dlpack, &mem_type, &layout))
+            if mem_type == CUVS_DATASET_MEM_TYPE_DEVICE:
+                if layout == CUVS_DATASET_LAYOUT_PADDED:
+                    check_cuvs(cuvsDatasetDevicePaddedViewMake(
+                        res, dataset_dlpack, &dataset_view))
+                else:
+                    check_cuvs(cuvsDatasetDeviceStandardViewMake(
+                        res, dataset_dlpack, &dataset_view))
             else:
-                check_cuvs(cuvsDatasetHostStandardViewMake(res, dataset_dlpack, &standard_view))
-                check_cuvs(cuvsCagraBuildHostStandard(res, params, standard_view, idx.index))
+                if layout == CUVS_DATASET_LAYOUT_PADDED:
+                    check_cuvs(cuvsDatasetHostPaddedViewMake(
+                        res, dataset_dlpack, &dataset_view))
+                else:
+                    check_cuvs(cuvsDatasetHostStandardViewMake(
+                        res, dataset_dlpack, &dataset_view))
+            check_cuvs(cuvsCagraBuild(res, params, dataset_view, idx.index))
             idx.trained = True
             idx.active_index_type = dataset_ai.dtype.name
         finally:
-            if padded_view != NULL:
-                cuvsDatasetViewDestroy(padded_view)
-            if standard_view != NULL:
-                cuvsDatasetViewDestroy(standard_view)
+            if dataset_view != NULL:
+                cuvsDatasetViewDestroy(dataset_view)
 
     return idx
 

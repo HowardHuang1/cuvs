@@ -216,7 +216,7 @@ impl<'d> Index<'d> {
             view_handle = _padded.handle;
         } else {
             _standard = StandardDatasetView::new(res, dataset)?;
-            view_handle = _standard.handle as ffi::cuvsDatasetView_t;
+            view_handle = _standard.handle;
         }
         unsafe {
             check_cuvs(ffi::cuvsCagraBuild(
@@ -225,45 +225,6 @@ impl<'d> Index<'d> {
                 view_handle,
                 index.handle,
             ))?;
-
-            match view_kind.assume_init() {
-                ffi::cuvsDatasetViewKind_t::CUVS_DATASET_VIEW_KIND_DEVICE_PADDED => {
-                    let dataset_view = PaddedDatasetView::new(res, &dataset)?;
-                    check_cuvs(ffi::cuvsCagraBuildDevicePadded(
-                        res.handle(),
-                        params.handle(),
-                        dataset_view.handle,
-                        index.handle,
-                    ))?;
-                }
-                ffi::cuvsDatasetViewKind_t::CUVS_DATASET_VIEW_KIND_DEVICE_STANDARD => {
-                    let dataset_view = StandardDatasetView::new(res, &dataset)?;
-                    check_cuvs(ffi::cuvsCagraBuildDeviceStandard(
-                        res.handle(),
-                        params.handle(),
-                        dataset_view.handle,
-                        index.handle,
-                    ))?;
-                }
-                ffi::cuvsDatasetViewKind_t::CUVS_DATASET_VIEW_KIND_HOST_PADDED => {
-                    let dataset_view = PaddedDatasetView::new(res, &dataset)?;
-                    check_cuvs(ffi::cuvsCagraBuildHostPadded(
-                        res.handle(),
-                        params.handle(),
-                        dataset_view.handle,
-                        index.handle,
-                    ))?;
-                }
-                ffi::cuvsDatasetViewKind_t::CUVS_DATASET_VIEW_KIND_HOST_STANDARD => {
-                    let dataset_view = StandardDatasetView::new(res, &dataset)?;
-                    check_cuvs(ffi::cuvsCagraBuildHostStandard(
-                        res.handle(),
-                        params.handle(),
-                        dataset_view.handle,
-                        index.handle,
-                    ))?;
-                }
-            }
         }
         Ok(index)
     }
