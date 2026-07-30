@@ -83,7 +83,7 @@ TEST(CagraC, BuildSearch)
   // build index
   cuvsCagraIndexParams_t build_params;
   cuvsCagraIndexParamsCreate(&build_params);
-  cuvsDataset_t dataset_view = nullptr;
+  cuvsDataset_t dataset_view;
   ASSERT_EQ(cuvsDatasetMakeStandardView(res, &dataset_tensor, &dataset_view), CUVS_SUCCESS);
   {
     bool is_owning = true;
@@ -95,7 +95,7 @@ TEST(CagraC, BuildSearch)
 
   // Host build yields a host index. Copy the host tensor into caller-owned device-padded storage
   // to produce a search-ready device-padded index.
-  cuvsDataset_t padded_dataset_owner = nullptr;
+  cuvsDataset_t padded_dataset_owner;
   ASSERT_EQ(cuvsDatasetMakePadded(
               res, &dataset_tensor, CUVS_DATASET_MEM_TYPE_DEVICE, &padded_dataset_owner),
             CUVS_SUCCESS);
@@ -196,14 +196,14 @@ TEST(CagraC, UpdateHostPadded)
   host_tensor.dl_tensor.dtype              = {kDLFloat, 32, 1};
   host_tensor.dl_tensor.shape              = dataset_shape;
 
-  cuvsDataset_t host_view = nullptr;
+  cuvsDataset_t host_view;
   ASSERT_EQ(cuvsDatasetMakePaddedView(res, &host_tensor, &host_view), CUVS_SUCCESS);
   float host_standard_dataset[8] = {0, 0, 1, 1, 2, 2, 3, 3};
   int64_t standard_shape[]       = {4, 2};
   DLManagedTensor host_standard_tensor = host_tensor;
   host_standard_tensor.dl_tensor.data  = host_standard_dataset;
   host_standard_tensor.dl_tensor.shape = standard_shape;
-  cuvsDataset_t host_owner             = nullptr;
+  cuvsDataset_t host_owner;
   ASSERT_EQ(cuvsDatasetMakePadded(
               res, &host_standard_tensor, CUVS_DATASET_MEM_TYPE_HOST, &host_owner),
             CUVS_SUCCESS);
@@ -246,7 +246,7 @@ TEST(CagraC, UpdateHostPadded)
   DLManagedTensor device_tensor              = host_tensor;
   device_tensor.dl_tensor.data               = device_dataset.data();
   device_tensor.dl_tensor.device.device_type = kDLCUDA;
-  cuvsDataset_t device_to_host_owner = nullptr;
+  cuvsDataset_t device_to_host_owner;
   ASSERT_EQ(cuvsDatasetMakePadded(
               res, &device_tensor, CUVS_DATASET_MEM_TYPE_HOST, &device_to_host_owner),
             CUVS_SUCCESS);
@@ -258,7 +258,7 @@ TEST(CagraC, UpdateHostPadded)
     EXPECT_EQ(mem_type, CUVS_DATASET_MEM_TYPE_HOST);
     EXPECT_EQ(layout, CUVS_DATASET_LAYOUT_PADDED);
   }
-  cuvsDataset_t device_view         = nullptr;
+  cuvsDataset_t device_view;
   ASSERT_EQ(cuvsDatasetMakePaddedView(res, &device_tensor, &device_view), CUVS_SUCCESS);
   ASSERT_EQ(cuvsCagraUpdateDataset(res, device_view, index), CUVS_SUCCESS);
 
@@ -364,7 +364,7 @@ TEST(CagraC, BuildExtendSearch)
   // build index
   cuvsCagraIndexParams_t build_params;
   cuvsCagraIndexParamsCreate(&build_params);
-  cuvsDataset_t dataset_view = nullptr;
+  cuvsDataset_t dataset_view;
   ASSERT_EQ(cuvsDatasetMakePaddedView(res, &dataset_tensor, &dataset_view), CUVS_SUCCESS);
   ASSERT_EQ(cuvsCagraBuild(res, build_params, dataset_view, index), CUVS_SUCCESS);
 
@@ -390,7 +390,7 @@ TEST(CagraC, BuildExtendSearch)
                                                            dimensions};
   extended_dataset_tensor.dl_tensor.shape              = extended_dataset_shape;
   extended_dataset_tensor.dl_tensor.strides            = nullptr;
-  cuvsDataset_t extended_dataset_view        = nullptr;
+  cuvsDataset_t extended_dataset_view;
   ASSERT_EQ(cuvsDatasetMakePaddedView(res, &extended_dataset_tensor, &extended_dataset_view),
             CUVS_SUCCESS);
   ASSERT_EQ(cuvsCagraExtend(res, extend_params, extended_dataset_view, main_data_size, index),
@@ -542,7 +542,7 @@ TEST(CagraC, BuildSearchFiltered)
   // build index
   cuvsCagraIndexParams_t build_params;
   cuvsCagraIndexParamsCreate(&build_params);
-  cuvsDataset_t dataset_view = nullptr;
+  cuvsDataset_t dataset_view;
   ASSERT_EQ(cuvsDatasetMakeStandardView(res, &dataset_tensor, &dataset_view), CUVS_SUCCESS);
   ASSERT_EQ(cuvsCagraBuild(res, build_params, dataset_view, index), CUVS_SUCCESS);
 
@@ -554,7 +554,7 @@ TEST(CagraC, BuildSearchFiltered)
   device_dataset_tensor.dl_tensor.data               = dataset_d.data();
   device_dataset_tensor.dl_tensor.device.device_type = kDLCUDA;
   device_dataset_tensor.dl_tensor.device.device_id   = 0;
-  cuvsDataset_t padded_dataset_owner = nullptr;
+  cuvsDataset_t padded_dataset_owner;
   ASSERT_EQ(cuvsDatasetMakePadded(
               res, &device_dataset_tensor, CUVS_DATASET_MEM_TYPE_DEVICE, &padded_dataset_owner),
             CUVS_SUCCESS);
@@ -697,8 +697,8 @@ TEST(CagraC, BuildMergeSearch)
   cuvsCagraIndex_t index_main, index_add;
   cuvsCagraIndexCreate(&index_main);
   cuvsCagraIndexCreate(&index_add);
-  cuvsDataset_t main_dataset_view = nullptr;
-  cuvsDataset_t additional_dataset_view = nullptr;
+  cuvsDataset_t main_dataset_view;
+  cuvsDataset_t additional_dataset_view;
   ASSERT_EQ(cuvsDatasetMakeStandardView(res, &main_dataset_tensor, &main_dataset_view),
             CUVS_SUCCESS);
   ASSERT_EQ(cuvsDatasetMakeStandardView(
@@ -719,7 +719,7 @@ TEST(CagraC, BuildMergeSearch)
   filter.addr = 0;
 
   cuvsCagraIndex_t index_array[2] = {index_main, index_add};
-  cuvsDataset_t merged_dataset = nullptr;
+  cuvsDataset_t merged_dataset;
   ASSERT_EQ(cuvsDatasetCreate(&merged_dataset), CUVS_SUCCESS);
   ASSERT_EQ(cuvsCagraMerge(res, build_params, index_array, 2, filter, merged_dataset, index_merged),
             CUVS_SUCCESS);
@@ -750,7 +750,7 @@ TEST(CagraC, BuildMergeSearch)
   merged_dataset_tensor.dl_tensor.shape              = merged_shape;
   merged_dataset_tensor.dl_tensor.strides            = nullptr;
 
-  cuvsDataset_t padded_dataset_owner = nullptr;
+  cuvsDataset_t padded_dataset_owner;
   ASSERT_EQ(cuvsDatasetMakePadded(
               res, &merged_dataset_tensor, CUVS_DATASET_MEM_TYPE_DEVICE, &padded_dataset_owner),
             CUVS_SUCCESS);
@@ -852,7 +852,7 @@ TEST(CagraC, BuildSearchACEMemory)
   ace_params->use_disk = false;
 
   build_params->graph_build_params = ace_params;
-  cuvsDataset_t dataset_view = nullptr;
+  cuvsDataset_t dataset_view;
   ASSERT_EQ(cuvsDatasetMakeStandardView(res, &dataset_tensor, &dataset_view), CUVS_SUCCESS);
   ASSERT_EQ(cuvsCagraBuild(res, build_params, dataset_view, index), CUVS_SUCCESS);
 
@@ -864,7 +864,7 @@ TEST(CagraC, BuildSearchACEMemory)
   device_dataset_tensor.dl_tensor.data               = dataset_d.data();
   device_dataset_tensor.dl_tensor.device.device_type = kDLCUDA;
   device_dataset_tensor.dl_tensor.device.device_id   = 0;
-  cuvsDataset_t padded_dataset_owner = nullptr;
+  cuvsDataset_t padded_dataset_owner;
   ASSERT_EQ(cuvsDatasetMakePadded(
               res, &device_dataset_tensor, CUVS_DATASET_MEM_TYPE_DEVICE, &padded_dataset_owner),
             CUVS_SUCCESS);
@@ -974,7 +974,7 @@ TEST(CagraC, BuildSearchACEDisk)
   ace_params->build_dir = strdup("/tmp/cagra_ace_test_disk");
 
   build_params->graph_build_params = ace_params;
-  cuvsDataset_t dataset_view = nullptr;
+  cuvsDataset_t dataset_view;
   ASSERT_EQ(cuvsDatasetMakeStandardView(res, &dataset_tensor, &dataset_view), CUVS_SUCCESS);
   ASSERT_EQ(cuvsCagraBuild(res, build_params, dataset_view, index), CUVS_SUCCESS);
 
@@ -1078,7 +1078,7 @@ TEST(CagraC, SerializeHostStandardAllDtypes) {
     tensor.dl_tensor.dtype = dtype;
     tensor.dl_tensor.shape = shape;
 
-    cuvsDataset_t dataset_view = nullptr;
+    cuvsDataset_t dataset_view;
     ASSERT_EQ(cuvsDatasetMakeStandardView(res, &tensor, &dataset_view),
               CUVS_SUCCESS);
     cuvsCagraIndexParams_t params;
@@ -1150,7 +1150,7 @@ TEST(CagraC, ExplicitSerializationSemantics) {
   host_tensor.dl_tensor.dtype = {kDLFloat, 32, 1};
   host_tensor.dl_tensor.shape = dataset_shape;
 
-  cuvsDataset_t host_view = nullptr;
+  cuvsDataset_t host_view;
   ASSERT_EQ(cuvsDatasetMakeStandardView(res, &host_tensor, &host_view),
             CUVS_SUCCESS);
   cuvsCagraIndexParams_t params;
@@ -1312,7 +1312,7 @@ TEST(CagraC, ExplicitSerializationSemantics) {
   DLManagedTensor device_tensor = host_tensor;
   device_tensor.dl_tensor.data = device_dataset.data();
   device_tensor.dl_tensor.device.device_type = kDLCUDA;
-  cuvsDataset_t external_owner = nullptr;
+  cuvsDataset_t external_owner;
   ASSERT_EQ(cuvsDatasetMakePadded(
               res, &device_tensor, CUVS_DATASET_MEM_TYPE_DEVICE, &external_owner),
             CUVS_SUCCESS);
