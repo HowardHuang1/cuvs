@@ -2115,11 +2115,18 @@ class AnnCagraMultiPartitionTest : public ::testing::TestWithParam<AnnCagraMpInp
                        std::vector<int64_t> const& offsets,
                        std::vector<cagra::index<DataT, IdxT>>& out)
   {
+    // An index only holds a view, so any padded copy must outlive it; part_padded_ owns those
+    // allocations for the lifetime of the fixture.
+    part_padded_.clear();
+    part_padded_.reserve(ps.num_partitions);
     for (int i = 0; i < ps.num_partitions; i++) {
       if (sizes[i] <= static_cast<int64_t>(index_params.graph_degree)) { return false; }
       auto slice_view = raft::make_device_matrix_view<const DataT, int64_t>(
         database.data() + offsets[i] * ps.dim, sizes[i], ps.dim);
-      out.push_back(cagra::build(handle_, index_params, slice_view));
+      part_padded_.emplace_back(handle_, slice_view);
+      auto const& padded = part_padded_.back().view;
+      out.push_back(cagra::build(handle_, index_params, padded));
+      out.back().update_device_dataset_same_layout(handle_, padded);
     }
     return true;
   }
@@ -2406,6 +2413,7 @@ class AnnCagraMultiPartitionTest : public ::testing::TestWithParam<AnnCagraMpInp
   AnnCagraMpInputs ps;
   rmm::device_uvector<DataT> database;
   rmm::device_uvector<DataT> search_queries;
+  std::vector<cuvs::neighbors::test::padded_device_matrix_for_cagra<DataT>> part_padded_;
 };
 
 inline std::vector<AnnCagraMpInputs> generate_mp_inputs()
