@@ -66,7 +66,6 @@ cdef class Dataset:
         check_cuvs(cuvsDatasetGetDtype(self.dataset, &dtype))
         return (dtype.code, dtype.bits, dtype.lanes)
 
-
 cdef Dataset make_device_padded_dataset_handle(
         cuvsResources_t res,
         cydlpack.DLManagedTensor* dataset_dlpack):
