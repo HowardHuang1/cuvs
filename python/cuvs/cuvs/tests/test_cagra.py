@@ -192,6 +192,39 @@ def test_cagra_dataset_dtype_host_device(
     )
 
 
+@pytest.mark.parametrize("from_host", [True, False])
+@pytest.mark.parametrize("n_rows", [1024, 2048])
+@pytest.mark.parametrize("n_cols", [32, 50])
+@pytest.mark.parametrize("n_queries", [32, 64])
+@pytest.mark.parametrize("k", [5, 10])
+def test_cagra_build_from_dataset_handle(
+    from_host, n_rows, n_cols, n_queries, k
+):
+    dataset = generate_data((n_rows, n_cols), np.float32)
+    padded = cagra.make_device_padded_dataset(
+        dataset if from_host else device_ndarray(dataset)
+    )
+    assert isinstance(padded, cagra.Dataset)
+    assert padded.layout == "padded"
+    assert padded.memory_type == "device"
+
+    index = cagra.build(cagra.IndexParams(), padded)
+    assert index.trained
+
+    queries = device_ndarray(generate_data((n_queries, n_cols), np.float32))
+    distances, neighbors = cagra.search(cagra.SearchParams(), index, queries, k)
+
+    nn_skl = NearestNeighbors(
+        n_neighbors=k, algorithm="brute", metric="sqeuclidean"
+    )
+    nn_skl.fit(dataset)
+    skl_idx = nn_skl.kneighbors(
+        queries.copy_to_host(), return_distance=False
+    )
+    assert calc_recall(neighbors.copy_to_host(), skl_idx) > 0.7
+    assert distances.shape == (n_queries, k)
+
+
 @pytest.mark.parametrize("sparsity", [0.2, 0.5, 0.7, 1.0])
 def test_filtered_cagra(sparsity):
     run_filtered_search_test(cagra, sparsity)
