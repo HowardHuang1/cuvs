@@ -2,24 +2,18 @@
 # SPDX-License-Identifier: Apache-2.0
 
 
+from cuvs.common.dataset import Dataset
+
 from .cagra import (
     AceParams,
     ExtendParams,
     Index,
     IndexParams,
-    PaddedDataset,
-    PaddedDatasetView,
-    StandardDataset,
-    StandardDatasetView,
     SearchParams,
     build,
     extend,
     from_graph,
-    get_dataset_view_kind,
     load,
-    make_padded_dataset,
-    make_padded_dataset_view,
-    make_standard_dataset_view,
     save,
     search,
     update_dataset,
@@ -27,22 +21,15 @@ from .cagra import (
 
 __all__ = [
     "AceParams",
+    "Dataset",
     "ExtendParams",
     "Index",
     "IndexParams",
-    "PaddedDataset",
-    "PaddedDatasetView",
-    "StandardDataset",
-    "StandardDatasetView",
     "SearchParams",
     "build",
     "extend",
     "from_graph",
-    "get_dataset_view_kind",
     "load",
-    "make_padded_dataset_view",
-    "make_standard_dataset_view",
-    "make_padded_dataset",
     "save",
     "search",
     "update_dataset",

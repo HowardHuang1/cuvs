@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 from pylibraft.common import device_ndarray
 
+from cuvs.common import make_device_padded_dataset
 from cuvs.neighbors import brute_force, cagra, ivf_flat, ivf_pq
 from cuvs.tests.ann_utils import (
     calc_recall,
@@ -50,27 +51,12 @@ def run_save_load(ann_module, dtype, filename="my_index.bin"):
     ann_module.save(filename, index)
     if ann_module == cagra:
         loaded_index = ann_module.Index()
-        view_kind = ann_module.get_dataset_view_kind(dataset_device)
-        layout = "standard" if view_kind.endswith("standard") else "padded"
-        out_dataset = (
-            ann_module.StandardDataset()
-            if layout == "standard"
-            else ann_module.PaddedDataset()
-        )
+        out_dataset = ann_module.Dataset()
         ann_module.load(
             loaded_index,
             filename,
             out_dataset=out_dataset,
         )
-        assert out_dataset.memory_type == "device"
-        assert out_dataset.layout == layout
-        if (
-            out_dataset.memory_type != "device"
-            or out_dataset.layout != "padded"
-        ):
-            padded_dataset = ann_module.make_padded_dataset(dataset_device)
-            ann_module.update_dataset(loaded_index, padded_dataset)
-            ann_module.update_dataset(index, padded_dataset)
     else:
         loaded_index = ann_module.load(filename)
 
@@ -127,10 +113,6 @@ def test_cagra_graph_only_serialization(tmp_path):
     dataset_device = device_ndarray(dataset)
     index = cagra.build(cagra.IndexParams(), dataset_device)
 
-    # Keep the caller-owned device array alive while either index uses its view.
-    padded_view = cagra.make_padded_dataset_view(dataset_device)
-    cagra.update_dataset(index, padded_view)
-
     graph_path = tmp_path / "cagra-graph.bin"
     cagra.save(str(graph_path), index, include_dataset=False)
 
@@ -138,7 +120,7 @@ def test_cagra_graph_only_serialization(tmp_path):
     cagra.load(loaded, str(graph_path))
 
     missing_dataset_index = cagra.Index()
-    missing_dataset_owner = cagra.PaddedDataset()
+    missing_dataset_owner = cagra.Dataset()
     with pytest.raises(Exception, match="no dataset"):
         cagra.load(
             missing_dataset_index,
@@ -146,7 +128,8 @@ def test_cagra_graph_only_serialization(tmp_path):
             out_dataset=missing_dataset_owner,
         )
 
-    cagra.update_dataset(loaded, padded_view)
+    padded_dataset = make_device_padded_dataset(dataset)
+    cagra.update_dataset(loaded, padded_dataset)
     queries = device_ndarray(generate_data((64, n_cols), np.float32))
     search_params = cagra.SearchParams()
     original_distances, original_neighbors = cagra.search(
@@ -170,7 +153,7 @@ def test_cagra_deserialize_output_must_be_empty(tmp_path):
     index = cagra.build(cagra.IndexParams(), dataset)
     path = tmp_path / "cagra-full.bin"
     cagra.save(str(path), index, include_dataset=True)
-    output = cagra.PaddedDataset()
+    output = cagra.Dataset()
     first_loaded = cagra.Index()
     cagra.load(first_loaded, str(path), out_dataset=output)
 

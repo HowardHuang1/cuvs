@@ -19,16 +19,15 @@ from cuvs.neighbors.common import _check_input_array, _check_memory_location
 
 from cuvs.common cimport cydlpack
 from cuvs.common.c_api cimport cuvsResources_t
+from cuvs.common.dataset cimport Dataset, cuvsDataset_t
+from cuvs.common.dataset import make_device_padded_dataset
 from cuvs.neighbors.cagra.cagra cimport (
     IndexParams as SingleGpuIndexParams,
-    PaddedDataset,
-    PaddedDatasetView,
     SearchParams as SingleGpuSearchParams,
     cuvsCagraIndexParams_t,
     cuvsCagraIndexParamsDestroy,
     cuvsCagraSearchParams_t,
     cuvsCagraSearchParamsDestroy,
-    cuvsDataset_t,
 )
 
 from .cagra cimport (
@@ -155,6 +154,7 @@ def build(IndexParams index_params, dataset, resources=None):
 
     >>> import numpy as np
     >>> from pylibraft.common import device_ndarray
+    >>> from cuvs.common import make_device_padded_dataset
     >>> from cuvs.neighbors import cagra as sg_cagra
     >>> from cuvs.neighbors.mg import cagra
     >>> n_samples = 50000
@@ -167,7 +167,7 @@ def build(IndexParams index_params, dataset, resources=None):
     >>> build_params = cagra.IndexParams(metric="sqeuclidean")
     >>> index = cagra.build(build_params, dataset)
     >>> device_dataset = device_ndarray(dataset)
-    >>> padded_dataset = sg_cagra.make_padded_dataset(device_dataset)
+    >>> padded_dataset = make_device_padded_dataset(device_dataset)
     >>> _ = cagra.update_dataset(index, padded_dataset)
     >>> distances, neighbors = cagra.search(cagra.SearchParams(),
     ...                                         index, dataset, k)
@@ -200,25 +200,25 @@ def build(IndexParams index_params, dataset, resources=None):
 @auto_sync_multi_gpu_resources
 def update_dataset(Index index, padded_dataset, resources=None):
     """
-    Update a multi-GPU CAGRA index with a device-padded dataset view.
+    Update a multi-GPU CAGRA index with a padded dataset.
 
-    Standard indexes are converted to device-padded indexes. Existing
-    device-padded indexes are updated in place.
+    Accepts a ``Dataset`` or array.
     """
     if not index.trained:
         raise ValueError("Index needs to be built before updating the dataset.")
-    cdef cuvsDataset_t dataset_handle = NULL
-    if isinstance(padded_dataset, PaddedDataset):
-        dataset_handle = (<PaddedDataset>padded_dataset).dataset
-    elif isinstance(padded_dataset, PaddedDatasetView):
-        dataset_handle = (<PaddedDatasetView>padded_dataset).view
-    else:
-        raise TypeError(
-            "padded_dataset must be a PaddedDataset or PaddedDatasetView"
-        )
-    if dataset_handle == NULL:
-        raise ValueError("padded_dataset is uninitialized")
 
+    cdef Dataset dataset_obj
+    if isinstance(padded_dataset, Dataset):
+        dataset_obj = padded_dataset
+    else:
+        dataset_obj = make_device_padded_dataset(padded_dataset, resources=resources)
+
+    if dataset_obj.dataset == NULL:
+        raise ValueError("padded_dataset is uninitialized")
+    if dataset_obj.layout != "padded":
+        raise TypeError("padded_dataset must have padded layout")
+
+    cdef cuvsDataset_t dataset_handle = dataset_obj.dataset
     cdef cuvsResources_t res = <cuvsResources_t>resources.get_c_obj()
     with cuda_interruptible():
         check_cuvs(cuvsMultiGpuCagraUpdateDataset(

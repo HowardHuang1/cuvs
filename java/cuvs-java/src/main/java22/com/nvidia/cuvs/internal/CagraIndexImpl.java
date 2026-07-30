@@ -191,18 +191,10 @@ public class CagraIndexImpl implements CagraIndex {
         var returnValue = cuvsStreamSync(cuvsRes);
         checkCuVSError(returnValue, "cuvsStreamSync");
 
-        var memTypeSeg = localArena.allocate(C_INT);
-        var layoutSeg = localArena.allocate(C_INT);
-        returnValue = cuvsCagraGetDatasetMemTypeAndLayout(datasetTensor, memTypeSeg, layoutSeg);
-        checkCuVSError(returnValue, "cuvsCagraGetDatasetMemTypeAndLayout");
-        // Unified factories infer host vs device from the tensor; only layout
-        // selects padded vs standard.
-        int layout = layoutSeg.get(C_INT, 0);
-
         MemorySegment datasetView = MemorySegment.NULL;
         try {
           MemorySegment datasetViewPtr = localArena.allocate(cuvsDataset_t);
-          if (layout == CUVS_DATASET_LAYOUT_PADDED()) {
+          if (isCagraPaddedLayout(dataset)) {
             returnValue = cuvsDatasetMakePaddedView(cuvsRes, datasetTensor, datasetViewPtr);
             checkCuVSError(returnValue, "cuvsDatasetMakePaddedView");
           } else {
@@ -241,6 +233,48 @@ public class CagraIndexImpl implements CagraIndex {
       checkCuVSError(returnValue, "cuvsCagraIndexCreate");
       return indexPtrPtr.get(cuvsCagraIndex_t, 0);
     }
+  }
+
+  /** Matches C++ `cagra_required_row_width` (16-byte default alignment). */
+  private static long cagraRequiredRowWidth(long logicalColumns, int sizeofValue) {
+    int alignBytes = 16;
+    int lcm = lcm(alignBytes, sizeofValue);
+    long bytes = logicalColumns * (long) sizeofValue;
+    long rounded = ((bytes + lcm - 1) / lcm) * lcm;
+    return rounded / sizeofValue;
+  }
+
+  private static int lcm(int a, int b) {
+    return a / gcd(a, b) * b;
+  }
+
+  private static int gcd(int a, int b) {
+    while (b != 0) {
+      int t = a % b;
+      a = b;
+      b = t;
+    }
+    return a;
+  }
+
+  private static int elementSizeBytes(CuVSMatrix.DataType dataType) {
+    return switch (dataType) {
+      case FLOAT, INT, UINT -> 4;
+      case HALF -> 2;
+      case BYTE -> 1;
+    };
+  }
+
+  /**
+   * True when the matrix row width matches CAGRA's required padded width for its
+   * logical column count and element type.
+   */
+  private static boolean isCagraPaddedLayout(CuVSMatrixInternal dataset) {
+    long logicalColumns = dataset.columns();
+    long rowStride = dataset.rowStride();
+    long actualRowWidth = rowStride > 0 ? rowStride : logicalColumns;
+    return actualRowWidth
+        == cagraRequiredRowWidth(logicalColumns, elementSizeBytes(dataset.dataType()));
   }
 
   private static final BitSet[] EMPTY_PREFILTER_BITSET = new BitSet[0];
@@ -390,15 +424,13 @@ public class CagraIndexImpl implements CagraIndex {
         var resourcesAccessor = resources.access()) {
       var cuvsRes = resourcesAccessor.handle();
       var datasetTensor = datasetInternal.toTensor(localArena);
-      var targetMemType = localArena.allocate(C_INT);
-      var layout = localArena.allocate(C_INT);
-      var returnValue =
-          cuvsCagraGetDatasetMemTypeAndLayout(datasetTensor, targetMemType, layout);
-      checkCuVSError(returnValue, "cuvsCagraGetDatasetMemTypeAndLayout");
+      int targetMemType =
+          (datasetInternal instanceof CuVSHostMatrixImpl)
+              ? CUVS_DATASET_MEM_TYPE_HOST()
+              : CUVS_DATASET_MEM_TYPE_DEVICE();
       MemorySegment paddedDatasetPtr = localArena.allocate(cuvsDataset_t);
-      returnValue =
-          cuvsDatasetMakePadded(
-              cuvsRes, datasetTensor, targetMemType.get(C_INT, 0), paddedDatasetPtr);
+      var returnValue =
+          cuvsDatasetMakePadded(cuvsRes, datasetTensor, targetMemType, paddedDatasetPtr);
       checkCuVSError(returnValue, "cuvsDatasetMakePadded");
       MemorySegment paddedDataset = paddedDatasetPtr.get(cuvsDataset_t, 0);
 

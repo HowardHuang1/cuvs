@@ -607,22 +607,6 @@ CUVS_EXPORT cuvsError_t cuvsCagraUpdateDataset(cuvsResources_t res,
  */
 
 /**
- * @brief Determine the CAGRA dataset memory space and layout for an input tensor.
- *
- * This reuses the same C++ row-width check used by CAGRA internals
- * (`matrix_row_width_matches_cagra_required`) so downstream wrappers can dispatch
- * deterministically without duplicating alignment math.
- *
- * @param[in] dataset   input dataset tensor
- * @param[out] mem_type resolved dataset memory space
- * @param[out] layout   resolved dataset layout
- * @return cuvsError_t
- */
-CUVS_EXPORT cuvsError_t cuvsCagraGetDatasetMemTypeAndLayout(DLManagedTensor* dataset,
-                                                            cuvsDatasetMemType_t* mem_type,
-                                                            cuvsDatasetLayout_t* layout);
-
-/**
  * @brief Build a CAGRA index from a dataset handle. Acceptable underlying
  *        types are:
  *        1. `kDLDataType.code == kDLFloat` and `kDLDataType.bits = 32`
@@ -631,8 +615,8 @@ CUVS_EXPORT cuvsError_t cuvsCagraGetDatasetMemTypeAndLayout(DLManagedTensor* dat
  *        4. `kDLDataType.code == kDLUInt` and `kDLDataType.bits = 8`
  *
  * The memory space and layout \p dataset was constructed with select the C++ build overload.
- * Build the handle with an owning factory or the matching dataset view factory;
- * `cuvsCagraGetDatasetMemTypeAndLayout` resolves which one an input tensor calls for.
+ * Build the handle with an owning factory or the matching dataset view factory
+ * (`cuvsDatasetMakePaddedView` / `cuvsDatasetMakeStandardView`).
  *
  * Note that a dataset residing in host memory produces a host-backed index, which
  * must be made search-ready with `cuvsCagraUpdateDataset` (using a device-padded

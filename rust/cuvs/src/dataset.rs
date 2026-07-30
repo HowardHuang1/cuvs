@@ -28,26 +28,76 @@ pub enum DatasetKind {
 }
 
 impl DatasetKind {
-    fn from_ffi(mem_type: ffi::cuvsDatasetMemType_t, layout: ffi::cuvsDatasetLayout_t) -> Self {
-        match (mem_type, layout) {
-            (
-                ffi::cuvsDatasetMemType_t::CUVS_DATASET_MEM_TYPE_DEVICE,
-                ffi::cuvsDatasetLayout_t::CUVS_DATASET_LAYOUT_PADDED,
-            ) => Self::DevicePadded,
-            (
-                ffi::cuvsDatasetMemType_t::CUVS_DATASET_MEM_TYPE_DEVICE,
-                ffi::cuvsDatasetLayout_t::CUVS_DATASET_LAYOUT_STANDARD,
-            ) => Self::DeviceStandard,
-            (
-                ffi::cuvsDatasetMemType_t::CUVS_DATASET_MEM_TYPE_HOST,
-                ffi::cuvsDatasetLayout_t::CUVS_DATASET_LAYOUT_PADDED,
-            ) => Self::HostPadded,
-            (
-                ffi::cuvsDatasetMemType_t::CUVS_DATASET_MEM_TYPE_HOST,
-                ffi::cuvsDatasetLayout_t::CUVS_DATASET_LAYOUT_STANDARD,
-            ) => Self::HostStandard,
+    fn from_residency_and_padded(is_device: bool, is_padded: bool) -> Self {
+        match (is_device, is_padded) {
+            (true, true) => Self::DevicePadded,
+            (true, false) => Self::DeviceStandard,
+            (false, true) => Self::HostPadded,
+            (false, false) => Self::HostStandard,
         }
     }
+
+    fn from_handle_fields(
+        mem_type: ffi::cuvsDatasetMemType_t,
+        layout: ffi::cuvsDatasetLayout_t,
+    ) -> Self {
+        Self::from_residency_and_padded(
+            mem_type == ffi::cuvsDatasetMemType_t::CUVS_DATASET_MEM_TYPE_DEVICE,
+            layout == ffi::cuvsDatasetLayout_t::CUVS_DATASET_LAYOUT_PADDED,
+        )
+    }
+}
+
+/// Matches C++ `cagra_required_row_width` (16-byte default alignment).
+fn cagra_required_row_width(logical_columns: u32, sizeof_value: usize) -> u32 {
+    let align_bytes: usize = 16;
+    let lcm = lcm(align_bytes, sizeof_value);
+    let bytes = (logical_columns as usize) * sizeof_value;
+    let rounded = ((bytes + lcm - 1) / lcm) * lcm;
+    (rounded / sizeof_value) as u32
+}
+
+fn gcd(mut a: usize, mut b: usize) -> usize {
+    while b != 0 {
+        let t = a % b;
+        a = b;
+        b = t;
+    }
+    a
+}
+
+fn lcm(a: usize, b: usize) -> usize {
+    a / gcd(a, b) * b
+}
+
+fn dlpack_element_size(dtype: &ffi::DLDataType) -> Option<usize> {
+    match (dtype.code, dtype.bits) {
+        (code, 32) if code == ffi::DLDataTypeCode::kDLFloat as u8 => Some(4),
+        (code, 16) if code == ffi::DLDataTypeCode::kDLFloat as u8 => Some(2),
+        (code, 8)
+            if code == ffi::DLDataTypeCode::kDLInt as u8
+                || code == ffi::DLDataTypeCode::kDLUInt as u8 =>
+        {
+            Some(1)
+        }
+        _ => None,
+    }
+}
+
+fn is_cagra_padded_layout(tensor: &ffi::DLTensor) -> Result<bool> {
+    if tensor.ndim != 2 {
+        return Err(CagraError::Validation("CAGRA datasets must be 2-D".to_string()));
+    }
+    let sizeof_value = dlpack_element_size(&tensor.dtype).ok_or_else(|| {
+        CagraError::Validation("unsupported dataset dtype for CAGRA layout check".to_string())
+    })?;
+    let logical_columns = unsafe { *tensor.shape.add(1) } as u32;
+    let actual_row_width = if tensor.strides.is_null() {
+        logical_columns
+    } else {
+        (unsafe { *tensor.strides }) as u32
+    };
+    Ok(actual_row_width == cagra_required_row_width(logical_columns, sizeof_value))
 }
 
 /// A non-owning CAGRA dataset view.
@@ -64,8 +114,8 @@ pub struct DatasetView<'a> {
 }
 
 impl<'a> DatasetView<'a> {
-    /// Borrow a tensor as the host/device and padded/standard view CAGRA
-    /// derives from its DLPack metadata.
+    /// Borrow a tensor as the host/device and padded/standard view matching its
+    /// DLPack shape/strides (CAGRA row-width rule).
     pub fn new<T>(res: &Resources, dataset: &'a T) -> Result<Self>
     where
         T: AsDlTensor + ?Sized,
@@ -73,22 +123,14 @@ impl<'a> DatasetView<'a> {
         let dataset = dataset.as_dl_tensor()?;
         let mut dataset_c = dataset.to_c();
         unsafe {
-            let mut mem_type = std::mem::MaybeUninit::<ffi::cuvsDatasetMemType_t>::uninit();
-            let mut layout = std::mem::MaybeUninit::<ffi::cuvsDatasetLayout_t>::uninit();
-            check_cuvs(ffi::cuvsCagraGetDatasetMemTypeAndLayout(
-                dataset_c.as_mut_ptr(),
-                mem_type.as_mut_ptr(),
-                layout.as_mut_ptr(),
-            ))?;
-            let kind = DatasetKind::from_ffi(mem_type.assume_init(), layout.assume_init());
+            let is_device = dataset_c.inner.dl_tensor.device.device_type.is_device_compatible();
+            let is_padded = is_cagra_padded_layout(&dataset_c.inner.dl_tensor)?;
+            let kind = DatasetKind::from_residency_and_padded(is_device, is_padded);
 
-            // Unified factories infer host vs device from the tensor; only
-            // layout selects padded vs standard.
-            let handle = init_handle(|out| match kind {
-                DatasetKind::DevicePadded | DatasetKind::HostPadded => {
+            let handle = init_handle(|out| {
+                if is_padded {
                     ffi::cuvsDatasetMakePaddedView(res.handle(), dataset_c.as_mut_ptr(), out)
-                }
-                DatasetKind::DeviceStandard | DatasetKind::HostStandard => {
+                } else {
                     ffi::cuvsDatasetMakeStandardView(res.handle(), dataset_c.as_mut_ptr(), out)
                 }
             })?;
@@ -192,7 +234,7 @@ pub struct Dataset {
 impl Dataset {
     pub(crate) fn from_raw(handle: ffi::cuvsDataset_t) -> Self {
         debug_assert!(!handle.is_null());
-        let kind = unsafe { DatasetKind::from_ffi((*handle).mem_type, (*handle).layout) };
+        let kind = unsafe { DatasetKind::from_handle_fields((*handle).mem_type, (*handle).layout) };
         Self { handle, kind }
     }
 

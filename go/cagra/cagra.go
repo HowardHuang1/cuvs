@@ -5,7 +5,6 @@ import "C"
 
 import (
 	"errors"
-	"fmt"
 	"unsafe"
 
 	cuvs "github.com/rapidsai/cuvs/go"
@@ -37,23 +36,59 @@ type StandardDatasetView struct {
 	view C.cuvsDataset_t
 }
 
+// Matches C++ cagra_required_row_width (16-byte default alignment).
+func cagraRequiredRowWidth(logicalColumns int64, sizeofValue int) int64 {
+	alignBytes := 16
+	lcm := lcm(alignBytes, sizeofValue)
+	bytes := logicalColumns * int64(sizeofValue)
+	rounded := ((bytes + int64(lcm) - 1) / int64(lcm)) * int64(lcm)
+	return rounded / int64(sizeofValue)
+}
+
+func gcd(a, b int) int {
+	for b != 0 {
+		a, b = b, a%b
+	}
+	return a
+}
+
+func lcm(a, b int) int {
+	return a / gcd(a, b) * b
+}
+
+func isCagraPaddedTensor(tensor *C.DLManagedTensor, sizeofValue int) bool {
+	dl := tensor.dl_tensor
+	if dl.ndim != 2 || dl.shape == nil {
+		return false
+	}
+	shape := unsafe.Slice((*C.int64_t)(unsafe.Pointer(dl.shape)), 2)
+	logicalColumns := int64(shape[1])
+	actualRowWidth := logicalColumns
+	if dl.strides != nil {
+		strides := unsafe.Slice((*C.int64_t)(unsafe.Pointer(dl.strides)), 2)
+		actualRowWidth = int64(strides[0])
+	}
+	return actualRowWidth == cagraRequiredRowWidth(logicalColumns, sizeofValue)
+}
+
+func datasetMemType(tensor *C.DLManagedTensor) C.cuvsDatasetMemType_t {
+	deviceType := tensor.dl_tensor.device.device_type
+	if deviceType == C.kDLCUDA || deviceType == C.kDLCUDAManaged {
+		return C.CUVS_DATASET_MEM_TYPE_DEVICE
+	}
+	return C.CUVS_DATASET_MEM_TYPE_HOST
+}
+
 // MakePaddedDataset creates an owning padded dataset from a tensor.
-// Memory residency is inferred from the tensor.
+// Memory residency is inferred from the tensor device type.
 func MakePaddedDataset[T any](Resources cuvs.Resource, dataset *cuvs.Tensor[T]) (*PaddedDataset, error) {
 	if dataset == nil || dataset.C_tensor == nil {
 		return nil, errors.New("dataset is nil")
 	}
 	datasetTensor := (*C.DLManagedTensor)(unsafe.Pointer(dataset.C_tensor))
-	var memType C.cuvsDatasetMemType_t
-	var layout C.cuvsDatasetLayout_t
-	err := cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsCagraGetDatasetMemTypeAndLayout(
-		datasetTensor, &memType, &layout,
-	)))
-	if err != nil {
-		return nil, err
-	}
+	memType := datasetMemType(datasetTensor)
 	var paddedDataset C.cuvsDataset_t
-	err = cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsDatasetMakePadded(
+	err := cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsDatasetMakePadded(
 		C.cuvsResources_t(Resources.Resource), datasetTensor, memType, &paddedDataset,
 	)))
 	if err != nil {
@@ -191,14 +226,9 @@ func CreateIndex() (*CagraIndex, error) {
 func BuildIndex[T any](Resources cuvs.Resource, params *IndexParams, dataset *cuvs.Tensor[T], index *CagraIndex) error {
 	datasetTensor := (*C.DLManagedTensor)(unsafe.Pointer(dataset.C_tensor))
 
-	var memType C.cuvsDatasetMemType_t
-	var layout C.cuvsDatasetLayout_t
-	err := cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsCagraGetDatasetMemTypeAndLayout(
-		datasetTensor, &memType, &layout,
-	)))
-	if err != nil {
-		return err
-	}
+	var zero T
+	sizeofValue := int(unsafe.Sizeof(zero))
+	isPadded := isCagraPaddedTensor(datasetTensor, sizeofValue)
 
 	var datasetView C.cuvsDataset_t
 	defer func() {
@@ -207,19 +237,15 @@ func BuildIndex[T any](Resources cuvs.Resource, params *IndexParams, dataset *cu
 		}
 	}()
 
-	// Unified factories infer host vs device from the tensor; only layout
-	// selects padded vs standard.
-	switch layout {
-	case C.CUVS_DATASET_LAYOUT_PADDED:
+	var err error
+	if isPadded {
 		err = cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsDatasetMakePaddedView(
 			C.cuvsResources_t(Resources.Resource), datasetTensor, &datasetView,
 		)))
-	case C.CUVS_DATASET_LAYOUT_STANDARD:
+	} else {
 		err = cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsDatasetMakeStandardView(
 			C.cuvsResources_t(Resources.Resource), datasetTensor, &datasetView,
 		)))
-	default:
-		return fmt.Errorf("unsupported dataset mem_type=%v layout=%v", memType, layout)
 	}
 	if err != nil {
 		return err

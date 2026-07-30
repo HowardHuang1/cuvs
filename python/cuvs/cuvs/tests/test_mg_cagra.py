@@ -11,7 +11,7 @@ from pylibraft.common import device_ndarray
 from sklearn.neighbors import NearestNeighbors
 from sklearn.preprocessing import normalize
 
-from cuvs.common import MultiGpuResources
+from cuvs.common import MultiGpuResources, make_device_padded_dataset
 from cuvs.neighbors import cagra
 from cuvs.neighbors.mg import cagra as mg_cagra
 from cuvs.tests.ann_utils import calc_recall, generate_data
@@ -37,15 +37,9 @@ def has_multiple_gpus():
 
 
 def make_padded_view(dataset):
-    """Create a padded view and keep its backing storage alive."""
+    """Create a padded dataset and keep its backing storage alive."""
     device_dataset = device_ndarray(dataset)
-    if cagra.get_dataset_view_kind(device_dataset) == "device_padded":
-        return (
-            device_dataset,
-            None,
-            cagra.make_padded_dataset_view(device_dataset),
-        )
-    padded_dataset = cagra.make_padded_dataset(device_dataset)
+    padded_dataset = make_device_padded_dataset(device_dataset)
     return (
         device_dataset,
         padded_dataset,
@@ -375,7 +369,6 @@ def test_mg_cagra_distribute():
 
     # Import single-GPU CAGRA to build and serialize a single-GPU index
     from cuvs.common import Resources
-    from cuvs.neighbors import cagra
 
     # Build single-GPU index first
     single_gpu_resources = Resources()
