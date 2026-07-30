@@ -1331,6 +1331,9 @@ TEST(CagraC, BuildSearchMultiPartition)
   cuvsCagraIndexParamsCreate(&build_params);
 
   cuvsCagraIndex_t indices[num_partitions];
+  cuvsDatasetView_t part_views[num_partitions]        = {};
+  cuvsDataset_t part_padded_owners[num_partitions]    = {};
+  cuvsDatasetView_t part_padded_views[num_partitions] = {};
   for (uint32_t p = 0; p < num_partitions; p++) {
     DLManagedTensor part_tensor;
     part_tensor.dl_tensor.data               = &dataset[p * part_rows][0];
@@ -1344,7 +1347,17 @@ TEST(CagraC, BuildSearchMultiPartition)
     part_tensor.dl_tensor.strides            = nullptr;
 
     cuvsCagraIndexCreate(&indices[p]);
-    cuvsCagraBuild(res, build_params, &part_tensor, indices[p]);
+    ASSERT_EQ(cuvsDatasetMakeStandardView(res, &part_tensor, &part_views[p]), CUVS_SUCCESS);
+    ASSERT_EQ(cuvsCagraBuild(res, build_params, part_views[p], indices[p]), CUVS_SUCCESS);
+
+    // The host build yields a host index; multi-partition search needs every partition to carry a
+    // device-padded dataset.
+    ASSERT_EQ(cuvsDatasetMakePadded(
+                res, &part_tensor, CUVS_DATASET_MEM_TYPE_DEVICE, &part_padded_owners[p]),
+              CUVS_SUCCESS);
+    ASSERT_EQ(cuvsDatasetMakeViewWrapper(part_padded_owners[p], &part_padded_views[p]),
+              CUVS_SUCCESS);
+    ASSERT_EQ(cuvsCagraUpdateDataset(res, part_padded_views[p], indices[p]), CUVS_SUCCESS);
   }
 
   // queries (device)
@@ -1424,6 +1437,9 @@ TEST(CagraC, BuildSearchMultiPartition)
   cuvsCagraIndexParamsDestroy(build_params);
   for (uint32_t p = 0; p < num_partitions; p++) {
     cuvsCagraIndexDestroy(indices[p]);
+    cuvsDatasetViewDestroy(part_padded_views[p]);
+    cuvsDatasetDestroy(part_padded_owners[p]);
+    cuvsDatasetViewDestroy(part_views[p]);
   }
   cuvsResourcesDestroy(res);
 }
@@ -1445,6 +1461,9 @@ TEST(CagraC, BuildSearchMultiPartitionInt64Neighbors)
   cuvsCagraIndexParamsCreate(&build_params);
 
   cuvsCagraIndex_t indices[num_partitions];
+  cuvsDatasetView_t part_views[num_partitions]        = {};
+  cuvsDataset_t part_padded_owners[num_partitions]    = {};
+  cuvsDatasetView_t part_padded_views[num_partitions] = {};
   for (uint32_t p = 0; p < num_partitions; p++) {
     DLManagedTensor part_tensor;
     part_tensor.dl_tensor.data               = &dataset[p * part_rows][0];
@@ -1458,7 +1477,17 @@ TEST(CagraC, BuildSearchMultiPartitionInt64Neighbors)
     part_tensor.dl_tensor.strides            = nullptr;
 
     cuvsCagraIndexCreate(&indices[p]);
-    cuvsCagraBuild(res, build_params, &part_tensor, indices[p]);
+    ASSERT_EQ(cuvsDatasetMakeStandardView(res, &part_tensor, &part_views[p]), CUVS_SUCCESS);
+    ASSERT_EQ(cuvsCagraBuild(res, build_params, part_views[p], indices[p]), CUVS_SUCCESS);
+
+    // The host build yields a host index; multi-partition search needs every partition to carry a
+    // device-padded dataset.
+    ASSERT_EQ(cuvsDatasetMakePadded(
+                res, &part_tensor, CUVS_DATASET_MEM_TYPE_DEVICE, &part_padded_owners[p]),
+              CUVS_SUCCESS);
+    ASSERT_EQ(cuvsDatasetMakeViewWrapper(part_padded_owners[p], &part_padded_views[p]),
+              CUVS_SUCCESS);
+    ASSERT_EQ(cuvsCagraUpdateDataset(res, part_padded_views[p], indices[p]), CUVS_SUCCESS);
   }
 
   // queries (device)
@@ -1538,6 +1567,9 @@ TEST(CagraC, BuildSearchMultiPartitionInt64Neighbors)
   cuvsCagraIndexParamsDestroy(build_params);
   for (uint32_t p = 0; p < num_partitions; p++) {
     cuvsCagraIndexDestroy(indices[p]);
+    cuvsDatasetViewDestroy(part_padded_views[p]);
+    cuvsDatasetDestroy(part_padded_owners[p]);
+    cuvsDatasetViewDestroy(part_views[p]);
   }
   cuvsResourcesDestroy(res);
 }
@@ -1560,6 +1592,9 @@ TEST(CagraC, BuildSearchMultiPartitionFiltered)
   cuvsCagraIndexParamsCreate(&build_params);
 
   cuvsCagraIndex_t indices[num_partitions];
+  cuvsDatasetView_t part_views[num_partitions]        = {};
+  cuvsDataset_t part_padded_owners[num_partitions]    = {};
+  cuvsDatasetView_t part_padded_views[num_partitions] = {};
   for (uint32_t p = 0; p < num_partitions; p++) {
     DLManagedTensor part_tensor;
     part_tensor.dl_tensor.data               = &dataset[p * part_rows][0];
@@ -1573,7 +1608,17 @@ TEST(CagraC, BuildSearchMultiPartitionFiltered)
     part_tensor.dl_tensor.strides            = nullptr;
 
     cuvsCagraIndexCreate(&indices[p]);
-    cuvsCagraBuild(res, build_params, &part_tensor, indices[p]);
+    ASSERT_EQ(cuvsDatasetMakeStandardView(res, &part_tensor, &part_views[p]), CUVS_SUCCESS);
+    ASSERT_EQ(cuvsCagraBuild(res, build_params, part_views[p], indices[p]), CUVS_SUCCESS);
+
+    // The host build yields a host index; multi-partition search needs every partition to carry a
+    // device-padded dataset.
+    ASSERT_EQ(cuvsDatasetMakePadded(
+                res, &part_tensor, CUVS_DATASET_MEM_TYPE_DEVICE, &part_padded_owners[p]),
+              CUVS_SUCCESS);
+    ASSERT_EQ(cuvsDatasetMakeViewWrapper(part_padded_owners[p], &part_padded_views[p]),
+              CUVS_SUCCESS);
+    ASSERT_EQ(cuvsCagraUpdateDataset(res, part_padded_views[p], indices[p]), CUVS_SUCCESS);
   }
 
   rmm::device_uvector<float> queries_d(n_queries * dim, stream);
@@ -1679,6 +1724,9 @@ TEST(CagraC, BuildSearchMultiPartitionFiltered)
   cuvsCagraIndexParamsDestroy(build_params);
   for (uint32_t p = 0; p < num_partitions; p++) {
     cuvsCagraIndexDestroy(indices[p]);
+    cuvsDatasetViewDestroy(part_padded_views[p]);
+    cuvsDatasetDestroy(part_padded_owners[p]);
+    cuvsDatasetViewDestroy(part_views[p]);
   }
   cuvsResourcesDestroy(res);
 }
@@ -1699,6 +1747,9 @@ TEST(CagraC, SearchMultiPartitionMultiKernelRejected)
   cuvsCagraIndexParamsCreate(&build_params);
 
   cuvsCagraIndex_t indices[num_partitions];
+  cuvsDatasetView_t part_views[num_partitions]        = {};
+  cuvsDataset_t part_padded_owners[num_partitions]    = {};
+  cuvsDatasetView_t part_padded_views[num_partitions] = {};
   for (uint32_t p = 0; p < num_partitions; p++) {
     DLManagedTensor part_tensor;
     part_tensor.dl_tensor.data               = &dataset[p * part_rows][0];
@@ -1712,7 +1763,17 @@ TEST(CagraC, SearchMultiPartitionMultiKernelRejected)
     part_tensor.dl_tensor.strides            = nullptr;
 
     cuvsCagraIndexCreate(&indices[p]);
-    cuvsCagraBuild(res, build_params, &part_tensor, indices[p]);
+    ASSERT_EQ(cuvsDatasetMakeStandardView(res, &part_tensor, &part_views[p]), CUVS_SUCCESS);
+    ASSERT_EQ(cuvsCagraBuild(res, build_params, part_views[p], indices[p]), CUVS_SUCCESS);
+
+    // The host build yields a host index; multi-partition search needs every partition to carry a
+    // device-padded dataset.
+    ASSERT_EQ(cuvsDatasetMakePadded(
+                res, &part_tensor, CUVS_DATASET_MEM_TYPE_DEVICE, &part_padded_owners[p]),
+              CUVS_SUCCESS);
+    ASSERT_EQ(cuvsDatasetMakeViewWrapper(part_padded_owners[p], &part_padded_views[p]),
+              CUVS_SUCCESS);
+    ASSERT_EQ(cuvsCagraUpdateDataset(res, part_padded_views[p], indices[p]), CUVS_SUCCESS);
   }
 
   rmm::device_uvector<float> queries_d(n_queries * dim, stream);
@@ -1782,6 +1843,9 @@ TEST(CagraC, SearchMultiPartitionMultiKernelRejected)
   cuvsCagraIndexParamsDestroy(build_params);
   for (uint32_t p = 0; p < num_partitions; p++) {
     cuvsCagraIndexDestroy(indices[p]);
+    cuvsDatasetViewDestroy(part_padded_views[p]);
+    cuvsDatasetDestroy(part_padded_owners[p]);
+    cuvsDatasetViewDestroy(part_views[p]);
   }
   cuvsResourcesDestroy(res);
 }

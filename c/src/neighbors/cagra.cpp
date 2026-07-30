@@ -855,7 +855,15 @@ void _search_multi_partition(cuvsResources_t res,
 
   std::vector<const IndexT*> idx_vec(num_partitions);
   for (uint32_t i = 0; i < num_partitions; i++) {
-    idx_vec[i] = reinterpret_cast<const IndexT*>(indices[i]->addr);
+    RAFT_EXPECTS(indices[i] != nullptr && indices[i]->addr != 0,
+                 "cuvsCagraSearchMultiPartition: null index handle (partition %u)",
+                 i);
+    auto* box = reinterpret_cast<sg_cagra_c_api_index_box*>(indices[i]->addr);
+    RAFT_EXPECTS(box->layout == sg_cagra_c_api_index_box::dataset_layout::device_padded,
+                 "cuvsCagraSearchMultiPartition: every partition must hold a device padded "
+                 "dataset; attach one via cuvsCagraUpdateDataset (partition %u)",
+                 i);
+    idx_vec[i] = reinterpret_cast<const IndexT*>(box->index_ptr);
   }
 
   using queries_view_t = raft::device_matrix_view<const T, int64_t, raft::row_major>;

@@ -330,7 +330,7 @@ void search_main(raft::resources const& res,
  * Per-partition distance post-processing is applied, then a batched select_k merges across
  * partitions and a small decode pass writes the final outputs.
  *
- * @param indices         CAGRA index objects, one per partition (strided datasets only)
+ * @param indices         CAGRA index objects, one per partition (padded device datasets only)
  * @param queries         queries matrix [n_queries, dim]; searched against every partition
  * @param partition_ids   output: which partition each neighbor came from, shape [n_queries, k]
  * @param neighbors       output: ordinal in partition[i]'s dataset, shape [n_queries, k]
@@ -355,6 +355,12 @@ void search_multi_partition(
   static_assert(std::is_same_v<IdxT, uint32_t>, "Only uint32_t graph index type is supported");
   static_assert(std::is_same_v<DistanceT, float>, "Only float distances are supported");
 
+  // The index type in this signature pins the dataset view to the default, so every partition is
+  // statically known to hold a padded (non-compressed) device dataset.
+  using partition_dataset_view_t = std::remove_cvref_t<decltype(indices[0]->dataset())>;
+  static_assert(cuvs::neighbors::is_device_padded_dataset_view_v<partition_dataset_view_t>,
+                "Multi-partition search requires padded device datasets");
+
   const uint32_t num_partitions = static_cast<uint32_t>(indices.size());
 
   const uint32_t n_queries = static_cast<uint32_t>(queries.extent(0));
@@ -376,7 +382,7 @@ void search_multi_partition(
                  "All partitions must use the same distance metric for multi-partition search");
     RAFT_EXPECTS(indices[i]->graph().extent(1) == graph_degree,
                  "All partitions must use the same graph degree for multi-partition search");
-    max_dataset_size = std::max(max_dataset_size, indices[i]->data().n_rows());
+    max_dataset_size = std::max(max_dataset_size, indices[i]->dataset().n_rows());
   }
 
   // Query norms are needed only for CosineExpanded (uniform across partitions, checked above).
@@ -418,9 +424,6 @@ void search_multi_partition(
   // type-dependent only, so any partition's descriptor (we pick indices[0]) is representative for
   // the plan's smem/sizing calculations.
   using graph_idx_type = uint32_t;
-  auto* strided_dset0  = dynamic_cast<const strided_dataset<T, int64_t>*>(&indices[0]->data());
-  RAFT_EXPECTS(strided_dset0 != nullptr,
-               "Multi-partition search only supports strided (non-compressed) datasets");
 
   RAFT_EXPECTS(metric != cuvs::distance::DistanceType::CosineExpanded ||
                  indices[0]->dataset_norms().has_value(),
@@ -430,7 +433,7 @@ void search_multi_partition(
     dataset_norms_ptr0 = indices[0]->dataset_norms().value().data_handle();
   }
   auto plan_desc = dataset_descriptor_init_with_cache<T, graph_idx_type, DistanceT>(
-    res, params, *strided_dset0, metric, dataset_norms_ptr0);
+    res, params, indices[0]->dataset(), metric, dataset_norms_ptr0);
 
   cudaStream_t stream = raft::resource::get_cuda_stream(res);
 
@@ -660,9 +663,6 @@ void search_multi_partition(
     part_dataset_descs.reserve(num_partitions);
 
     for (uint32_t i = 0; i < num_partitions; i++) {
-      auto* strided_dset = dynamic_cast<const strided_dataset<T, int64_t>*>(&indices[i]->data());
-      RAFT_EXPECTS(strided_dset != nullptr,
-                   "All partitions must have strided (non-compressed) datasets");
       const float* norms_ptr = nullptr;
       if (indices[i]->metric() == cuvs::distance::DistanceType::CosineExpanded) {
         RAFT_EXPECTS(indices[i]->dataset_norms().has_value(),
@@ -671,13 +671,13 @@ void search_multi_partition(
         norms_ptr = indices[i]->dataset_norms().value().data_handle();
       }
       part_dataset_descs.push_back(dataset_descriptor_init_with_cache<T, graph_idx_type, DistanceT>(
-        res, params, *strided_dset, indices[i]->metric(), norms_ptr));
+        res, params, indices[i]->dataset(), indices[i]->metric(), norms_ptr));
 
       host_part_descs(i).dataset_desc = part_dataset_descs.back().dev_ptr(stream);
       host_part_descs(i).graph        = indices[i]->graph().data_handle();
       host_part_descs(i).graph_degree = static_cast<uint32_t>(indices[i]->graph().extent(1));
       // This partition's own filter bitset (its own device buffer); an empty view = no filter here.
-      const int64_t part_n_rows = indices[i]->data().n_rows();
+      const int64_t part_n_rows = indices[i]->dataset().n_rows();
       if (i < partition_bitsets.size() && partition_bitsets[i].data() != nullptr &&
           partition_bitsets[i].size() > 0) {
         RAFT_EXPECTS(static_cast<int64_t>(partition_bitsets[i].size()) >= part_n_rows,
@@ -740,9 +740,6 @@ void search_multi_partition(
     part_dataset_descs.reserve(num_partitions);
 
     for (uint32_t i = 0; i < num_partitions; i++) {
-      auto* strided_dset = dynamic_cast<const strided_dataset<T, int64_t>*>(&indices[i]->data());
-      RAFT_EXPECTS(strided_dset != nullptr,
-                   "All partitions must have strided (non-compressed) datasets");
       const float* norms_ptr = nullptr;
       if (indices[i]->metric() == cuvs::distance::DistanceType::CosineExpanded) {
         RAFT_EXPECTS(indices[i]->dataset_norms().has_value(),
@@ -751,13 +748,13 @@ void search_multi_partition(
         norms_ptr = indices[i]->dataset_norms().value().data_handle();
       }
       part_dataset_descs.push_back(dataset_descriptor_init_with_cache<T, graph_idx_type, DistanceT>(
-        res, params, *strided_dset, indices[i]->metric(), norms_ptr));
+        res, params, indices[i]->dataset(), indices[i]->metric(), norms_ptr));
 
       host_part_descs(i).dataset_desc = part_dataset_descs.back().dev_ptr(stream);
       host_part_descs(i).graph        = indices[i]->graph().data_handle();
       host_part_descs(i).graph_degree = static_cast<uint32_t>(indices[i]->graph().extent(1));
       // This partition's own filter bitset (its own device buffer); an empty view = no filter here.
-      const int64_t part_n_rows = indices[i]->data().n_rows();
+      const int64_t part_n_rows = indices[i]->dataset().n_rows();
       if (i < partition_bitsets.size() && partition_bitsets[i].data() != nullptr &&
           partition_bitsets[i].size() > 0) {
         RAFT_EXPECTS(static_cast<int64_t>(partition_bitsets[i].size()) >= part_n_rows,
