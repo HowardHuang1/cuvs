@@ -154,6 +154,7 @@ def build(IndexParams index_params, dataset, resources=None):
 
     >>> import numpy as np
     >>> from pylibraft.common import device_ndarray
+    >>> from cuvs.common import make_device_padded_dataset
     >>> from cuvs.neighbors import cagra as sg_cagra
     >>> from cuvs.neighbors.mg import cagra
     >>> n_samples = 50000
@@ -166,7 +167,7 @@ def build(IndexParams index_params, dataset, resources=None):
     >>> build_params = cagra.IndexParams(metric="sqeuclidean")
     >>> index = cagra.build(build_params, dataset)
     >>> device_dataset = device_ndarray(dataset)
-    >>> padded_dataset = sg_cagra.make_device_padded_dataset(device_dataset)
+    >>> padded_dataset = make_device_padded_dataset(device_dataset)
     >>> _ = cagra.update_dataset(index, padded_dataset)
     >>> distances, neighbors = cagra.search(cagra.SearchParams(),
     ...                                         index, dataset, k)

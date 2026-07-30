@@ -11,6 +11,7 @@ from pylibraft.common import device_ndarray
 from sklearn.neighbors import NearestNeighbors
 from sklearn.preprocessing import normalize
 
+from cuvs.common import make_device_padded_dataset
 from cuvs.neighbors import cagra, ivf_pq
 from cuvs.tests.ann_utils import (
     calc_recall,
@@ -59,7 +60,7 @@ def run_cagra_build_search_test(
 
             index = cagra.build(build_params, dataset_1_device)
             new_start_row = dataset_1.shape[0]
-            extended_dataset_owner = cagra.make_device_padded_dataset(
+            extended_dataset_owner = make_device_padded_dataset(
                 device_ndarray(np.concatenate((dataset_1, dataset_2), axis=0))
             )
             index = cagra.extend(
@@ -159,7 +160,7 @@ def run_cagra_build_search_test(
     reloaded_index = cagra.from_graph(
         graph, reloaded_dataset_device, metric=metric
     )
-    reloaded_padded_dataset = cagra.make_device_padded_dataset(
+    reloaded_padded_dataset = make_device_padded_dataset(
         reloaded_dataset_device
     )
     cagra.update_dataset(reloaded_index, reloaded_padded_dataset)
@@ -201,7 +202,7 @@ def test_cagra_build_from_dataset_handle(
     from_host, n_rows, n_cols, n_queries, k
 ):
     dataset = generate_data((n_rows, n_cols), np.float32)
-    padded = cagra.make_device_padded_dataset(
+    padded = make_device_padded_dataset(
         dataset if from_host else device_ndarray(dataset)
     )
     assert isinstance(padded, cagra.Dataset)

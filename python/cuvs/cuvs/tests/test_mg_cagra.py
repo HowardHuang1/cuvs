@@ -11,7 +11,7 @@ from pylibraft.common import device_ndarray
 from sklearn.neighbors import NearestNeighbors
 from sklearn.preprocessing import normalize
 
-from cuvs.common import MultiGpuResources
+from cuvs.common import MultiGpuResources, make_device_padded_dataset
 from cuvs.neighbors import cagra
 from cuvs.neighbors.mg import cagra as mg_cagra
 from cuvs.tests.ann_utils import calc_recall, generate_data
@@ -39,7 +39,7 @@ def has_multiple_gpus():
 def make_padded_view(dataset):
     """Create a padded dataset and keep its backing storage alive."""
     device_dataset = device_ndarray(dataset)
-    padded_dataset = cagra.make_device_padded_dataset(device_dataset)
+    padded_dataset = make_device_padded_dataset(device_dataset)
     return (
         device_dataset,
         padded_dataset,

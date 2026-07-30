@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 
-from cuvs.common.dataset import Dataset, make_device_padded_dataset
+from cuvs.common.dataset import Dataset
 
 from .cagra import (
     AceParams,
@@ -30,7 +30,6 @@ __all__ = [
     "extend",
     "from_graph",
     "load",
-    "make_device_padded_dataset",
     "save",
     "search",
     "update_dataset",

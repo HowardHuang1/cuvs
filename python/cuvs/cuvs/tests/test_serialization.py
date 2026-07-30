@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 from pylibraft.common import device_ndarray
 
+from cuvs.common import make_device_padded_dataset
 from cuvs.neighbors import brute_force, cagra, ivf_flat, ivf_pq
 from cuvs.tests.ann_utils import (
     calc_recall,
@@ -127,7 +128,7 @@ def test_cagra_graph_only_serialization(tmp_path):
             out_dataset=missing_dataset_owner,
         )
 
-    padded_dataset = cagra.make_device_padded_dataset(dataset)
+    padded_dataset = make_device_padded_dataset(dataset)
     cagra.update_dataset(loaded, padded_dataset)
     queries = device_ndarray(generate_data((64, n_cols), np.float32))
     search_params = cagra.SearchParams()
