@@ -112,10 +112,6 @@ cdef extern from "cuvs/neighbors/cagra.h" nogil:
         CUVS_DATASET_MEM_TYPE_HOST
         CUVS_DATASET_MEM_TYPE_DEVICE
 
-    ctypedef enum cuvsDatasetOwnership_t:
-        CUVS_DATASET_OWNERSHIP_VIEW
-        CUVS_DATASET_OWNERSHIP_OWNING
-
     cuvsError_t cuvsAceParamsCreate(cuvsAceParams_t* params)
 
     cuvsError_t cuvsAceParamsDestroy(cuvsAceParams_t params)
@@ -146,7 +142,7 @@ cdef extern from "cuvs/neighbors/cagra.h" nogil:
         DLDataType dtype
         cuvsDatasetMemType_t mem_type
         cuvsDatasetLayout_t layout
-        cuvsDatasetOwnership_t ownership
+        bool is_owning
     ctypedef cuvsDataset* cuvsDataset_t
 
     cuvsError_t cuvsDatasetMakePadded(cuvsResources_t res,

@@ -85,7 +85,7 @@ TEST(CagraC, BuildSearch)
   cuvsCagraIndexParamsCreate(&build_params);
   cuvsDataset_t dataset_view = nullptr;
   ASSERT_EQ(cuvsDatasetMakeStandardView(res, &dataset_tensor, &dataset_view), CUVS_SUCCESS);
-  EXPECT_EQ(dataset_view->ownership, CUVS_DATASET_OWNERSHIP_VIEW);
+  EXPECT_FALSE(dataset_view->is_owning);
   ASSERT_EQ(cuvsCagraBuild(res, build_params, dataset_view, index), CUVS_SUCCESS);
   EXPECT_EQ(cuvsCagraUpdateDataset(res, dataset_view, index), CUVS_ERROR);
 
@@ -95,7 +95,7 @@ TEST(CagraC, BuildSearch)
   ASSERT_EQ(cuvsDatasetMakePadded(
               res, &dataset_tensor, CUVS_DATASET_MEM_TYPE_DEVICE, &padded_dataset_owner),
             CUVS_SUCCESS);
-  EXPECT_EQ(padded_dataset_owner->ownership, CUVS_DATASET_OWNERSHIP_OWNING);
+  EXPECT_TRUE(padded_dataset_owner->is_owning);
   cuvsCagraIndex_t owner_built_index;
   ASSERT_EQ(cuvsCagraIndexCreate(&owner_built_index), CUVS_SUCCESS);
   ASSERT_EQ(cuvsCagraBuild(res, build_params, padded_dataset_owner, owner_built_index), CUVS_SUCCESS);

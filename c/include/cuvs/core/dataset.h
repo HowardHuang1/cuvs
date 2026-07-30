@@ -9,6 +9,7 @@
 #include <cuvs/neighbors/common.h>
 
 #include <dlpack/dlpack.h>
+#include <stdbool.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -32,18 +33,10 @@ typedef enum {
 } cuvsDatasetMemType_t;
 
 /**
- * @brief Ownership kind for C API dataset handles.
- */
-typedef enum {
-  CUVS_DATASET_OWNERSHIP_VIEW   = 0,
-  CUVS_DATASET_OWNERSHIP_OWNING = 1
-} cuvsDatasetOwnership_t;
-
-/**
  * @brief Dataset handle representing owning storage or a non-owning view.
  *
  * `addr` points to C++ dataset storage or view metadata managed by the C API. `mem_type`
- * identifies the memory space, `layout` identifies the data layout, and `ownership` indicates
+ * identifies the memory space, `layout` identifies the data layout, and `is_owning` indicates
  * whether the handle owns its backing data.
  */
 typedef struct {
@@ -52,7 +45,7 @@ typedef struct {
   DLDataType dtype;
   cuvsDatasetMemType_t mem_type;
   cuvsDatasetLayout_t layout;
-  cuvsDatasetOwnership_t ownership;
+  bool is_owning;
 } cuvsDataset;
 typedef cuvsDataset* cuvsDataset_t;
 

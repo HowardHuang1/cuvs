@@ -286,12 +286,6 @@ pub enum cuvsDatasetMemType_t {
     CUVS_DATASET_MEM_TYPE_HOST = 0,
     CUVS_DATASET_MEM_TYPE_DEVICE = 1,
 }
-#[repr(u32)]
-#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
-pub enum cuvsDatasetOwnership_t {
-    CUVS_DATASET_OWNERSHIP_VIEW = 0,
-    CUVS_DATASET_OWNERSHIP_OWNING = 1,
-}
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct cuvsDataset {
@@ -301,7 +295,7 @@ pub struct cuvsDataset {
     pub dtype: DLDataType,
     pub mem_type: cuvsDatasetMemType_t,
     pub layout: cuvsDatasetLayout_t,
-    pub ownership: cuvsDatasetOwnership_t,
+    pub is_owning: bool,
 }
 #[allow(clippy::unnecessary_operation, clippy::identity_op)]
 const _: () = {
@@ -314,8 +308,8 @@ const _: () = {
     ["Offset of field: cuvsDataset::mem_type"]
         [::std::mem::offset_of!(cuvsDataset, mem_type) - 20usize];
     ["Offset of field: cuvsDataset::layout"][::std::mem::offset_of!(cuvsDataset, layout) - 24usize];
-    ["Offset of field: cuvsDataset::ownership"]
-        [::std::mem::offset_of!(cuvsDataset, ownership) - 28usize];
+    ["Offset of field: cuvsDataset::is_owning"]
+        [::std::mem::offset_of!(cuvsDataset, is_owning) - 28usize];
 };
 pub type cuvsDataset_t = *mut cuvsDataset;
 pub type cuvsCagraIndex_t = *mut cuvsCagraIndex;

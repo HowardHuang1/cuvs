@@ -160,7 +160,7 @@ static void merge_indices_for_layout(
     merged_dataset->dtype        = output_index->dtype;
     merged_dataset->mem_type     = CUVS_DATASET_MEM_TYPE_DEVICE;
     merged_dataset->layout       = output_layout;
-    merged_dataset->ownership    = CUVS_DATASET_OWNERSHIP_OWNING;
+    merged_dataset->is_owning    = true;
   };
 
   if (filter.type == NO_FILTER) {
@@ -311,14 +311,12 @@ static void with_dataset_view(cuvsDataset_t dataset, Fn&& fn)
 {
   RAFT_EXPECTS(dataset != nullptr, "null dataset handle");
   RAFT_EXPECTS(dataset->addr != 0, "null dataset storage");
-  if (dataset->ownership == CUVS_DATASET_OWNERSHIP_OWNING) {
+  if (dataset->is_owning) {
     auto* owner = reinterpret_cast<OwnerT*>(dataset->addr);
     auto view   = owner->as_dataset_view();
     fn(view);
-  } else if (dataset->ownership == CUVS_DATASET_OWNERSHIP_VIEW) {
-    fn(*reinterpret_cast<ViewT*>(dataset->addr));
   } else {
-    RAFT_FAIL("invalid dataset ownership");
+    fn(*reinterpret_cast<ViewT*>(dataset->addr));
   }
 }
 
@@ -347,7 +345,7 @@ static void make_device_padded_dataset(raft::resources* res_ptr,
   out->dtype    = dataset.dtype;
   out->mem_type = CUVS_DATASET_MEM_TYPE_DEVICE;
   out->layout   = CUVS_DATASET_LAYOUT_PADDED;
-  out->ownership = CUVS_DATASET_OWNERSHIP_OWNING;
+  out->is_owning = true;
   *output_padded_dataset = out;
 }
 
@@ -389,7 +387,7 @@ static void make_host_padded_dataset(raft::resources* res_ptr,
   out->dtype    = dataset.dtype;
   out->mem_type = CUVS_DATASET_MEM_TYPE_HOST;
   out->layout   = CUVS_DATASET_LAYOUT_PADDED;
-  out->ownership = CUVS_DATASET_OWNERSHIP_OWNING;
+  out->is_owning = true;
   *output_padded_dataset = out;
 }
 
@@ -413,7 +411,7 @@ static void make_device_padded_dataset_view(raft::resources* res_ptr,
   out->dtype        = dataset.dtype;
   out->mem_type     = CUVS_DATASET_MEM_TYPE_DEVICE;
   out->layout       = CUVS_DATASET_LAYOUT_PADDED;
-  out->ownership    = CUVS_DATASET_OWNERSHIP_VIEW;
+  out->is_owning    = false;
   *output_padded_dataset = out;
 }
 
@@ -437,7 +435,7 @@ static void make_host_padded_dataset_view(raft::resources*,
   out->dtype        = dataset.dtype;
   out->mem_type     = CUVS_DATASET_MEM_TYPE_HOST;
   out->layout       = CUVS_DATASET_LAYOUT_PADDED;
-  out->ownership    = CUVS_DATASET_OWNERSHIP_VIEW;
+  out->is_owning    = false;
   *output_padded_dataset = out;
 }
 
@@ -461,7 +459,7 @@ static void make_device_standard_dataset_view(raft::resources*,
   out->dtype        = dataset.dtype;
   out->mem_type     = CUVS_DATASET_MEM_TYPE_DEVICE;
   out->layout       = CUVS_DATASET_LAYOUT_STANDARD;
-  out->ownership    = CUVS_DATASET_OWNERSHIP_VIEW;
+  out->is_owning    = false;
   *output_standard_dataset = out;
 }
 
@@ -485,7 +483,7 @@ static void make_host_standard_dataset_view(raft::resources*,
   out->dtype        = dataset.dtype;
   out->mem_type     = CUVS_DATASET_MEM_TYPE_HOST;
   out->layout       = CUVS_DATASET_LAYOUT_STANDARD;
-  out->ownership    = CUVS_DATASET_OWNERSHIP_VIEW;
+  out->is_owning    = false;
   *output_standard_dataset = out;
 }
 
@@ -1063,7 +1061,7 @@ void _deserialize(cuvsResources_t res, const char *filename,
         cuvs::neighbors::is_padded_dataset_view_v<view_t>
             ? CUVS_DATASET_LAYOUT_PADDED
             : CUVS_DATASET_LAYOUT_STANDARD;
-    dataset_handle->ownership = CUVS_DATASET_OWNERSHIP_OWNING;
+    dataset_handle->is_owning = true;
   }
 
   auto box = make_sg_cagra_c_api_index_box<T, view_t>(holder.get());
@@ -1384,7 +1382,7 @@ extern "C" cuvsError_t cuvsDatasetCreate(cuvsDataset_t* dataset)
                                DLDataType{},
                                CUVS_DATASET_MEM_TYPE_DEVICE,
                                CUVS_DATASET_LAYOUT_STANDARD,
-                               CUVS_DATASET_OWNERSHIP_OWNING};
+                               true};
   });
 }
 
