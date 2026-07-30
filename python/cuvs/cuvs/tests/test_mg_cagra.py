@@ -369,7 +369,6 @@ def test_mg_cagra_distribute():
 
     # Import single-GPU CAGRA to build and serialize a single-GPU index
     from cuvs.common import Resources
-    from cuvs.neighbors import cagra
 
     # Build single-GPU index first
     single_gpu_resources = Resources()

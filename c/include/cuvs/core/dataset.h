@@ -94,6 +94,19 @@ CUVS_EXPORT cuvsError_t cuvsDatasetMakeStandardView(cuvsResources_t res,
 /** @brief Destroy a dataset handle created by a `cuvsDatasetMake*` function. */
 CUVS_EXPORT cuvsError_t cuvsDatasetDestroy(cuvsDataset_t dataset);
 
+/** @brief Get the memory residency of a dataset handle. */
+CUVS_EXPORT cuvsError_t cuvsDatasetGetMemType(cuvsDataset_t dataset,
+                                              cuvsDatasetMemType_t* mem_type);
+
+/** @brief Get the layout of a dataset handle. */
+CUVS_EXPORT cuvsError_t cuvsDatasetGetLayout(cuvsDataset_t dataset, cuvsDatasetLayout_t* layout);
+
+/** @brief Get whether a dataset handle owns its backing storage. */
+CUVS_EXPORT cuvsError_t cuvsDatasetGetIsOwning(cuvsDataset_t dataset, bool* is_owning);
+
+/** @brief Get the element dtype of a dataset handle. */
+CUVS_EXPORT cuvsError_t cuvsDatasetGetDtype(cuvsDataset_t dataset, DLDataType* dtype);
+
 #ifdef __cplusplus
 }
 #endif

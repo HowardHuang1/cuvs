@@ -4,7 +4,6 @@
 #
 # cython: language_level=3
 
-from libc.stdint cimport uintptr_t
 from libcpp cimport bool
 
 from cuvs.common.c_api cimport cuvsError_t, cuvsResources_t
@@ -20,13 +19,8 @@ cdef extern from "cuvs/core/dataset.h" nogil:
         CUVS_DATASET_MEM_TYPE_HOST
         CUVS_DATASET_MEM_TYPE_DEVICE
 
-    ctypedef struct cuvsDataset:
-        uintptr_t addr
-        void (*destroy_addr)(void*)
-        DLDataType dtype
-        cuvsDatasetMemType_t mem_type
-        cuvsDatasetLayout_t layout
-        bool is_owning
+    cdef struct cuvsDataset:
+        pass
     ctypedef cuvsDataset* cuvsDataset_t
 
     cuvsError_t cuvsDatasetCreate(cuvsDataset_t* dataset)
@@ -46,9 +40,20 @@ cdef extern from "cuvs/core/dataset.h" nogil:
 
     cuvsError_t cuvsDatasetDestroy(cuvsDataset_t dataset)
 
+    cuvsError_t cuvsDatasetGetMemType(cuvsDataset_t dataset,
+                                      cuvsDatasetMemType_t* mem_type)
+
+    cuvsError_t cuvsDatasetGetLayout(cuvsDataset_t dataset,
+                                     cuvsDatasetLayout_t* layout)
+
+    cuvsError_t cuvsDatasetGetIsOwning(cuvsDataset_t dataset, bool* is_owning)
+
+    cuvsError_t cuvsDatasetGetDtype(cuvsDataset_t dataset, DLDataType* dtype)
+
 
 cdef class Dataset:
     cdef cuvsDataset_t dataset
+    cdef object _source
 
 
 cdef Dataset make_device_padded_dataset_handle(

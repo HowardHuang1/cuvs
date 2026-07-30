@@ -1472,6 +1472,42 @@ extern "C" cuvsError_t cuvsDatasetDestroy(cuvsDataset_t dataset)
   });
 }
 
+extern "C" cuvsError_t cuvsDatasetGetMemType(cuvsDataset_t dataset, cuvsDatasetMemType_t* mem_type)
+{
+  return cuvs::core::translate_exceptions([=] {
+    RAFT_EXPECTS(dataset != nullptr, "cuvsDatasetGetMemType: null dataset");
+    RAFT_EXPECTS(mem_type != nullptr, "cuvsDatasetGetMemType: null output");
+    *mem_type = dataset->mem_type;
+  });
+}
+
+extern "C" cuvsError_t cuvsDatasetGetLayout(cuvsDataset_t dataset, cuvsDatasetLayout_t* layout)
+{
+  return cuvs::core::translate_exceptions([=] {
+    RAFT_EXPECTS(dataset != nullptr, "cuvsDatasetGetLayout: null dataset");
+    RAFT_EXPECTS(layout != nullptr, "cuvsDatasetGetLayout: null output");
+    *layout = dataset->layout;
+  });
+}
+
+extern "C" cuvsError_t cuvsDatasetGetIsOwning(cuvsDataset_t dataset, bool* is_owning)
+{
+  return cuvs::core::translate_exceptions([=] {
+    RAFT_EXPECTS(dataset != nullptr, "cuvsDatasetGetIsOwning: null dataset");
+    RAFT_EXPECTS(is_owning != nullptr, "cuvsDatasetGetIsOwning: null output");
+    *is_owning = dataset->is_owning;
+  });
+}
+
+extern "C" cuvsError_t cuvsDatasetGetDtype(cuvsDataset_t dataset, DLDataType* dtype)
+{
+  return cuvs::core::translate_exceptions([=] {
+    RAFT_EXPECTS(dataset != nullptr, "cuvsDatasetGetDtype: null dataset");
+    RAFT_EXPECTS(dtype != nullptr, "cuvsDatasetGetDtype: null output");
+    *dtype = dataset->dtype;
+  });
+}
+
 extern "C" cuvsError_t cuvsDatasetMakeStandardView(cuvsResources_t res,
                                                    DLManagedTensor* dataset_tensor,
                                                    cuvsDataset_t* standard_dataset)

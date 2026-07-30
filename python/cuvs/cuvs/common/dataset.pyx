@@ -6,15 +6,17 @@
 
 import numpy as np
 
-cimport cuvs.common.cydlpack
+from libcpp cimport bool as cbool
 
+cimport cuvs.common.cydlpack
 from cuvs.common cimport cydlpack
 from cuvs.common.c_api cimport cuvsError_t, cuvsResources_t
-from cuvs.common.exceptions import check_cuvs, get_last_error_text
-from cuvs.common.resources import auto_sync_resources
 
 from pylibraft.common.cai_wrapper import wrap_array
 from pylibraft.common.interruptible import cuda_interruptible
+
+from cuvs.common.exceptions import check_cuvs, get_last_error_text
+from cuvs.common.resources import auto_sync_resources
 
 
 cdef class Dataset:
@@ -22,6 +24,7 @@ cdef class Dataset:
 
     def __cinit__(self):
         self.dataset = NULL
+        self._source = None
 
     def __dealloc__(self):
         if self.dataset != NULL:
@@ -29,33 +32,39 @@ cdef class Dataset:
 
     @property
     def memory_type(self):
+        cdef cuvsDatasetMemType_t mem_type
         if self.dataset == NULL:
             return None
-        if self.dataset.mem_type == CUVS_DATASET_MEM_TYPE_DEVICE:
+        check_cuvs(cuvsDatasetGetMemType(self.dataset, &mem_type))
+        if mem_type == CUVS_DATASET_MEM_TYPE_DEVICE:
             return "device"
         return "host"
 
     @property
     def layout(self):
+        cdef cuvsDatasetLayout_t layout
         if self.dataset == NULL:
             return None
-        if self.dataset.layout == CUVS_DATASET_LAYOUT_PADDED:
+        check_cuvs(cuvsDatasetGetLayout(self.dataset, &layout))
+        if layout == CUVS_DATASET_LAYOUT_PADDED:
             return "padded"
         return "standard"
 
     @property
     def is_owning(self):
+        cdef cbool owning
         if self.dataset == NULL:
             return None
-        return self.dataset.is_owning != 0
+        check_cuvs(cuvsDatasetGetIsOwning(self.dataset, &owning))
+        return owning != 0
 
     @property
     def dtype(self):
+        cdef DLDataType dtype
         if self.dataset == NULL:
             return None
-        return (self.dataset.dtype.code,
-                self.dataset.dtype.bits,
-                self.dataset.dtype.lanes)
+        check_cuvs(cuvsDatasetGetDtype(self.dataset, &dtype))
+        return (dtype.code, dtype.bits, dtype.lanes)
 
 
 cdef Dataset make_device_padded_dataset_handle(
@@ -99,5 +108,9 @@ def make_device_padded_dataset(dataset, resources=None):
     cdef cydlpack.DLManagedTensor* dataset_dlpack = \
         cydlpack.dlpack_c(dataset_ai)
     cdef cuvsResources_t res = <cuvsResources_t>resources.get_c_obj()
+    cdef Dataset padded
     with cuda_interruptible():
-        return make_device_padded_dataset_handle(res, dataset_dlpack)
+        padded = make_device_padded_dataset_handle(res, dataset_dlpack)
+    if not padded.is_owning:
+        padded._source = dataset
+    return padded

@@ -45,10 +45,11 @@ from libc.string cimport strdup
 from cuvs.common.dataset cimport (
     Dataset,
     cuvsDataset_t,
-    cuvsDatasetMakeStandardView,
     cuvsDatasetDestroy,
+    cuvsDatasetMakeStandardView,
     make_device_padded_dataset_handle,
 )
+
 from cuvs.common.dataset import make_device_padded_dataset
 from cuvs.common.exceptions import check_cuvs
 from cuvs.neighbors import ivf_pq
@@ -522,7 +523,8 @@ def build(IndexParams index_params, dataset, resources=None):
             check_cuvs(cuvsCagraBuild(
                 res, params, dataset_handle, idx.index))
             idx.trained = True
-            idx.active_index_type = dl_data_type_to_numpy(idx.index.dtype).name
+            idx.active_index_type = np.dtype(
+                dl_data_type_to_numpy(idx.index.dtype)).name
             idx._dataset_source = dataset_obj
 
             if not is_ace_build:

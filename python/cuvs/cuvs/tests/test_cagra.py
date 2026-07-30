@@ -213,15 +213,15 @@ def test_cagra_build_from_dataset_handle(
     assert index.trained
 
     queries = device_ndarray(generate_data((n_queries, n_cols), np.float32))
-    distances, neighbors = cagra.search(cagra.SearchParams(), index, queries, k)
+    distances, neighbors = cagra.search(
+        cagra.SearchParams(), index, queries, k
+    )
 
     nn_skl = NearestNeighbors(
         n_neighbors=k, algorithm="brute", metric="sqeuclidean"
     )
     nn_skl.fit(dataset)
-    skl_idx = nn_skl.kneighbors(
-        queries.copy_to_host(), return_distance=False
-    )
+    skl_idx = nn_skl.kneighbors(queries.copy_to_host(), return_distance=False)
     assert calc_recall(neighbors.copy_to_host(), skl_idx) > 0.7
     assert distances.shape == (n_queries, k)
 

@@ -37,7 +37,10 @@ impl DatasetKind {
         }
     }
 
-    fn from_handle_fields(mem_type: ffi::cuvsDatasetMemType_t, layout: ffi::cuvsDatasetLayout_t) -> Self {
+    fn from_handle_fields(
+        mem_type: ffi::cuvsDatasetMemType_t,
+        layout: ffi::cuvsDatasetLayout_t,
+    ) -> Self {
         Self::from_residency_and_padded(
             mem_type == ffi::cuvsDatasetMemType_t::CUVS_DATASET_MEM_TYPE_DEVICE,
             layout == ffi::cuvsDatasetLayout_t::CUVS_DATASET_LAYOUT_PADDED,
@@ -83,20 +86,16 @@ fn dlpack_element_size(dtype: &ffi::DLDataType) -> Option<usize> {
 
 fn is_cagra_padded_layout(tensor: &ffi::DLTensor) -> Result<bool> {
     if tensor.ndim != 2 {
-        return Err(CagraError::Validation(
-            "CAGRA datasets must be 2-D".to_string(),
-        ));
+        return Err(CagraError::Validation("CAGRA datasets must be 2-D".to_string()));
     }
     let sizeof_value = dlpack_element_size(&tensor.dtype).ok_or_else(|| {
-        CagraError::Validation(
-            "unsupported dataset dtype for CAGRA layout check".to_string(),
-        )
+        CagraError::Validation("unsupported dataset dtype for CAGRA layout check".to_string())
     })?;
     let logical_columns = unsafe { *tensor.shape.add(1) } as u32;
     let actual_row_width = if tensor.strides.is_null() {
         logical_columns
     } else {
-        unsafe { *tensor.strides } as u32
+        (unsafe { *tensor.strides }) as u32
     };
     Ok(actual_row_width == cagra_required_row_width(logical_columns, sizeof_value))
 }
@@ -135,12 +134,7 @@ impl<'a> DatasetView<'a> {
                     ffi::cuvsDatasetMakeStandardView(res.handle(), dataset_c.as_mut_ptr(), out)
                 }
             })?;
-            Ok(Self {
-                handle,
-                kind,
-                destroy_handle: true,
-                _dataset: PhantomData,
-            })
+            Ok(Self { handle, kind, destroy_handle: true, _dataset: PhantomData })
         }
     }
 
