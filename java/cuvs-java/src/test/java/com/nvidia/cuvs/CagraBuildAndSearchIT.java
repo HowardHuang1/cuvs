@@ -139,8 +139,7 @@ public class CagraBuildAndSearchIT extends CuVSTestCase {
       for (int j = 0; j < numTestsRuns; j++) {
         try (var index = indexOnce(CuVSMatrix.ofArray(dataset), resources)) {
           var indexPath = serializeOnce(index);
-          try (var outDataset = new CagraIndex.StandardDataset();
-              var loadedIndex = deserializeOnce(indexPath, resources, outDataset)) {
+          try (var loadedIndex = deserializeOnce(indexPath, resources)) {
             queryAndCompare(
                 index,
                 loadedIndex,
@@ -151,6 +150,33 @@ public class CagraBuildAndSearchIT extends CuVSTestCase {
             Files.deleteIfExists(indexPath);
           }
         }
+      }
+    }
+  }
+
+  @Test
+  public void testDeserializeReturnsCallerOwnedStandardDataset() throws Throwable {
+    float[][] dataset = createSampleData();
+    float[][] queries = createSampleQueries();
+    List<Map<Integer, Float>> expectedResults = getExpectedResults();
+
+    try (CuVSResources resources = CheckedCuVSResources.create();
+        var index = indexOnce(CuVSMatrix.ofArray(dataset), resources)) {
+      var indexPath = serializeOnce(index);
+      try (var outDataset = new CagraIndex.StandardDataset();
+          var inputStream = Files.newInputStream(indexPath);
+          var loadedIndex =
+              CagraIndex.newBuilder(resources).from(inputStream, outDataset).build()) {
+        assertTrue(outDataset.isPresent());
+        queryAndCompare(
+            index,
+            loadedIndex,
+            SearchResults.IDENTITY_MAPPING,
+            queries,
+            expectedResults,
+            resources);
+      } finally {
+        Files.deleteIfExists(indexPath);
       }
     }
   }
@@ -171,8 +197,7 @@ public class CagraBuildAndSearchIT extends CuVSTestCase {
             () -> {
               try (var index = indexOnce(CuVSMatrix.ofArray(dataset), resources)) {
                 var indexPath = serializeOnce(index);
-                try (var outDataset = new CagraIndex.StandardDataset();
-                    var loadedIndex = deserializeOnce(indexPath, resources, outDataset)) {
+                try (var loadedIndex = deserializeOnce(indexPath, resources)) {
                   queryAndCompare(
                       index,
                       loadedIndex,
@@ -221,8 +246,7 @@ public class CagraBuildAndSearchIT extends CuVSTestCase {
                   var matrix = CuVSMatrix.ofArray(dataset);
                   var index = indexOnce(matrix, resources)) {
                 var indexPath = serializeOnce(index);
-                try (var outDataset = new CagraIndex.StandardDataset();
-                    var loadedIndex = deserializeOnce(indexPath, resources, outDataset)) {
+                try (var loadedIndex = deserializeOnce(indexPath, resources)) {
                   log.debug(
                       "Querying threadIdx:{}-{}", threadIdx, Thread.currentThread().getName());
                   queryAndCompare(
@@ -421,8 +445,7 @@ public class CagraBuildAndSearchIT extends CuVSTestCase {
             threadIdx ->
                 () -> {
                   try (CuVSResources resources = CheckedCuVSResources.create();
-                      var outDataset = new CagraIndex.StandardDataset();
-                      var loadedIndex = deserializeOnce(indexPath, resources, outDataset)) {
+                      var loadedIndex = deserializeOnce(indexPath, resources)) {
                     // just validate deserialize/close path under concurrency
                   } catch (Throwable e) {
                     throw new RuntimeException(e);
@@ -496,8 +519,7 @@ public class CagraBuildAndSearchIT extends CuVSTestCase {
     try (CuVSResources resources = CheckedCuVSResources.create();
         var index = indexOnce(dataset, resources)) {
       var indexPath = serializeOnce(index);
-      try (var outDataset = new CagraIndex.StandardDataset();
-          var loadedIndex = deserializeOnce(indexPath, resources, outDataset)) {
+      try (var loadedIndex = deserializeOnce(indexPath, resources)) {
         queryAndCompare(index, loadedIndex, rotate, queries, expectedResults, resources);
       } finally {
         Files.deleteIfExists(indexPath);
@@ -521,8 +543,7 @@ public class CagraBuildAndSearchIT extends CuVSTestCase {
     try (CuVSResources resources = CheckedCuVSResources.create();
         var index = indexOnce(dataset, resources)) {
       var indexPath = serializeOnce(index);
-      try (var outDataset = new CagraIndex.StandardDataset();
-          var loadedIndex = deserializeOnce(indexPath, resources, outDataset)) {
+      try (var loadedIndex = deserializeOnce(indexPath, resources)) {
         queryAndCompare(index, loadedIndex, rotate, queries, expectedResults, resources);
       } finally {
         Files.deleteIfExists(indexPath);
@@ -679,14 +700,10 @@ public class CagraBuildAndSearchIT extends CuVSTestCase {
     return indexFilePath;
   }
 
-  private CagraIndex deserializeOnce(
-      Path indexFilePath, CuVSResources resources, CagraIndex.DeserializeDataset outDataset)
-      throws Throwable {
+  private CagraIndex deserializeOnce(Path indexFilePath, CuVSResources resources) throws Throwable {
     // Loading a CAGRA index from disk.
     try (var inputStream = Files.newInputStream(indexFilePath)) {
-      var loadedIndex = CagraIndex.newBuilder(resources).build();
-      loadedIndex.deserialize(inputStream, outDataset);
-      return loadedIndex;
+      return CagraIndex.newBuilder(resources).from(inputStream).build();
     }
   }
 
@@ -884,9 +901,8 @@ public class CagraBuildAndSearchIT extends CuVSTestCase {
         }
 
         try (var inputStream = Files.newInputStream(indexFile);
-            CagraIndex.StandardDataset outDataset = new CagraIndex.StandardDataset();
-            CagraIndex loadedMergedIndex = CagraIndex.newBuilder(resources).build()) {
-          loadedMergedIndex.deserialize(inputStream, outDataset);
+            CagraIndex loadedMergedIndex =
+                CagraIndex.newBuilder(resources).from(inputStream).build()) {
 
           SearchResults resultsFromLoaded = loadedMergedIndex.search(query);
           assertEquals(expectedResults, resultsFromLoaded.getResults());
@@ -995,9 +1011,8 @@ public class CagraBuildAndSearchIT extends CuVSTestCase {
           }
 
           try (var physicalInputStream = Files.newInputStream(physicalIndexFile);
-              CagraIndex.StandardDataset outDataset = new CagraIndex.StandardDataset();
-              CagraIndex loadedPhysicalIndex = CagraIndex.newBuilder(resources).build()) {
-            loadedPhysicalIndex.deserialize(physicalInputStream, outDataset);
+              CagraIndex loadedPhysicalIndex =
+                  CagraIndex.newBuilder(resources).from(physicalInputStream).build()) {
 
             SearchResults resultsFromLoadedPhysical = loadedPhysicalIndex.search(query);
             assertEquals(
