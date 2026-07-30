@@ -101,7 +101,40 @@ def _check_dataset_array(dataset_ai):
 
 @auto_sync_resources
 def make_device_padded_dataset(dataset, resources=None):
-    """Create a device-padded dataset from an array."""
+    """
+    Create a device-padded ``Dataset`` from a host or device array.
+
+    The input must be a row-major 2-D matrix. Host arrays are always copied into
+    newly allocated device-padded storage (``is_owning`` is ``True``). Device
+    arrays are copied when their row stride does not already match the
+    required padded width; if the stride is already correct, a non-owning
+    padded view of the input is returned and the caller must keep ``dataset``
+    alive for as long as the ``Dataset`` is used.
+
+    Parameters
+    ----------
+    dataset : array interface compliant matrix, shape ``(n_samples, dim)``
+        Host (e.g. NumPy) or device (e.g. CuPy) array. Supported dtypes are
+        ``float32``, ``float16``, ``int8``, and ``uint8``.
+    {resources_docstring}
+
+    Returns
+    -------
+    dataset : Dataset
+        A device-resident padded dataset handle. Check ``is_owning`` to see
+        whether the handle owns its storage or is a view of ``dataset``.
+
+    Examples
+    --------
+    >>> import cupy as cp
+    >>> from cuvs.common import make_device_padded_dataset
+    >>> X = cp.random.random_sample((1000, 50), dtype=cp.float32)
+    >>> ds = make_device_padded_dataset(X)
+    >>> ds.memory_type
+    'device'
+    >>> ds.layout
+    'padded'
+    """
     dataset_ai = wrap_array(dataset)
     _check_dataset_array(dataset_ai)
     cdef cydlpack.DLManagedTensor* dataset_dlpack = \
