@@ -77,25 +77,10 @@ def run_cagra_ace_build_search_test(
 
             # Transfer queries to device for search
             queries_device = device_ndarray(queries)
-            dataset_kind = cagra.get_dataset_view_kind(dataset)
             dataset_device = device_ndarray(dataset)
-            if dataset_kind == "host_padded":
-                padded_dataset = cagra.make_padded_dataset(dataset_device)
-                cagra.update_dataset(index, padded_dataset)
-                keepalive = [dataset_device, padded_dataset]
-            elif dataset_kind == "host_standard":
-                padded_dataset = cagra.make_padded_dataset(dataset_device)
-                cagra.update_dataset(index, padded_dataset)
-                keepalive = [
-                    dataset_device,
-                    padded_dataset,
-                ]
-            else:
-                raise ValueError(
-                    f"Unsupported dataset kind for ACE in-memory search: {dataset_kind}"
-                )
+            padded_dataset = cagra.make_device_padded_dataset(dataset_device)
+            cagra.update_dataset(index, padded_dataset)
 
-            assert keepalive is not None
             out_dist, out_idx = cagra.search(
                 search_params, index, queries_device, k
             )

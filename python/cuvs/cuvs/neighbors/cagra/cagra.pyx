@@ -42,6 +42,14 @@ from libc.stdint cimport (
 from libc.stdlib cimport free, malloc
 from libc.string cimport strdup
 
+from cuvs.common.dataset cimport (
+    Dataset,
+    cuvsDataset_t,
+    cuvsDatasetMakeStandardView,
+    cuvsDatasetDestroy,
+    make_device_padded_dataset_handle,
+)
+from cuvs.common.dataset import make_device_padded_dataset
 from cuvs.common.exceptions import check_cuvs
 from cuvs.neighbors import ivf_pq
 from cuvs.neighbors.filters import no_filter
@@ -411,129 +419,30 @@ cdef class Index:
         return "Index(type=CAGRA, metric=L2" + (", ".join(attr_str)) + ")"
 
 
-cdef class Dataset:
-    def __cinit__(self):
-        self.dataset = NULL
-
-    def __dealloc__(self):
-        if self.dataset != NULL:
-            check_cuvs(cuvsDatasetDestroy(self.dataset))
-
-    @property
-    def memory_type(self):
-        if self.dataset == NULL:
-            return None
-        if self.dataset.mem_type == CUVS_DATASET_MEM_TYPE_DEVICE:
-            return "device"
-        return "host"
-
-    @property
-    def layout(self):
-        if self.dataset == NULL:
-            return None
-        if self.dataset.layout == CUVS_DATASET_LAYOUT_PADDED:
-            return "padded"
-        return "standard"
-
-    @property
-    def dtype(self):
-        if self.dataset == NULL:
-            return None
-        return (self.dataset.dtype.code,
-                self.dataset.dtype.bits,
-                self.dataset.dtype.lanes)
+cdef cuvsDataset_t _cagra_dataset_handle(Dataset obj) except? NULL:
+    if obj.dataset == NULL:
+        raise ValueError("dataset is uninitialized")
+    return obj.dataset
 
 
-cdef class PaddedDataset(Dataset):
-    pass
-
-
-cdef class StandardDataset(Dataset):
-    pass
-
-
-cdef class PaddedDatasetView:
-    def __cinit__(self):
-        self.view = NULL
-
-    def __dealloc__(self):
-        if self.view != NULL:
-            check_cuvs(cuvsDatasetDestroy(self.view))
-
-    @property
-    def memory_type(self):
-        if self.view == NULL:
-            return None
-        if self.view.mem_type == CUVS_DATASET_MEM_TYPE_DEVICE:
-            return "device"
-        return "host"
-
-    @property
-    def layout(self):
-        if self.view == NULL:
-            return None
-        if self.view.layout == CUVS_DATASET_LAYOUT_PADDED:
-            return "padded"
-        return "standard"
-
-
-cdef class StandardDatasetView:
-    def __cinit__(self):
-        self.view = NULL
-
-    def __dealloc__(self):
-        if self.view != NULL:
-            check_cuvs(cuvsDatasetDestroy(self.view))
-
-    @property
-    def memory_type(self):
-        if self.view == NULL:
-            return None
-        if self.view.mem_type == CUVS_DATASET_MEM_TYPE_DEVICE:
-            return "device"
-        return "host"
-
-    @property
-    def layout(self):
-        if self.view == NULL:
-            return None
-        if self.view.layout == CUVS_DATASET_LAYOUT_PADDED:
-            return "padded"
-        return "standard"
-
-
-cdef cuvsDataset_t _cagra_dataset_handle(obj) except? NULL:
-    if isinstance(obj, Dataset):
-        if (<Dataset>obj).dataset == NULL:
-            raise ValueError("dataset is uninitialized")
-        return (<Dataset>obj).dataset
-    if isinstance(obj, PaddedDatasetView):
-        if (<PaddedDatasetView>obj).view == NULL:
-            raise ValueError("dataset view is uninitialized")
-        return (<PaddedDatasetView>obj).view
-    if isinstance(obj, StandardDatasetView):
-        if (<StandardDatasetView>obj).view == NULL:
-            raise ValueError("dataset view is uninitialized")
-        return (<StandardDatasetView>obj).view
-    raise TypeError(
-        "expected Dataset, PaddedDatasetView, or StandardDatasetView"
-    )
+cdef _keep_dataset_alive(Index idx, Dataset dataset, source=None):
+    if dataset.is_owning:
+        idx._dataset_owner = dataset
+    else:
+        if source is not None:
+            idx._dataset_source = (dataset, source)
+        else:
+            idx._dataset_source = dataset
 
 
 cdef _attach_device_padded_from_dlpack(
         Index idx,
         cuvsResources_t res,
         cydlpack.DLManagedTensor* src_dlpack):
-    cdef PaddedDataset padded = PaddedDataset()
-    check_cuvs(cuvsDatasetMakePadded(
-        res,
-        src_dlpack,
-        CUVS_DATASET_MEM_TYPE_DEVICE,
-        &padded.dataset
-    ))
+    cdef Dataset padded = make_device_padded_dataset_handle(res, src_dlpack)
     check_cuvs(cuvsCagraUpdateDataset(
         res, padded.dataset, idx.index))
-    idx._dataset_owner = padded
+    _keep_dataset_alive(idx, padded)
 
 
 @auto_sync_resources
@@ -599,54 +508,29 @@ def build(IndexParams index_params, dataset, resources=None):
     cdef Index idx = Index()
     cdef cuvsCagraIndexParams* params = index_params.params
     cdef cuvsResources_t res = <cuvsResources_t>resources.get_c_obj()
-    cdef cuvsDatasetMemType_t mem_type
-    cdef cuvsDatasetLayout_t layout
     cdef cuvsDataset_t dataset_handle = NULL
     cdef cuvsDataset_t dataset_view = NULL
     cdef cydlpack.DLManagedTensor* dataset_dlpack = NULL
-    cdef bint input_is_device_padded = False
-    cdef bint layout_is_standard = False
-    cdef bint input_is_dataset_handle = False
-    active_dtype = None
+    cdef Dataset padded
+    cdef Dataset dataset_obj
 
-    input_is_dataset_handle = isinstance(
-        dataset, (Dataset, PaddedDatasetView, StandardDatasetView)
-    )
-
-    if input_is_dataset_handle:
-        dataset_handle = _cagra_dataset_handle(dataset)
-        input_is_device_padded = (
-            dataset_handle.mem_type == CUVS_DATASET_MEM_TYPE_DEVICE
-            and dataset_handle.layout == CUVS_DATASET_LAYOUT_PADDED
-        )
-        layout_is_standard = (
-            dataset_handle.layout == CUVS_DATASET_LAYOUT_STANDARD
-        )
-        if is_ace_build and dataset_handle.mem_type == CUVS_DATASET_MEM_TYPE_DEVICE:
-            raise ValueError(
-                "ACE build requires dataset to be in host memory. "
-                "Pass a host Dataset or a NumPy array."
-            )
-        active_dtype = dl_data_type_to_numpy(dataset_handle.dtype).name
+    if isinstance(dataset, Dataset):
+        dataset_obj = dataset
+        dataset_handle = _cagra_dataset_handle(dataset_obj)
 
         with cuda_interruptible():
             check_cuvs(cuvsCagraBuild(
                 res, params, dataset_handle, idx.index))
             idx.trained = True
-            idx.active_index_type = active_dtype
-            idx._dataset_source = dataset
+            idx.active_index_type = dl_data_type_to_numpy(idx.index.dtype).name
+            idx._dataset_source = dataset_obj
 
             if not is_ace_build:
-                if input_is_device_padded:
-                    if isinstance(dataset, PaddedDataset):
-                        idx._dataset_owner = dataset
-                    else:
-                        index_data = idx.dataset
-                        dataset_dlpack = \
-                            <cydlpack.DLManagedTensor*><size_t>index_data.get_handle()
-                        _attach_device_padded_from_dlpack(
-                            idx, res, dataset_dlpack)
-                elif layout_is_standard:
+                if (dataset_obj.layout == "padded" and
+                        dataset_obj.memory_type == "device" and
+                        dataset_obj.is_owning):
+                    idx._dataset_owner = dataset_obj
+                else:
                     index_data = idx.dataset
                     dataset_dlpack = \
                         <cydlpack.DLManagedTensor*><size_t>index_data.get_handle()
@@ -666,165 +550,54 @@ def build(IndexParams index_params, dataset, resources=None):
             )
 
         dataset_dlpack = cydlpack.dlpack_c(dataset_ai)
-        active_dtype = dataset_ai.dtype.name
 
         with cuda_interruptible():
-            try:
-                check_cuvs(cuvsCagraGetDatasetMemTypeAndLayout(
-                    dataset_dlpack, &mem_type, &layout))
-                layout_is_standard = (layout == CUVS_DATASET_LAYOUT_STANDARD)
-                input_is_device_padded = (
-                    mem_type == CUVS_DATASET_MEM_TYPE_DEVICE
-                    and layout == CUVS_DATASET_LAYOUT_PADDED
-                )
-                if layout == CUVS_DATASET_LAYOUT_PADDED:
-                    check_cuvs(cuvsDatasetMakePaddedView(
-                        res, dataset_dlpack, &dataset_view))
-                else:
+            if is_ace_build:
+    # ACE builds from host arrays via a temporary standard view.
+                try:
                     check_cuvs(cuvsDatasetMakeStandardView(
                         res, dataset_dlpack, &dataset_view))
+                    check_cuvs(cuvsCagraBuild(
+                        res, params, dataset_view, idx.index))
+                    idx.trained = True
+                    idx.active_index_type = dataset_ai.dtype.name
+                    idx._dataset_source = dataset
+                finally:
+                    if dataset_view != NULL:
+                        cuvsDatasetDestroy(dataset_view)
+            else:
+                padded = make_device_padded_dataset_handle(res, dataset_dlpack)
                 check_cuvs(cuvsCagraBuild(
-                    res, params, dataset_view, idx.index))
+                    res, params, padded.dataset, idx.index))
                 idx.trained = True
-                idx.active_index_type = active_dtype
-                idx._dataset_source = dataset
-            finally:
-                if dataset_view != NULL:
-                    cuvsDatasetDestroy(dataset_view)
-
-            if (not is_ace_build) and layout_is_standard:
-                _attach_device_padded_from_dlpack(idx, res, dataset_dlpack)
-            elif (not is_ace_build) and input_is_device_padded:
-                idx._dataset_source = dataset
+                idx.active_index_type = dataset_ai.dtype.name
+                _keep_dataset_alive(idx, padded, dataset)
 
     return idx
-
-
-def get_dataset_view_kind(dataset):
-    """
-    Return dataset view kind as one of:
-    "device_padded", "device_standard", "host_padded", "host_standard".
-    """
-    dataset_ai = wrap_array(dataset)
-    _check_input_array(dataset_ai, [np.dtype('float32'),
-                                    np.dtype('float16'),
-                                    np.dtype('byte'),
-                                    np.dtype('ubyte')])
-    cdef cydlpack.DLManagedTensor* dataset_dlpack = \
-        cydlpack.dlpack_c(dataset_ai)
-    cdef cuvsDatasetMemType_t mem_type
-    cdef cuvsDatasetLayout_t layout
-    with cuda_interruptible():
-        check_cuvs(cuvsCagraGetDatasetMemTypeAndLayout(
-            dataset_dlpack, &mem_type, &layout))
-
-    mem_name = ("device" if mem_type == CUVS_DATASET_MEM_TYPE_DEVICE
-                else "host")
-    layout_name = ("padded" if layout == CUVS_DATASET_LAYOUT_PADDED
-                   else "standard")
-    return f"{mem_name}_{layout_name}"
-
-
-@auto_sync_resources
-def make_padded_dataset(dataset, resources=None):
-    """
-    Create an owning padded dataset handle.
-
-    Memory residency is inferred from the input array.
-    """
-    dataset_ai = wrap_array(dataset)
-    _check_input_array(dataset_ai, [np.dtype('float32'),
-                                    np.dtype('float16'),
-                                    np.dtype('byte'),
-                                    np.dtype('ubyte')])
-    cdef cydlpack.DLManagedTensor* dataset_dlpack = \
-        cydlpack.dlpack_c(dataset_ai)
-    cdef cuvsResources_t res = <cuvsResources_t>resources.get_c_obj()
-    cdef PaddedDataset padded = PaddedDataset()
-    cdef cuvsDatasetMemType_t mem_type
-    cdef cuvsDatasetLayout_t layout
-    with cuda_interruptible():
-        check_cuvs(cuvsCagraGetDatasetMemTypeAndLayout(
-            dataset_dlpack, &mem_type, &layout))
-        check_cuvs(cuvsDatasetMakePadded(
-            res,
-            dataset_dlpack,
-            mem_type,
-            &padded.dataset
-        ))
-    return padded
-
-
-@auto_sync_resources
-def make_padded_dataset_view(dataset, resources=None):
-    """
-    Create a padded dataset view handle.
-
-    Memory residency is inferred from the input array.
-    """
-    dataset_ai = wrap_array(dataset)
-    _check_input_array(dataset_ai, [np.dtype('float32'),
-                                    np.dtype('float16'),
-                                    np.dtype('byte'),
-                                    np.dtype('ubyte')])
-    cdef cydlpack.DLManagedTensor* dataset_dlpack = \
-        cydlpack.dlpack_c(dataset_ai)
-    cdef cuvsResources_t res = <cuvsResources_t>resources.get_c_obj()
-    cdef PaddedDatasetView padded_view = PaddedDatasetView()
-    with cuda_interruptible():
-        check_cuvs(cuvsDatasetMakePaddedView(
-            res,
-            dataset_dlpack,
-            &padded_view.view
-        ))
-    return padded_view
-
-
-@auto_sync_resources
-def make_standard_dataset_view(dataset, resources=None):
-    """
-    Create a standard dataset view handle.
-
-    Memory residency is inferred from the input array.
-    """
-    dataset_ai = wrap_array(dataset)
-    _check_input_array(dataset_ai, [np.dtype('float32'),
-                                    np.dtype('float16'),
-                                    np.dtype('byte'),
-                                    np.dtype('ubyte')])
-    cdef cydlpack.DLManagedTensor* dataset_dlpack = \
-        cydlpack.dlpack_c(dataset_ai)
-    cdef cuvsResources_t res = <cuvsResources_t>resources.get_c_obj()
-    cdef StandardDatasetView standard_view = StandardDatasetView()
-    with cuda_interruptible():
-        check_cuvs(cuvsDatasetMakeStandardView(
-            res,
-            dataset_dlpack,
-            &standard_view.view
-        ))
-    return standard_view
 
 
 @auto_sync_resources
 def update_dataset(Index index, padded_dataset, resources=None):
     """
-    Update any CAGRA index layout with a caller-provided padded dataset.
+    Update any CAGRA index layout with a padded dataset.
 
-    The same index handle becomes search-ready in padded layout.
+    Accepts a ``Dataset`` or array. The index becomes search-ready in padded layout.
     """
     if not index.trained:
         raise ValueError("Index needs to be built before attaching dataset.")
-    cdef cuvsDataset_t dataset_handle = NULL
-    if isinstance(padded_dataset, PaddedDataset):
-        dataset_handle = (<PaddedDataset>padded_dataset).dataset
-    elif isinstance(padded_dataset, PaddedDatasetView):
-        dataset_handle = (<PaddedDatasetView>padded_dataset).view
+
+    cdef Dataset dataset_obj
+    source_array = None
+    if isinstance(padded_dataset, Dataset):
+        dataset_obj = padded_dataset
     else:
-        raise TypeError(
-            "padded_dataset must be a PaddedDataset or PaddedDatasetView"
-        )
-    if dataset_handle == NULL:
-        raise ValueError("padded_dataset is uninitialized")
+        source_array = padded_dataset
+        dataset_obj = make_device_padded_dataset(padded_dataset, resources=resources)
+
+    cdef cuvsDataset_t dataset_handle = _cagra_dataset_handle(dataset_obj)
+    if dataset_obj.layout != "padded":
+        raise TypeError("padded_dataset must have padded layout")
+
     cdef cuvsResources_t res = <cuvsResources_t>resources.get_c_obj()
     with cuda_interruptible():
         check_cuvs(cuvsCagraUpdateDataset(
@@ -832,10 +605,7 @@ def update_dataset(Index index, padded_dataset, resources=None):
             dataset_handle,
             index.index
         ))
-    if isinstance(padded_dataset, PaddedDataset):
-        index._dataset_owner = padded_dataset
-    else:
-        index._dataset_source = padded_dataset
+    _keep_dataset_alive(index, dataset_obj, source_array)
     return index
 
 
@@ -1188,7 +958,7 @@ def save(filename, Index index, bool include_dataset=True, resources=None):
     >>> # Serialize and deserialize the cagra index built
     >>> cagra.save("my_index.bin", index)
     >>> index_loaded = cagra.Index()
-    >>> out_dataset = cagra.PaddedDataset()
+    >>> out_dataset = cagra.Dataset()
     >>> cagra.load(index_loaded, "my_index.bin", out_dataset=out_dataset)
     """
     cdef string c_filename = filename.encode('utf-8')
@@ -1220,33 +990,31 @@ def load(index, filename, out_dataset=None, resources=None):
         Pre-created index object to populate.
     filename : string
         Name of the file.
-    out_dataset : PaddedDataset or StandardDataset, optional
-        Empty owning output slot populated by the native factory deserializer.
-        The concrete wrapper type must match the serialized dataset layout. If
-        omitted, only the graph is retained. Keep this object alive while the
-        loaded index is in use.
+    out_dataset : Dataset, optional
+        Empty dataset populated when the file includes dataset storage.
+        If omitted, only the graph is retained.
     {resources_docstring}
     """
     cdef Index idx = index
     cdef cuvsResources_t res = <cuvsResources_t>resources.get_c_obj()
     cdef string c_filename = filename.encode('utf-8')
+    cdef Dataset dataset_obj
 
     if out_dataset is None:
         check_cuvs(cuvsCagraDeserializeGraph(
             res,
             c_filename.c_str(),
             idx.index))
-    elif isinstance(out_dataset, (PaddedDataset, StandardDataset)):
+    elif isinstance(out_dataset, Dataset):
+        dataset_obj = out_dataset
         check_cuvs(cuvsCagraDeserializeGraphAndDataset(
             res,
             c_filename.c_str(),
             idx.index,
-            &(<Dataset>out_dataset).dataset))
-        idx._dataset_owner = out_dataset
+            &dataset_obj.dataset))
+        idx._dataset_owner = dataset_obj
     else:
-        raise TypeError(
-            "out_dataset must be a PaddedDataset, StandardDataset, or None"
-        )
+        raise TypeError("out_dataset must be a Dataset or None")
     idx.trained = True
 
 
@@ -1339,31 +1107,31 @@ def extend(ExtendParams params, Index index, extended_dataset, new_start_row,
     rows ``[0, new_start_row)`` and the additional vectors in rows
     ``[new_start_row, n_rows)``. ``new_start_row`` must equal the current
     index size. This function only extends the graph and rebinds the index
-    to ``extended_dataset``; keep that view alive for the index lifetime.
+    to ``extended_dataset``; keep that dataset alive for the index lifetime.
 
     Parameters
     ----------
     params : ExtendParams object
     index: Index
        Existing cagra index to extend
-    extended_dataset : PaddedDataset or PaddedDatasetView
-        Caller-owned padded dataset already containing old || new rows.
+    extended_dataset : Dataset or array
+        Padded dataset already containing old || new rows.
     new_start_row : int
         Row index where the additional vectors begin (must equal ``index`` size).
     {resources_docstring}
 
     """
-    cdef cuvsDataset_t extended_handle = NULL
-    if isinstance(extended_dataset, PaddedDataset):
-        extended_handle = (<PaddedDataset>extended_dataset).dataset
-    elif isinstance(extended_dataset, PaddedDatasetView):
-        extended_handle = (<PaddedDatasetView>extended_dataset).view
+    cdef Dataset dataset_obj
+    source_array = None
+    if isinstance(extended_dataset, Dataset):
+        dataset_obj = extended_dataset
     else:
-        raise TypeError(
-            "extended_dataset must be a PaddedDataset or PaddedDatasetView"
-        )
-    if extended_handle == NULL:
-        raise ValueError("extended_dataset is uninitialized")
+        source_array = extended_dataset
+        dataset_obj = make_device_padded_dataset(extended_dataset, resources=resources)
+
+    cdef cuvsDataset_t extended_handle = _cagra_dataset_handle(dataset_obj)
+    if dataset_obj.layout != "padded":
+        raise TypeError("extended_dataset must have padded layout")
 
     cdef int64_t c_new_start_row = new_start_row
     cdef cuvsResources_t res = <cuvsResources_t>resources.get_c_obj()
@@ -1377,8 +1145,5 @@ def extend(ExtendParams params, Index index, extended_dataset, new_start_row,
             index.index
         ))
 
-    if isinstance(extended_dataset, PaddedDataset):
-        index._dataset_owner = extended_dataset
-    else:
-        index._dataset_source = extended_dataset
+    _keep_dataset_alive(index, dataset_obj, source_array)
     return index

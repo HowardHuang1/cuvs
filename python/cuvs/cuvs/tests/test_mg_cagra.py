@@ -37,15 +37,9 @@ def has_multiple_gpus():
 
 
 def make_padded_view(dataset):
-    """Create a padded view and keep its backing storage alive."""
+    """Create a padded dataset and keep its backing storage alive."""
     device_dataset = device_ndarray(dataset)
-    if cagra.get_dataset_view_kind(device_dataset) == "device_padded":
-        return (
-            device_dataset,
-            None,
-            cagra.make_padded_dataset_view(device_dataset),
-        )
-    padded_dataset = cagra.make_padded_dataset(device_dataset)
+    padded_dataset = cagra.make_device_padded_dataset(device_dataset)
     return (
         device_dataset,
         padded_dataset,

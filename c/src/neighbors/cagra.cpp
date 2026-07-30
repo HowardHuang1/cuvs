@@ -1608,62 +1608,6 @@ static void build_index_from_dataset_view(raft::resources* res_ptr,
   wrap_CPP_index_in_lifetime_holder_and_bind_to_C_index<T, DatasetViewT>(index, index->dtype, raw);
 }
 
-struct dataset_mem_type_and_layout {
-  cuvsDatasetMemType_t mem_type;
-  cuvsDatasetLayout_t layout;
-};
-
-template <typename T>
-static dataset_mem_type_and_layout get_dataset_mem_type_and_layout_for_t(DLManagedTensor* dataset)
-{
-  if (cuvs::core::is_dlpack_device_compatible(dataset->dl_tensor)) {
-    using mdspan_type = raft::device_matrix_view<T const, int64_t, raft::row_major>;
-    auto mds          = cuvs::core::from_dlpack<mdspan_type>(dataset);
-    return {CUVS_DATASET_MEM_TYPE_DEVICE,
-            cuvs::neighbors::matrix_row_width_matches_cagra_required(mds)
-              ? CUVS_DATASET_LAYOUT_PADDED
-              : CUVS_DATASET_LAYOUT_STANDARD};
-  } else if (cuvs::core::is_dlpack_host_compatible(dataset->dl_tensor)) {
-    using mdspan_type = raft::host_matrix_view<T const, int64_t, raft::row_major>;
-    auto mds          = cuvs::core::from_dlpack<mdspan_type>(dataset);
-    return {CUVS_DATASET_MEM_TYPE_HOST,
-            cuvs::neighbors::matrix_row_width_matches_cagra_required(mds)
-              ? CUVS_DATASET_LAYOUT_PADDED
-              : CUVS_DATASET_LAYOUT_STANDARD};
-  }
-  RAFT_FAIL("cuvsCagraGetDatasetMemTypeAndLayout: unsupported dataset device type: %d",
-            static_cast<int>(dataset->dl_tensor.device.device_type));
-}
-
-extern "C" cuvsError_t cuvsCagraGetDatasetMemTypeAndLayout(DLManagedTensor* dataset,
-                                                           cuvsDatasetMemType_t* mem_type,
-                                                           cuvsDatasetLayout_t* layout)
-{
-  return cuvs::core::translate_exceptions([=] {
-    RAFT_EXPECTS(dataset != nullptr, "cuvsCagraGetDatasetMemTypeAndLayout: null dataset tensor");
-    RAFT_EXPECTS(mem_type != nullptr,
-                 "cuvsCagraGetDatasetMemTypeAndLayout: null output mem type");
-    RAFT_EXPECTS(layout != nullptr, "cuvsCagraGetDatasetMemTypeAndLayout: null output layout");
-    auto const dtype = dataset->dl_tensor.dtype;
-    dataset_mem_type_and_layout resolved{};
-    if (dtype.code == kDLFloat && dtype.bits == 32) {
-      resolved = get_dataset_mem_type_and_layout_for_t<float>(dataset);
-    } else if (dtype.code == kDLFloat && dtype.bits == 16) {
-      resolved = get_dataset_mem_type_and_layout_for_t<half>(dataset);
-    } else if (dtype.code == kDLInt && dtype.bits == 8) {
-      resolved = get_dataset_mem_type_and_layout_for_t<int8_t>(dataset);
-    } else if (dtype.code == kDLUInt && dtype.bits == 8) {
-      resolved = get_dataset_mem_type_and_layout_for_t<uint8_t>(dataset);
-    } else {
-      RAFT_FAIL("cuvsCagraGetDatasetMemTypeAndLayout: unsupported dataset dtype: code=%d, bits=%d",
-                dtype.code,
-                dtype.bits);
-    }
-    *mem_type = resolved.mem_type;
-    *layout   = resolved.layout;
-  });
-}
-
 /**
  * Build through the C++ overload matching the memory space and layout the caller's dataset view
  * handle was constructed with.

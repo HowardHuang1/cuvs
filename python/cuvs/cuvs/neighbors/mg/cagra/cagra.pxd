@@ -11,12 +11,12 @@ from libcpp cimport bool
 cimport cuvs.neighbors.cagra.cagra as _cagra
 from cuvs.common.c_api cimport cuvsError_t, cuvsResources_t
 from cuvs.common.cydlpack cimport DLManagedTensor
+from cuvs.common.dataset cimport cuvsDataset_t
 from cuvs.neighbors.cagra.cagra cimport (
     IndexParams as SingleGpuIndexParams,
     SearchParams as SingleGpuSearchParams,
     cuvsCagraIndexParams_t,
     cuvsCagraSearchParams_t,
-    cuvsDataset_t,
 )
 
 

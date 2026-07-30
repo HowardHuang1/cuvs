@@ -7,7 +7,7 @@
 
 # Set the list of Cython files to build
 set(cython_sources cydlpack.pyx exceptions.pyx resources.pyx mg_resources.pyx
-                   device_tensor_view.pyx
+                   device_tensor_view.pyx dataset.pyx
 )
 set(linked_libraries cuvs::cuvs cuvs::c_api)
 

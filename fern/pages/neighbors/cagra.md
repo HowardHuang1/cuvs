@@ -208,7 +208,7 @@ additional_dataset = load_additional_data()
 index = cagra.build(cagra.IndexParams(), dataset)
 # Ensure index is device-padded, then concatenate old || new yourself.
 new_start_row = dataset.shape[0]
-extended = cagra.make_padded_dataset(
+extended = cagra.make_device_padded_dataset(
     np.concatenate((dataset, additional_dataset), axis=0)
 )
 index = cagra.extend(cagra.ExtendParams(), index, extended, new_start_row)

@@ -17,6 +17,7 @@ from libcpp cimport bool
 
 from cuvs.common.c_api cimport cuvsError_t, cuvsResources_t
 from cuvs.common.cydlpack cimport DLDataType, DLManagedTensor
+from cuvs.common.dataset cimport cuvsDataset_t
 from cuvs.distance_type cimport cuvsDistanceType
 from cuvs.neighbors.filters.filters cimport cuvsFilter
 from cuvs.neighbors.ivf_pq.ivf_pq cimport (
@@ -104,14 +105,6 @@ cdef extern from "cuvs/neighbors/cagra.h" nogil:
 
     ctypedef cuvsCagraIndex* cuvsCagraIndex_t
 
-    ctypedef enum cuvsDatasetLayout_t:
-        CUVS_DATASET_LAYOUT_STANDARD
-        CUVS_DATASET_LAYOUT_PADDED
-
-    ctypedef enum cuvsDatasetMemType_t:
-        CUVS_DATASET_MEM_TYPE_HOST
-        CUVS_DATASET_MEM_TYPE_DEVICE
-
     cuvsError_t cuvsAceParamsCreate(cuvsAceParams_t* params)
 
     cuvsError_t cuvsAceParamsDestroy(cuvsAceParams_t params)
@@ -137,36 +130,10 @@ cdef extern from "cuvs/neighbors/cagra.h" nogil:
     cuvsError_t cuvsCagraIndexGetDataset(cuvsCagraIndex_t index,
                                          DLManagedTensor * dataset)
 
-    ctypedef struct cuvsDataset:
-        uintptr_t addr
-        DLDataType dtype
-        cuvsDatasetMemType_t mem_type
-        cuvsDatasetLayout_t layout
-        bool is_owning
-    ctypedef cuvsDataset* cuvsDataset_t
-
-    cuvsError_t cuvsDatasetMakePadded(cuvsResources_t res,
-                                      DLManagedTensor* dataset,
-                                      cuvsDatasetMemType_t target_mem_type,
-                                      cuvsDataset_t* padded_dataset)
-    cuvsError_t cuvsDatasetDestroy(cuvsDataset_t dataset)
-
-    cuvsError_t cuvsDatasetMakePaddedView(cuvsResources_t res,
-                                          DLManagedTensor* dataset,
-                                          cuvsDataset_t* padded_dataset)
-
-    cuvsError_t cuvsDatasetMakeStandardView(cuvsResources_t res,
-                                            DLManagedTensor* dataset,
-                                            cuvsDataset_t* standard_dataset)
-
     cuvsError_t cuvsCagraBuild(cuvsResources_t res,
                                cuvsCagraIndexParams_t params,
                                cuvsDataset_t dataset,
                                cuvsCagraIndex_t index)
-    cuvsError_t cuvsCagraGetDatasetMemTypeAndLayout(
-        DLManagedTensor* dataset,
-        cuvsDatasetMemType_t* mem_type,
-        cuvsDatasetLayout_t* layout)
 
     cuvsError_t cuvsCagraSearch(cuvsResources_t res,
                                 cuvsCagraSearchParams* params,
@@ -232,26 +199,6 @@ cdef class Index:
     cdef str active_index_type
     cdef object _dataset_owner
     cdef object _dataset_source
-
-
-cdef class Dataset:
-    cdef cuvsDataset_t dataset
-
-
-cdef class PaddedDataset(Dataset):
-    pass
-
-
-cdef class StandardDataset(Dataset):
-    pass
-
-
-cdef class PaddedDatasetView:
-    cdef cuvsDataset_t view
-
-
-cdef class StandardDatasetView:
-    cdef cuvsDataset_t view
 
 
 cdef class IndexParams:
