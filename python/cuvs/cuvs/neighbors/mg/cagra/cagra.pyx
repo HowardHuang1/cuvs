@@ -21,7 +21,7 @@ from cuvs.common cimport cydlpack
 from cuvs.common.c_api cimport cuvsResources_t
 from cuvs.neighbors.cagra.cagra cimport (
     IndexParams as SingleGpuIndexParams,
-    PaddedDatasetView,
+    PaddedDataset,
     SearchParams as SingleGpuSearchParams,
     cuvsCagraIndexParams_t,
     cuvsCagraIndexParamsDestroy,
@@ -166,8 +166,7 @@ def build(IndexParams index_params, dataset, resources=None):
     >>> index = cagra.build(build_params, dataset)
     >>> device_dataset = device_ndarray(dataset)
     >>> padded_dataset = sg_cagra.make_padded_dataset(device_dataset)
-    >>> padded_view = sg_cagra.make_view_wrapper(padded_dataset)
-    >>> _ = cagra.update_dataset(index, padded_view)
+    >>> _ = cagra.update_dataset(index, padded_dataset)
     >>> distances, neighbors = cagra.search(cagra.SearchParams(),
     ...                                         index, dataset, k)
     >>> # Results are already in host memory (NumPy arrays)
@@ -198,24 +197,24 @@ def build(IndexParams index_params, dataset, resources=None):
 
 @auto_sync_multi_gpu_resources
 def update_dataset(Index index,
-                   PaddedDatasetView padded_dataset_view,
+                   PaddedDataset padded_dataset,
                    resources=None):
     """
-    Update a multi-GPU CAGRA index with a device-padded dataset view.
+    Update a multi-GPU CAGRA index with a device-padded dataset.
 
     Standard indexes are converted to device-padded indexes. Existing
     device-padded indexes are updated in place.
     """
     if not index.trained:
         raise ValueError("Index needs to be built before updating the dataset.")
-    if padded_dataset_view is None or padded_dataset_view.view == NULL:
-        raise ValueError("padded_dataset_view is uninitialized")
+    if padded_dataset is None or padded_dataset.dataset == NULL:
+        raise ValueError("padded_dataset is uninitialized")
 
     cdef cuvsResources_t res = <cuvsResources_t>resources.get_c_obj()
     with cuda_interruptible():
         check_cuvs(cuvsMultiGpuCagraUpdateDataset(
             res,
-            padded_dataset_view.view,
+            padded_dataset.dataset,
             index.mg_index
         ))
     return index

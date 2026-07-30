@@ -66,7 +66,6 @@ def run_filtered_search_test(
 
     module_name = str(search_module).lower()
     is_ivf = "ivf" in module_name
-    is_cagra = "cagra" in module_name
 
     if is_ivf:
         # Adjust parameters based on sparsity to maximize recall for IVF
@@ -85,15 +84,6 @@ def run_filtered_search_test(
         search_params = search_module.SearchParams()
 
     index = search_module.build(build_params, dataset_device)
-    keepalive = []
-    if is_cagra:
-        view_kind = search_module.get_dataset_view_kind(dataset_device)
-        if view_kind == "device_standard":
-            padded_dataset = search_module.make_padded_dataset(dataset_device)
-            padded_view = search_module.make_view_wrapper(padded_dataset)
-            search_module.update_dataset(index, padded_view)
-            keepalive = [padded_dataset, padded_view]
-    assert keepalive is not None
     filter_ = filters.from_bitset(bitset_device)
     ret_distances, ret_indices = search_module.search(
         search_params,

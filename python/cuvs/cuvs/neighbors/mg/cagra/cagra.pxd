@@ -16,7 +16,7 @@ from cuvs.neighbors.cagra.cagra cimport (
     SearchParams as SingleGpuSearchParams,
     cuvsCagraIndexParams_t,
     cuvsCagraSearchParams_t,
-    cuvsDatasetView_t,
+    cuvsDataset_t,
 )
 
 
@@ -77,7 +77,7 @@ cdef extern from "cuvs/neighbors/mg_cagra.h" nogil:
 
     cuvsError_t cuvsMultiGpuCagraUpdateDataset(
         cuvsResources_t res,
-        cuvsDatasetView_t device_padded_dataset,
+        cuvsDataset_t device_padded_dataset,
         cuvsMultiGpuCagraIndex_t index) except +
 
     cuvsError_t cuvsMultiGpuCagraSearch(
