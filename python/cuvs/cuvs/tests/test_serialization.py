@@ -69,9 +69,8 @@ def run_save_load(ann_module, dtype, filename="my_index.bin"):
             or out_dataset.layout != "padded"
         ):
             padded_dataset = ann_module.make_padded_dataset(dataset_device)
-            padded_view = ann_module.make_view_wrapper(padded_dataset)
-            ann_module.update_dataset(loaded_index, padded_view)
-            ann_module.update_dataset(index, padded_view)
+            ann_module.update_dataset(loaded_index, padded_dataset)
+            ann_module.update_dataset(index, padded_dataset)
     else:
         loaded_index = ann_module.load(filename)
 

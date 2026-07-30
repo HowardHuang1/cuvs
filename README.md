@@ -132,12 +132,12 @@ cuvsResourcesCreate(&res);
 cuvsCagraIndexParamsCreate(&index_params);
 cuvsCagraIndexCreate(&index);
 
-cuvsDatasetView_t dataset_view;
+cuvsDataset_t dataset_view;
 cuvsDatasetMakeStandardView(res, dataset, &dataset_view);
 
 cuvsCagraBuild(res, index_params, dataset_view, index);
 
-cuvsDatasetViewDestroy(dataset_view);
+cuvsDatasetDestroy(dataset_view);
 cuvsCagraIndexDestroy(index);
 cuvsCagraIndexParamsDestroy(index_params);
 cuvsResourcesDestroy(res);

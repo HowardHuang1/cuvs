@@ -348,105 +348,68 @@ void add_graph_nodes(
   }
 }
 
-template <class T, class IdxT, cuvs::neighbors::ann_dataset_view DatasetViewT, class Accessor>
-void extend_core(
-  raft::resources const& handle,
-  raft::mdspan<const T, raft::matrix_extent<int64_t>, raft::row_major, Accessor> additional_dataset,
-  cuvs::neighbors::cagra::index<T, IdxT, DatasetViewT>& index,
-  const cagra::extend_params& params,
-  raft::device_matrix_view<T, int64_t, raft::layout_stride> new_dataset_buffer_view)
+template <class T, class IdxT, cuvs::neighbors::ann_dataset_view DatasetViewT>
+void extend_core(raft::resources const& handle,
+                 cuvs::neighbors::cagra::index<T, IdxT, DatasetViewT>& index,
+                 const cagra::extend_params& params,
+                 cuvs::neighbors::device_padded_dataset_view<T, int64_t> extended_dataset,
+                 int64_t new_start_row)
 {
-  static_assert(cuvs::neighbors::is_padded_dataset_view_v<DatasetViewT> ||
-                  cuvs::neighbors::is_standard_dataset_view_v<DatasetViewT>,
-                "cagra::extend requires a padded or standard dataset view index type");
+  static_assert(cuvs::neighbors::is_padded_dataset_view_v<DatasetViewT>,
+                "cagra::extend requires a padded dataset view index type");
   RAFT_EXPECTS(!index.dataset_fd().has_value(),
                "Cannot extend a disk-backed CAGRA index. Convert it with "
                "cuvs::neighbors::hnsw::from_cagra() and load it into memory via "
                "cuvs::neighbors::hnsw::deserialize() before calling extend().");
 
-  const std::size_t num_new_nodes        = additional_dataset.extent(0);
   const std::size_t initial_dataset_size = index.size();
-  const std::size_t new_dataset_size     = initial_dataset_size + num_new_nodes;
+  const auto extended_view               = extended_dataset.view();
+  const std::size_t new_dataset_size     = static_cast<std::size_t>(extended_view.extent(0));
   const std::size_t degree               = index.graph_degree();
   const std::size_t dim                  = index.dim();
 
-  if (static_cast<std::size_t>(new_dataset_buffer_view.extent(0)) != new_dataset_size) {
-    RAFT_LOG_ERROR(
-      "The extended dataset size (%lu) must be the initial dataset size (%lu) + additional dataset "
-      "size (%lu). "
-      "Please fix the memory buffer size for the extended dataset.",
-      new_dataset_buffer_view.extent(0),
-      initial_dataset_size,
-      num_new_nodes);
-  }
-
-  auto try_extend = [&](auto const& leaf) {
-    // Allocate memory space for updated graph on host
-    auto updated_graph = raft::make_host_matrix<IdxT, std::int64_t>(new_dataset_size, degree);
-
-    const std::size_t stride  = static_cast<std::size_t>(leaf.stride());
-    const T* src_rows         = leaf.view().data_handle();
-    auto updated_dataset_view = new_dataset_buffer_view;
-
-    // Update dataset on host, then copy to device buffer provided by caller
-    auto host_updated_dataset = raft::make_host_matrix<T, std::int64_t>(new_dataset_size, stride);
-
-    // The padding area must be filled with zeros.
-    memset(host_updated_dataset.data_handle(), 0, sizeof(T) * host_updated_dataset.size());
-
-    raft::copy_matrix(host_updated_dataset.data_handle(),
-                      stride,
-                      src_rows,
-                      stride,
-                      dim,
-                      initial_dataset_size,
-                      raft::resource::get_cuda_stream(handle));
-    raft::copy_matrix(host_updated_dataset.data_handle() + initial_dataset_size * stride,
-                      stride,
-                      additional_dataset.data_handle(),
-                      additional_dataset.stride(0),
-                      dim,
-                      num_new_nodes,
-                      raft::resource::get_cuda_stream(handle));
-
-    // Copy updated dataset on host memory to device memory (caller's buffer)
-    raft::copy(updated_dataset_view.data_handle(),
-               host_updated_dataset.data_handle(),
-               new_dataset_size * stride,
-               raft::resource::get_cuda_stream(handle));
-
-    // Add graph nodes
-    cuvs::neighbors::cagra::add_graph_nodes<T, IdxT>(
-      handle, raft::make_const_mdspan(updated_dataset_view), index, updated_graph.view(), params);
-
-    // Attach view over caller's buffer; index does not take ownership
-    if constexpr (cuvs::neighbors::is_padded_dataset_view_v<DatasetViewT>) {
-      cuvs::neighbors::device_padded_dataset_view<T, int64_t> dv(
-        raft::make_device_matrix_view(updated_dataset_view.data_handle(),
-                                      updated_dataset_view.extent(0),
-                                      updated_dataset_view.stride(0)),
-        dim);
-      index.update_device_dataset_same_layout(handle, dv);
-    } else {
-      auto dv = cuvs::neighbors::make_device_standard_dataset_view(updated_dataset_view);
-      index.update_device_dataset_same_layout(handle, dv);
-    }
-
-    // Graph is index-owned in extend; update from host graph result.
-    index.update_graph(handle, raft::make_const_mdspan(updated_graph.view()));
-  };
+  RAFT_EXPECTS(static_cast<std::size_t>(new_start_row) == initial_dataset_size,
+               "cagra::extend: new_start_row (%ld) must equal the current index size (%lu). "
+               "The caller must place the original vectors in rows [0, new_start_row) of "
+               "extended_dataset and the new vectors in rows [new_start_row, n_rows).",
+               static_cast<long>(new_start_row),
+               initial_dataset_size);
+  RAFT_EXPECTS(new_dataset_size > initial_dataset_size,
+               "cagra::extend: extended_dataset (%lu rows) must be larger than the current index "
+               "size (%lu). Concatenate the original and additional vectors before calling extend.",
+               new_dataset_size,
+               initial_dataset_size);
+  RAFT_EXPECTS(static_cast<std::size_t>(extended_dataset.dim()) == dim,
+               "cagra::extend: extended_dataset dim (%u) must match the index dim (%lu)",
+               extended_dataset.dim(),
+               dim);
 
   auto const& leaf = index.dataset();
-  if constexpr (cuvs::neighbors::is_padded_dataset_view_v<std::decay_t<decltype(leaf)>> ||
-                cuvs::neighbors::is_standard_dataset_view_v<std::decay_t<decltype(leaf)>>) {
-    try_extend(leaf);
-  } else if constexpr (cuvs::neighbors::is_empty_dataset_view_v<std::decay_t<decltype(leaf)>>) {
+  if constexpr (cuvs::neighbors::is_empty_dataset_view_v<std::decay_t<decltype(leaf)>>) {
     RAFT_FAIL(
       "cagra::extend only supports an index to which the dataset is attached. Please check if the "
       "index has an empty dataset; attach one with update_device_dataset_same_layout before "
       "extend.");
+  } else if constexpr (!cuvs::neighbors::is_padded_dataset_view_v<std::decay_t<decltype(leaf)>>) {
+    RAFT_FAIL("cagra::extend only supports an uncompressed padded dataset index");
   } else {
-    RAFT_FAIL("cagra::extend only supports an uncompressed dataset index");
+    // Caller owns dataset concatenation. Extend only grows the graph and rebinds the view.
+    auto updated_graph = raft::make_host_matrix<IdxT, std::int64_t>(new_dataset_size, degree);
+
+    const auto stride_elems = extended_view.stride(0) > 0
+                                ? static_cast<int64_t>(extended_view.stride(0))
+                                : static_cast<int64_t>(extended_view.extent(1));
+    auto extended_strided =
+      raft::make_device_strided_matrix_view<const T, int64_t>(extended_view.data_handle(),
+                                                              extended_view.extent(0),
+                                                              static_cast<int64_t>(dim),
+                                                              stride_elems);
+
+    cuvs::neighbors::cagra::add_graph_nodes<T, IdxT>(
+      handle, extended_strided, index, updated_graph.view(), params);
+
+    index.update_device_dataset_same_layout(handle, extended_dataset);
+    index.update_graph(handle, raft::make_const_mdspan(updated_graph.view()));
   }
 }
 }  // namespace cuvs::neighbors::cagra

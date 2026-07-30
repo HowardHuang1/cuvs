@@ -83,8 +83,9 @@ TEST(CagraC, BuildSearch)
   // build index
   cuvsCagraIndexParams_t build_params;
   cuvsCagraIndexParamsCreate(&build_params);
-  cuvsDatasetView_t dataset_view = nullptr;
+  cuvsDataset_t dataset_view = nullptr;
   ASSERT_EQ(cuvsDatasetMakeStandardView(res, &dataset_tensor, &dataset_view), CUVS_SUCCESS);
+  EXPECT_FALSE(dataset_view->is_owning);
   ASSERT_EQ(cuvsCagraBuild(res, build_params, dataset_view, index), CUVS_SUCCESS);
   EXPECT_EQ(cuvsCagraUpdateDataset(res, dataset_view, index), CUVS_ERROR);
 
@@ -94,11 +95,13 @@ TEST(CagraC, BuildSearch)
   ASSERT_EQ(cuvsDatasetMakePadded(
               res, &dataset_tensor, CUVS_DATASET_MEM_TYPE_DEVICE, &padded_dataset_owner),
             CUVS_SUCCESS);
-  cuvsDatasetView_t padded_dataset_view = nullptr;
-  ASSERT_EQ(cuvsDatasetMakeViewWrapper(padded_dataset_owner, &padded_dataset_view),
-            CUVS_SUCCESS);
-  ASSERT_EQ(cuvsCagraUpdateDataset(res, padded_dataset_view, index), CUVS_SUCCESS);
-  ASSERT_EQ(cuvsCagraUpdateDataset(res, padded_dataset_view, index), CUVS_SUCCESS);
+  EXPECT_TRUE(padded_dataset_owner->is_owning);
+  cuvsCagraIndex_t owner_built_index;
+  ASSERT_EQ(cuvsCagraIndexCreate(&owner_built_index), CUVS_SUCCESS);
+  ASSERT_EQ(cuvsCagraBuild(res, build_params, padded_dataset_owner, owner_built_index), CUVS_SUCCESS);
+  ASSERT_EQ(cuvsCagraIndexDestroy(owner_built_index), CUVS_SUCCESS);
+  ASSERT_EQ(cuvsCagraUpdateDataset(res, padded_dataset_owner, index), CUVS_SUCCESS);
+  ASSERT_EQ(cuvsCagraUpdateDataset(res, padded_dataset_owner, index), CUVS_SUCCESS);
 
   // create queries DLTensor
   rmm::device_uvector<float> queries_d(4 * 2, stream);
@@ -162,8 +165,7 @@ TEST(CagraC, BuildSearch)
 
   // de-allocate index and res
   cuvsCagraSearchParamsDestroy(search_params);
-  cuvsDatasetViewDestroy(padded_dataset_view);
-  cuvsDatasetViewDestroy(dataset_view);
+  cuvsDatasetDestroy(dataset_view);
   cuvsDatasetDestroy(padded_dataset_owner);
   cuvsCagraIndexParamsDestroy(build_params);
   cuvsCagraIndexDestroy(index);
@@ -186,7 +188,7 @@ TEST(CagraC, UpdateHostPadded)
   host_tensor.dl_tensor.dtype              = {kDLFloat, 32, 1};
   host_tensor.dl_tensor.shape              = dataset_shape;
 
-  cuvsDatasetView_t host_view = nullptr;
+  cuvsDataset_t host_view = nullptr;
   ASSERT_EQ(cuvsDatasetMakePaddedView(res, &host_tensor, &host_view), CUVS_SUCCESS);
   float host_standard_dataset[8] = {0, 0, 1, 1, 2, 2, 3, 3};
   int64_t standard_shape[]       = {4, 2};
@@ -197,9 +199,7 @@ TEST(CagraC, UpdateHostPadded)
   ASSERT_EQ(cuvsDatasetMakePadded(
               res, &host_standard_tensor, CUVS_DATASET_MEM_TYPE_HOST, &host_owner),
             CUVS_SUCCESS);
-  cuvsDatasetView_t host_owner_view = nullptr;
-  ASSERT_EQ(cuvsDatasetMakeViewWrapper(host_owner, &host_owner_view), CUVS_SUCCESS);
-  EXPECT_EQ(host_owner_view->mem_type, CUVS_DATASET_MEM_TYPE_HOST);
+  EXPECT_EQ(host_owner->mem_type, CUVS_DATASET_MEM_TYPE_HOST);
   cuvsCagraIndexParams_t build_params;
   cuvsCagraIndexParamsCreate(&build_params);
   cuvsCagraIndex_t index;
@@ -234,7 +234,7 @@ TEST(CagraC, UpdateHostPadded)
             CUVS_SUCCESS);
   EXPECT_EQ(device_to_host_owner->mem_type, CUVS_DATASET_MEM_TYPE_HOST);
   EXPECT_EQ(device_to_host_owner->layout, CUVS_DATASET_LAYOUT_PADDED);
-  cuvsDatasetView_t device_view         = nullptr;
+  cuvsDataset_t device_view         = nullptr;
   ASSERT_EQ(cuvsDatasetMakePaddedView(res, &device_tensor, &device_view), CUVS_SUCCESS);
   ASSERT_EQ(cuvsCagraUpdateDataset(res, device_view, index), CUVS_SUCCESS);
 
@@ -257,9 +257,8 @@ TEST(CagraC, UpdateHostPadded)
   cuvsDatasetDestroy(loaded_device_dataset);
   std::filesystem::remove(device_serialized_path);
 
-  cuvsDatasetViewDestroy(device_view);
-  cuvsDatasetViewDestroy(host_view);
-  cuvsDatasetViewDestroy(host_owner_view);
+  cuvsDatasetDestroy(device_view);
+  cuvsDatasetDestroy(host_view);
   cuvsDatasetDestroy(host_owner);
   cuvsDatasetDestroy(device_to_host_owner);
   cuvsCagraIndexDestroy(index);
@@ -321,22 +320,12 @@ TEST(CagraC, BuildExtendSearch)
   dataset_tensor.dl_tensor.shape              = dataset_shape;
   dataset_tensor.dl_tensor.strides            = nullptr;
 
-  // create additional dataset DLTensor
+  // create additional dataset (concatenated into extended_dataset below)
   rmm::device_uvector<float> additional_d(additional_data_size * dimensions, stream);
   raft::copy(additional_d.data(),
              random_data_d.data() + main_d.size(),
              additional_data_size * dimensions,
              stream);
-  DLManagedTensor additional_dataset_tensor;
-  additional_dataset_tensor.dl_tensor.data               = additional_d.data();
-  additional_dataset_tensor.dl_tensor.device.device_type = kDLCUDA;
-  additional_dataset_tensor.dl_tensor.ndim               = 2;
-  additional_dataset_tensor.dl_tensor.dtype.code         = kDLFloat;
-  additional_dataset_tensor.dl_tensor.dtype.bits         = 32;
-  additional_dataset_tensor.dl_tensor.dtype.lanes        = 1;
-  int64_t additional_dataset_shape[2]                    = {additional_data_size, dimensions};
-  additional_dataset_tensor.dl_tensor.shape              = additional_dataset_shape;
-  additional_dataset_tensor.dl_tensor.strides            = nullptr;
 
   // create index
   cuvsCagraIndex_t index;
@@ -345,20 +334,21 @@ TEST(CagraC, BuildExtendSearch)
   // build index
   cuvsCagraIndexParams_t build_params;
   cuvsCagraIndexParamsCreate(&build_params);
-  cuvsDatasetView_t dataset_view = nullptr;
+  cuvsDataset_t dataset_view = nullptr;
   ASSERT_EQ(cuvsDatasetMakePaddedView(res, &dataset_tensor, &dataset_view), CUVS_SUCCESS);
   ASSERT_EQ(cuvsCagraBuild(res, build_params, dataset_view, index), CUVS_SUCCESS);
 
   cuvsStreamSync(res);
 
-  // extend index
+  // extend index — caller concatenates old || new into extended_dataset first
   cuvsCagraExtendParams_t extend_params;
   cuvsCagraExtendParamsCreate(&extend_params);
-  cuvsDatasetView_t additional_padded_dataset_view = nullptr;
-  ASSERT_EQ(cuvsDatasetMakePaddedView(
-              res, &additional_dataset_tensor, &additional_padded_dataset_view),
-            CUVS_SUCCESS);
   rmm::device_uvector<float> extended_d((main_data_size + additional_data_size) * dimensions, stream);
+  raft::copy(extended_d.data(), main_d.data(), main_data_size * dimensions, stream);
+  raft::copy(extended_d.data() + main_data_size * dimensions,
+             additional_d.data(),
+             additional_data_size * dimensions,
+             stream);
   DLManagedTensor extended_dataset_tensor;
   extended_dataset_tensor.dl_tensor.data               = extended_d.data();
   extended_dataset_tensor.dl_tensor.device.device_type = kDLCUDA;
@@ -370,11 +360,10 @@ TEST(CagraC, BuildExtendSearch)
                                                            dimensions};
   extended_dataset_tensor.dl_tensor.shape              = extended_dataset_shape;
   extended_dataset_tensor.dl_tensor.strides            = nullptr;
-  cuvsDatasetView_t extended_dataset_view        = nullptr;
+  cuvsDataset_t extended_dataset_view        = nullptr;
   ASSERT_EQ(cuvsDatasetMakePaddedView(res, &extended_dataset_tensor, &extended_dataset_view),
             CUVS_SUCCESS);
-  ASSERT_EQ(cuvsCagraExtend(
-              res, extend_params, additional_padded_dataset_view, extended_dataset_view, index),
+  ASSERT_EQ(cuvsCagraExtend(res, extend_params, extended_dataset_view, main_data_size, index),
             CUVS_SUCCESS);
 
   // create queries DLTensor
@@ -488,9 +477,8 @@ TEST(CagraC, BuildExtendSearch)
 
   // de-allocate index and res
   cuvsCagraSearchParamsDestroy(search_params);
-  cuvsDatasetViewDestroy(dataset_view);
-  cuvsDatasetViewDestroy(additional_padded_dataset_view);
-  cuvsDatasetViewDestroy(extended_dataset_view);
+  cuvsDatasetDestroy(dataset_view);
+  cuvsDatasetDestroy(extended_dataset_view);
   cuvsCagraExtendParamsDestroy(extend_params);
   cuvsCagraIndexParamsDestroy(build_params);
   cuvsCagraIndexDestroy(index);
@@ -524,7 +512,7 @@ TEST(CagraC, BuildSearchFiltered)
   // build index
   cuvsCagraIndexParams_t build_params;
   cuvsCagraIndexParamsCreate(&build_params);
-  cuvsDatasetView_t dataset_view = nullptr;
+  cuvsDataset_t dataset_view = nullptr;
   ASSERT_EQ(cuvsDatasetMakeStandardView(res, &dataset_tensor, &dataset_view), CUVS_SUCCESS);
   ASSERT_EQ(cuvsCagraBuild(res, build_params, dataset_view, index), CUVS_SUCCESS);
 
@@ -540,10 +528,7 @@ TEST(CagraC, BuildSearchFiltered)
   ASSERT_EQ(cuvsDatasetMakePadded(
               res, &device_dataset_tensor, CUVS_DATASET_MEM_TYPE_DEVICE, &padded_dataset_owner),
             CUVS_SUCCESS);
-  cuvsDatasetView_t padded_dataset_view = nullptr;
-  ASSERT_EQ(cuvsDatasetMakeViewWrapper(padded_dataset_owner, &padded_dataset_view),
-            CUVS_SUCCESS);
-  ASSERT_EQ(cuvsCagraUpdateDataset(res, padded_dataset_view, index), CUVS_SUCCESS);
+  ASSERT_EQ(cuvsCagraUpdateDataset(res, padded_dataset_owner, index), CUVS_SUCCESS);
 
   // create queries DLTensor
   rmm::device_uvector<float> queries_d(4 * 2, stream);
@@ -622,8 +607,7 @@ TEST(CagraC, BuildSearchFiltered)
 
   // de-allocate index and res
   cuvsCagraSearchParamsDestroy(search_params);
-  cuvsDatasetViewDestroy(padded_dataset_view);
-  cuvsDatasetViewDestroy(dataset_view);
+  cuvsDatasetDestroy(dataset_view);
   cuvsDatasetDestroy(padded_dataset_owner);
   cuvsCagraIndexParamsDestroy(build_params);
   cuvsCagraIndexDestroy(index);
@@ -683,8 +667,8 @@ TEST(CagraC, BuildMergeSearch)
   cuvsCagraIndex_t index_main, index_add;
   cuvsCagraIndexCreate(&index_main);
   cuvsCagraIndexCreate(&index_add);
-  cuvsDatasetView_t main_dataset_view = nullptr;
-  cuvsDatasetView_t additional_dataset_view = nullptr;
+  cuvsDataset_t main_dataset_view = nullptr;
+  cuvsDataset_t additional_dataset_view = nullptr;
   ASSERT_EQ(cuvsDatasetMakeStandardView(res, &main_dataset_tensor, &main_dataset_view),
             CUVS_SUCCESS);
   ASSERT_EQ(cuvsDatasetMakeStandardView(
@@ -709,10 +693,8 @@ TEST(CagraC, BuildMergeSearch)
   ASSERT_EQ(cuvsDatasetCreate(&merged_dataset), CUVS_SUCCESS);
   ASSERT_EQ(cuvsCagraMerge(res, build_params, index_array, 2, filter, merged_dataset, index_merged),
             CUVS_SUCCESS);
-  cuvsDatasetView_t merged_standard_view = nullptr;
-  ASSERT_EQ(cuvsDatasetMakeViewWrapper(merged_dataset, &merged_standard_view), CUVS_SUCCESS);
-  EXPECT_EQ(merged_standard_view->layout, CUVS_DATASET_LAYOUT_STANDARD);
-  EXPECT_EQ(merged_standard_view->mem_type, CUVS_DATASET_MEM_TYPE_DEVICE);
+  EXPECT_EQ(merged_dataset->layout, CUVS_DATASET_LAYOUT_STANDARD);
+  EXPECT_EQ(merged_dataset->mem_type, CUVS_DATASET_MEM_TYPE_DEVICE);
 
   // Merge of standard-layout device inputs yields a standard index. Under the explicit C API
   // contract, attach a padded dataset before calling search.
@@ -736,10 +718,7 @@ TEST(CagraC, BuildMergeSearch)
   ASSERT_EQ(cuvsDatasetMakePadded(
               res, &merged_dataset_tensor, CUVS_DATASET_MEM_TYPE_DEVICE, &padded_dataset_owner),
             CUVS_SUCCESS);
-  cuvsDatasetView_t padded_dataset = nullptr;
-  ASSERT_EQ(cuvsDatasetMakeViewWrapper(padded_dataset_owner, &padded_dataset),
-            CUVS_SUCCESS);
-  ASSERT_EQ(cuvsCagraUpdateDataset(res, padded_dataset, index_merged), CUVS_SUCCESS);
+  ASSERT_EQ(cuvsCagraUpdateDataset(res, padded_dataset_owner, index_merged), CUVS_SUCCESS);
 
   int64_t merged_dim = -1;
   ASSERT_EQ(cuvsCagraIndexGetDims(index_merged, &merged_dim), CUVS_SUCCESS);
@@ -793,11 +772,9 @@ TEST(CagraC, BuildMergeSearch)
   cuvsCagraIndexDestroy(index_merged);
   cuvsCagraIndexDestroy(index_add);
   cuvsCagraIndexDestroy(index_main);
-  cuvsDatasetViewDestroy(padded_dataset);
   cuvsDatasetDestroy(padded_dataset_owner);
-  cuvsDatasetViewDestroy(additional_dataset_view);
-  cuvsDatasetViewDestroy(main_dataset_view);
-  cuvsDatasetViewDestroy(merged_standard_view);
+  cuvsDatasetDestroy(additional_dataset_view);
+  cuvsDatasetDestroy(main_dataset_view);
   cuvsDatasetDestroy(merged_dataset);
   cuvsCagraIndexParamsDestroy(build_params);
   cuvsResourcesDestroy(res);
@@ -839,7 +816,7 @@ TEST(CagraC, BuildSearchACEMemory)
   ace_params->use_disk = false;
 
   build_params->graph_build_params = ace_params;
-  cuvsDatasetView_t dataset_view = nullptr;
+  cuvsDataset_t dataset_view = nullptr;
   ASSERT_EQ(cuvsDatasetMakeStandardView(res, &dataset_tensor, &dataset_view), CUVS_SUCCESS);
   ASSERT_EQ(cuvsCagraBuild(res, build_params, dataset_view, index), CUVS_SUCCESS);
 
@@ -855,10 +832,7 @@ TEST(CagraC, BuildSearchACEMemory)
   ASSERT_EQ(cuvsDatasetMakePadded(
               res, &device_dataset_tensor, CUVS_DATASET_MEM_TYPE_DEVICE, &padded_dataset_owner),
             CUVS_SUCCESS);
-  cuvsDatasetView_t padded_dataset_view = nullptr;
-  ASSERT_EQ(cuvsDatasetMakeViewWrapper(padded_dataset_owner, &padded_dataset_view),
-            CUVS_SUCCESS);
-  ASSERT_EQ(cuvsCagraUpdateDataset(res, padded_dataset_view, index), CUVS_SUCCESS);
+  ASSERT_EQ(cuvsCagraUpdateDataset(res, padded_dataset_owner, index), CUVS_SUCCESS);
 
   // create queries DLTensor
   rmm::device_uvector<float> queries_d(4 * 2, stream);
@@ -922,8 +896,7 @@ TEST(CagraC, BuildSearchACEMemory)
 
   // de-allocate index and res
   cuvsCagraSearchParamsDestroy(search_params);
-  cuvsDatasetViewDestroy(padded_dataset_view);
-  cuvsDatasetViewDestroy(dataset_view);
+  cuvsDatasetDestroy(dataset_view);
   cuvsDatasetDestroy(padded_dataset_owner);
   cuvsCagraIndexParamsDestroy(build_params);
   cuvsCagraIndexDestroy(index);
@@ -965,7 +938,7 @@ TEST(CagraC, BuildSearchACEDisk)
   ace_params->build_dir = strdup("/tmp/cagra_ace_test_disk");
 
   build_params->graph_build_params = ace_params;
-  cuvsDatasetView_t dataset_view = nullptr;
+  cuvsDataset_t dataset_view = nullptr;
   ASSERT_EQ(cuvsDatasetMakeStandardView(res, &dataset_tensor, &dataset_view), CUVS_SUCCESS);
   ASSERT_EQ(cuvsCagraBuild(res, build_params, dataset_view, index), CUVS_SUCCESS);
 
@@ -1039,7 +1012,7 @@ TEST(CagraC, BuildSearchACEDisk)
   ASSERT_TRUE(cuvs::hostVecMatch(distances_exp_disk, distances, cuvs::CompareApprox<float>(0.001f)));
 
   cuvsCagraIndexParamsDestroy(build_params);
-  cuvsDatasetViewDestroy(dataset_view);
+  cuvsDatasetDestroy(dataset_view);
   cuvsCagraIndexDestroy(index);
   cuvsHnswSearchParamsDestroy(search_params);
   cuvsHnswIndexParamsDestroy(hnsw_params);
@@ -1069,7 +1042,7 @@ TEST(CagraC, SerializeHostStandardAllDtypes) {
     tensor.dl_tensor.dtype = dtype;
     tensor.dl_tensor.shape = shape;
 
-    cuvsDatasetView_t dataset_view = nullptr;
+    cuvsDataset_t dataset_view = nullptr;
     ASSERT_EQ(cuvsDatasetMakeStandardView(res, &tensor, &dataset_view),
               CUVS_SUCCESS);
     cuvsCagraIndexParams_t params;
@@ -1108,7 +1081,7 @@ TEST(CagraC, SerializeHostStandardAllDtypes) {
     cuvsDatasetDestroy(loaded_dataset);
     cuvsCagraIndexDestroy(index);
     cuvsCagraIndexParamsDestroy(params);
-    cuvsDatasetViewDestroy(dataset_view);
+    cuvsDatasetDestroy(dataset_view);
     cuvsResourcesDestroy(res);
     std::filesystem::remove(path);
   };
@@ -1133,7 +1106,7 @@ TEST(CagraC, ExplicitSerializationSemantics) {
   host_tensor.dl_tensor.dtype = {kDLFloat, 32, 1};
   host_tensor.dl_tensor.shape = dataset_shape;
 
-  cuvsDatasetView_t host_view = nullptr;
+  cuvsDataset_t host_view = nullptr;
   ASSERT_EQ(cuvsDatasetMakeStandardView(res, &host_tensor, &host_view),
             CUVS_SUCCESS);
   cuvsCagraIndexParams_t params;
@@ -1278,7 +1251,7 @@ TEST(CagraC, ExplicitSerializationSemantics) {
   EXPECT_EQ(sentinel_contents, "sentinel");
 
   // A graph-only file becomes search-ready after attaching a caller-owned
-  // padded view.
+  // padded dataset.
   cuvsCagraIndex_t graph_only;
   ASSERT_EQ(cuvsCagraIndexCreate(&graph_only), CUVS_SUCCESS);
   ASSERT_EQ(cuvsCagraDeserializeGraph(res, graph_path.c_str(), graph_only),
@@ -1293,17 +1266,13 @@ TEST(CagraC, ExplicitSerializationSemantics) {
   ASSERT_EQ(cuvsDatasetMakePadded(
               res, &device_tensor, CUVS_DATASET_MEM_TYPE_DEVICE, &external_owner),
             CUVS_SUCCESS);
-  cuvsDatasetView_t external_view = nullptr;
-  ASSERT_EQ(cuvsDatasetMakeViewWrapper(external_owner, &external_view),
-            CUVS_SUCCESS);
-  ASSERT_EQ(cuvsCagraUpdateDataset(res, external_view, loaded), CUVS_SUCCESS);
+  ASSERT_EQ(cuvsCagraUpdateDataset(res, external_owner, loaded), CUVS_SUCCESS);
   expect_search(loaded);
 
-  ASSERT_EQ(cuvsCagraUpdateDataset(res, external_view, graph_only),
+  ASSERT_EQ(cuvsCagraUpdateDataset(res, external_owner, graph_only),
             CUVS_SUCCESS);
   expect_search(graph_only);
 
-  cuvsDatasetViewDestroy(external_view);
   cuvsCagraIndexDestroy(graph_only);
   cuvsDatasetDestroy(external_owner);
   cuvsCagraIndexDestroy(graph_from_full);
@@ -1311,7 +1280,7 @@ TEST(CagraC, ExplicitSerializationSemantics) {
   cuvsDatasetDestroy(loaded_dataset);
   cuvsCagraIndexDestroy(source);
   cuvsCagraIndexParamsDestroy(params);
-  cuvsDatasetViewDestroy(host_view);
+  cuvsDatasetDestroy(host_view);
   cuvsResourcesDestroy(res);
   std::filesystem::remove(full_path);
   std::filesystem::remove(graph_path);
@@ -1320,4 +1289,527 @@ TEST(CagraC, ExplicitSerializationSemantics) {
   std::filesystem::remove(bad_dtype_path);
   std::filesystem::remove(sentinel_path);
   std::filesystem::remove(bad_kind_path);
+}
+
+// Multi-partition search splits the known 4-row dataset into two contiguous 2-row partitions
+// (partition p holds global rows [2*p, 2*p+2)). The result is reported as a per-partition
+// (partition_id, local ordinal) pair, which decodes to the global index as 2*partition_id +
+// neighbor. So the global answers stay neighbors_exp = {3, 0, 3, 1}, i.e.:
+//   partition_ids = {1, 0, 1, 0}, local neighbors = {1, 0, 1, 1}.
+TEST(CagraC, BuildSearchMultiPartition)
+{
+  cuvsResources_t res;
+  cuvsResourcesCreate(&res);
+  cudaStream_t stream;
+  cuvsStreamGet(res, &stream);
+
+  constexpr uint32_t num_partitions = 2;
+  constexpr int part_rows = 2, dim = 2, n_queries = 4, k = 1;
+
+  // Build one index per contiguous 2-row slice of the host dataset.
+  cuvsCagraIndexParams_t build_params;
+  cuvsCagraIndexParamsCreate(&build_params);
+
+  cuvsCagraIndex_t indices[num_partitions];
+  cuvsDataset_t part_views[num_partitions]         = {};
+  cuvsDataset_t part_padded_owners[num_partitions] = {};
+  for (uint32_t p = 0; p < num_partitions; p++) {
+    DLManagedTensor part_tensor;
+    part_tensor.dl_tensor.data               = &dataset[p * part_rows][0];
+    part_tensor.dl_tensor.device.device_type = kDLCPU;
+    part_tensor.dl_tensor.ndim               = 2;
+    part_tensor.dl_tensor.dtype.code         = kDLFloat;
+    part_tensor.dl_tensor.dtype.bits         = 32;
+    part_tensor.dl_tensor.dtype.lanes        = 1;
+    int64_t part_shape[2]                    = {part_rows, dim};
+    part_tensor.dl_tensor.shape              = part_shape;
+    part_tensor.dl_tensor.strides            = nullptr;
+
+    cuvsCagraIndexCreate(&indices[p]);
+    ASSERT_EQ(cuvsDatasetMakeStandardView(res, &part_tensor, &part_views[p]), CUVS_SUCCESS);
+    ASSERT_EQ(cuvsCagraBuild(res, build_params, part_views[p], indices[p]), CUVS_SUCCESS);
+
+    // The host build yields a host index; multi-partition search needs every partition to carry a
+    // device-padded dataset.
+    ASSERT_EQ(cuvsDatasetMakePadded(
+                res, &part_tensor, CUVS_DATASET_MEM_TYPE_DEVICE, &part_padded_owners[p]),
+              CUVS_SUCCESS);
+    ASSERT_EQ(cuvsCagraUpdateDataset(res, part_padded_owners[p], indices[p]), CUVS_SUCCESS);
+  }
+
+  // queries (device)
+  rmm::device_uvector<float> queries_d(n_queries * dim, stream);
+  raft::copy(queries_d.data(), (float*)queries, n_queries * dim, stream);
+  DLManagedTensor queries_tensor;
+  queries_tensor.dl_tensor.data               = queries_d.data();
+  queries_tensor.dl_tensor.device.device_type = kDLCUDA;
+  queries_tensor.dl_tensor.ndim               = 2;
+  queries_tensor.dl_tensor.dtype.code         = kDLFloat;
+  queries_tensor.dl_tensor.dtype.bits         = 32;
+  queries_tensor.dl_tensor.dtype.lanes        = 1;
+  int64_t queries_shape[2]                    = {n_queries, dim};
+  queries_tensor.dl_tensor.shape              = queries_shape;
+  queries_tensor.dl_tensor.strides            = nullptr;
+
+  // partition_ids output (device, uint32)
+  rmm::device_uvector<uint32_t> partition_ids_d(n_queries * k, stream);
+  DLManagedTensor partition_ids_tensor;
+  partition_ids_tensor.dl_tensor.data               = partition_ids_d.data();
+  partition_ids_tensor.dl_tensor.device.device_type = kDLCUDA;
+  partition_ids_tensor.dl_tensor.ndim               = 2;
+  partition_ids_tensor.dl_tensor.dtype.code         = kDLUInt;
+  partition_ids_tensor.dl_tensor.dtype.bits         = 32;
+  partition_ids_tensor.dl_tensor.dtype.lanes        = 1;
+  int64_t out_shape[2]                              = {n_queries, k};
+  partition_ids_tensor.dl_tensor.shape              = out_shape;
+  partition_ids_tensor.dl_tensor.strides            = nullptr;
+
+  // neighbors output (device, uint32 local ordinal)
+  rmm::device_uvector<uint32_t> neighbors_d(n_queries * k, stream);
+  DLManagedTensor neighbors_tensor;
+  neighbors_tensor.dl_tensor.data               = neighbors_d.data();
+  neighbors_tensor.dl_tensor.device.device_type = kDLCUDA;
+  neighbors_tensor.dl_tensor.ndim               = 2;
+  neighbors_tensor.dl_tensor.dtype.code         = kDLUInt;
+  neighbors_tensor.dl_tensor.dtype.bits         = 32;
+  neighbors_tensor.dl_tensor.dtype.lanes        = 1;
+  neighbors_tensor.dl_tensor.shape              = out_shape;
+  neighbors_tensor.dl_tensor.strides            = nullptr;
+
+  // distances output (device, float)
+  rmm::device_uvector<float> distances_d(n_queries * k, stream);
+  DLManagedTensor distances_tensor;
+  distances_tensor.dl_tensor.data               = distances_d.data();
+  distances_tensor.dl_tensor.device.device_type = kDLCUDA;
+  distances_tensor.dl_tensor.ndim               = 2;
+  distances_tensor.dl_tensor.dtype.code         = kDLFloat;
+  distances_tensor.dl_tensor.dtype.bits         = 32;
+  distances_tensor.dl_tensor.dtype.lanes        = 1;
+  distances_tensor.dl_tensor.shape              = out_shape;
+  distances_tensor.dl_tensor.strides            = nullptr;
+
+  cuvsCagraSearchParams_t search_params;
+  cuvsCagraSearchParamsCreate(&search_params);
+  ASSERT_EQ(cuvsCagraSearchMultiPartition(res,
+                                          search_params,
+                                          num_partitions,
+                                          indices,
+                                          &queries_tensor,
+                                          &partition_ids_tensor,
+                                          &neighbors_tensor,
+                                          &distances_tensor,
+                                          /* filters = */ nullptr),
+            CUVS_SUCCESS);
+
+  uint32_t partition_ids_exp[4] = {1, 0, 1, 0};
+  uint32_t neighbors_exp_mp[4]  = {1, 0, 1, 1};
+  ASSERT_TRUE(cuvs::devArrMatchHost(
+    partition_ids_exp, partition_ids_d.data(), 4, cuvs::Compare<uint32_t>()));
+  ASSERT_TRUE(
+    cuvs::devArrMatchHost(neighbors_exp_mp, neighbors_d.data(), 4, cuvs::Compare<uint32_t>()));
+  ASSERT_TRUE(cuvs::devArrMatchHost(
+    distances_exp, distances_d.data(), 4, cuvs::CompareApprox<float>(0.001f)));
+
+  cuvsCagraSearchParamsDestroy(search_params);
+  cuvsCagraIndexParamsDestroy(build_params);
+  for (uint32_t p = 0; p < num_partitions; p++) {
+    cuvsCagraIndexDestroy(indices[p]);
+    cuvsDatasetDestroy(part_padded_owners[p]);
+    cuvsDatasetDestroy(part_views[p]);
+  }
+  cuvsResourcesDestroy(res);
+}
+
+// Same as BuildSearchMultiPartition, but requesting int64 neighbor ordinals to exercise the
+// int64 neighbor dispatch (matching the single-partition search coverage).
+TEST(CagraC, BuildSearchMultiPartitionInt64Neighbors)
+{
+  cuvsResources_t res;
+  cuvsResourcesCreate(&res);
+  cudaStream_t stream;
+  cuvsStreamGet(res, &stream);
+
+  constexpr uint32_t num_partitions = 2;
+  constexpr int part_rows = 2, dim = 2, n_queries = 4, k = 1;
+
+  // Build one index per contiguous 2-row slice of the host dataset.
+  cuvsCagraIndexParams_t build_params;
+  cuvsCagraIndexParamsCreate(&build_params);
+
+  cuvsCagraIndex_t indices[num_partitions];
+  cuvsDataset_t part_views[num_partitions]         = {};
+  cuvsDataset_t part_padded_owners[num_partitions] = {};
+  for (uint32_t p = 0; p < num_partitions; p++) {
+    DLManagedTensor part_tensor;
+    part_tensor.dl_tensor.data               = &dataset[p * part_rows][0];
+    part_tensor.dl_tensor.device.device_type = kDLCPU;
+    part_tensor.dl_tensor.ndim               = 2;
+    part_tensor.dl_tensor.dtype.code         = kDLFloat;
+    part_tensor.dl_tensor.dtype.bits         = 32;
+    part_tensor.dl_tensor.dtype.lanes        = 1;
+    int64_t part_shape[2]                    = {part_rows, dim};
+    part_tensor.dl_tensor.shape              = part_shape;
+    part_tensor.dl_tensor.strides            = nullptr;
+
+    cuvsCagraIndexCreate(&indices[p]);
+    ASSERT_EQ(cuvsDatasetMakeStandardView(res, &part_tensor, &part_views[p]), CUVS_SUCCESS);
+    ASSERT_EQ(cuvsCagraBuild(res, build_params, part_views[p], indices[p]), CUVS_SUCCESS);
+
+    // The host build yields a host index; multi-partition search needs every partition to carry a
+    // device-padded dataset.
+    ASSERT_EQ(cuvsDatasetMakePadded(
+                res, &part_tensor, CUVS_DATASET_MEM_TYPE_DEVICE, &part_padded_owners[p]),
+              CUVS_SUCCESS);
+    ASSERT_EQ(cuvsCagraUpdateDataset(res, part_padded_owners[p], indices[p]), CUVS_SUCCESS);
+  }
+
+  // queries (device)
+  rmm::device_uvector<float> queries_d(n_queries * dim, stream);
+  raft::copy(queries_d.data(), (float*)queries, n_queries * dim, stream);
+  DLManagedTensor queries_tensor;
+  queries_tensor.dl_tensor.data               = queries_d.data();
+  queries_tensor.dl_tensor.device.device_type = kDLCUDA;
+  queries_tensor.dl_tensor.ndim               = 2;
+  queries_tensor.dl_tensor.dtype.code         = kDLFloat;
+  queries_tensor.dl_tensor.dtype.bits         = 32;
+  queries_tensor.dl_tensor.dtype.lanes        = 1;
+  int64_t queries_shape[2]                    = {n_queries, dim};
+  queries_tensor.dl_tensor.shape              = queries_shape;
+  queries_tensor.dl_tensor.strides            = nullptr;
+
+  // partition_ids output (device, uint32)
+  rmm::device_uvector<uint32_t> partition_ids_d(n_queries * k, stream);
+  DLManagedTensor partition_ids_tensor;
+  partition_ids_tensor.dl_tensor.data               = partition_ids_d.data();
+  partition_ids_tensor.dl_tensor.device.device_type = kDLCUDA;
+  partition_ids_tensor.dl_tensor.ndim               = 2;
+  partition_ids_tensor.dl_tensor.dtype.code         = kDLUInt;
+  partition_ids_tensor.dl_tensor.dtype.bits         = 32;
+  partition_ids_tensor.dl_tensor.dtype.lanes        = 1;
+  int64_t out_shape[2]                              = {n_queries, k};
+  partition_ids_tensor.dl_tensor.shape              = out_shape;
+  partition_ids_tensor.dl_tensor.strides            = nullptr;
+
+  // neighbors output (device, int64 local ordinal)
+  rmm::device_uvector<int64_t> neighbors_d(n_queries * k, stream);
+  DLManagedTensor neighbors_tensor;
+  neighbors_tensor.dl_tensor.data               = neighbors_d.data();
+  neighbors_tensor.dl_tensor.device.device_type = kDLCUDA;
+  neighbors_tensor.dl_tensor.ndim               = 2;
+  neighbors_tensor.dl_tensor.dtype.code         = kDLInt;
+  neighbors_tensor.dl_tensor.dtype.bits         = 64;
+  neighbors_tensor.dl_tensor.dtype.lanes        = 1;
+  neighbors_tensor.dl_tensor.shape              = out_shape;
+  neighbors_tensor.dl_tensor.strides            = nullptr;
+
+  // distances output (device, float)
+  rmm::device_uvector<float> distances_d(n_queries * k, stream);
+  DLManagedTensor distances_tensor;
+  distances_tensor.dl_tensor.data               = distances_d.data();
+  distances_tensor.dl_tensor.device.device_type = kDLCUDA;
+  distances_tensor.dl_tensor.ndim               = 2;
+  distances_tensor.dl_tensor.dtype.code         = kDLFloat;
+  distances_tensor.dl_tensor.dtype.bits         = 32;
+  distances_tensor.dl_tensor.dtype.lanes        = 1;
+  distances_tensor.dl_tensor.shape              = out_shape;
+  distances_tensor.dl_tensor.strides            = nullptr;
+
+  cuvsCagraSearchParams_t search_params;
+  cuvsCagraSearchParamsCreate(&search_params);
+  ASSERT_EQ(cuvsCagraSearchMultiPartition(res,
+                                          search_params,
+                                          num_partitions,
+                                          indices,
+                                          &queries_tensor,
+                                          &partition_ids_tensor,
+                                          &neighbors_tensor,
+                                          &distances_tensor,
+                                          /* filters = */ nullptr),
+            CUVS_SUCCESS);
+
+  uint32_t partition_ids_exp[4] = {1, 0, 1, 0};
+  int64_t neighbors_exp_mp[4]   = {1, 0, 1, 1};
+  ASSERT_TRUE(cuvs::devArrMatchHost(
+    partition_ids_exp, partition_ids_d.data(), 4, cuvs::Compare<uint32_t>()));
+  ASSERT_TRUE(
+    cuvs::devArrMatchHost(neighbors_exp_mp, neighbors_d.data(), 4, cuvs::Compare<int64_t>()));
+  ASSERT_TRUE(cuvs::devArrMatchHost(
+    distances_exp, distances_d.data(), 4, cuvs::CompareApprox<float>(0.001f)));
+
+  cuvsCagraSearchParamsDestroy(search_params);
+  cuvsCagraIndexParamsDestroy(build_params);
+  for (uint32_t p = 0; p < num_partitions; p++) {
+    cuvsCagraIndexDestroy(indices[p]);
+    cuvsDatasetDestroy(part_padded_owners[p]);
+    cuvsDatasetDestroy(part_views[p]);
+  }
+  cuvsResourcesDestroy(res);
+}
+
+// Filtered multi-partition search: the combined bitset is addressed by the global index
+// (partition_offset[p] + local), so filtering global rows 1 and 2 (bitset 0b1001) matches the
+// single-index filtered case. Global answers stay neighbors_exp_filtered = {3, 0, 3, 0}:
+//   partition_ids = {1, 0, 1, 0}, local neighbors = {1, 0, 1, 0}.
+TEST(CagraC, BuildSearchMultiPartitionFiltered)
+{
+  cuvsResources_t res;
+  cuvsResourcesCreate(&res);
+  cudaStream_t stream;
+  cuvsStreamGet(res, &stream);
+
+  constexpr uint32_t num_partitions = 2;
+  constexpr int part_rows = 2, dim = 2, n_queries = 4, k = 1;
+
+  cuvsCagraIndexParams_t build_params;
+  cuvsCagraIndexParamsCreate(&build_params);
+
+  cuvsCagraIndex_t indices[num_partitions];
+  cuvsDataset_t part_views[num_partitions]         = {};
+  cuvsDataset_t part_padded_owners[num_partitions] = {};
+  for (uint32_t p = 0; p < num_partitions; p++) {
+    DLManagedTensor part_tensor;
+    part_tensor.dl_tensor.data               = &dataset[p * part_rows][0];
+    part_tensor.dl_tensor.device.device_type = kDLCPU;
+    part_tensor.dl_tensor.ndim               = 2;
+    part_tensor.dl_tensor.dtype.code         = kDLFloat;
+    part_tensor.dl_tensor.dtype.bits         = 32;
+    part_tensor.dl_tensor.dtype.lanes        = 1;
+    int64_t part_shape[2]                    = {part_rows, dim};
+    part_tensor.dl_tensor.shape              = part_shape;
+    part_tensor.dl_tensor.strides            = nullptr;
+
+    cuvsCagraIndexCreate(&indices[p]);
+    ASSERT_EQ(cuvsDatasetMakeStandardView(res, &part_tensor, &part_views[p]), CUVS_SUCCESS);
+    ASSERT_EQ(cuvsCagraBuild(res, build_params, part_views[p], indices[p]), CUVS_SUCCESS);
+
+    // The host build yields a host index; multi-partition search needs every partition to carry a
+    // device-padded dataset.
+    ASSERT_EQ(cuvsDatasetMakePadded(
+                res, &part_tensor, CUVS_DATASET_MEM_TYPE_DEVICE, &part_padded_owners[p]),
+              CUVS_SUCCESS);
+    ASSERT_EQ(cuvsCagraUpdateDataset(res, part_padded_owners[p], indices[p]), CUVS_SUCCESS);
+  }
+
+  rmm::device_uvector<float> queries_d(n_queries * dim, stream);
+  raft::copy(queries_d.data(), (float*)queries, n_queries * dim, stream);
+  DLManagedTensor queries_tensor;
+  queries_tensor.dl_tensor.data               = queries_d.data();
+  queries_tensor.dl_tensor.device.device_type = kDLCUDA;
+  queries_tensor.dl_tensor.ndim               = 2;
+  queries_tensor.dl_tensor.dtype.code         = kDLFloat;
+  queries_tensor.dl_tensor.dtype.bits         = 32;
+  queries_tensor.dl_tensor.dtype.lanes        = 1;
+  int64_t queries_shape[2]                    = {n_queries, dim};
+  queries_tensor.dl_tensor.shape              = queries_shape;
+  queries_tensor.dl_tensor.strides            = nullptr;
+
+  rmm::device_uvector<uint32_t> partition_ids_d(n_queries * k, stream);
+  int64_t out_shape[2] = {n_queries, k};
+  DLManagedTensor partition_ids_tensor;
+  partition_ids_tensor.dl_tensor.data               = partition_ids_d.data();
+  partition_ids_tensor.dl_tensor.device.device_type = kDLCUDA;
+  partition_ids_tensor.dl_tensor.ndim               = 2;
+  partition_ids_tensor.dl_tensor.dtype.code         = kDLUInt;
+  partition_ids_tensor.dl_tensor.dtype.bits         = 32;
+  partition_ids_tensor.dl_tensor.dtype.lanes        = 1;
+  partition_ids_tensor.dl_tensor.shape              = out_shape;
+  partition_ids_tensor.dl_tensor.strides            = nullptr;
+
+  rmm::device_uvector<uint32_t> neighbors_d(n_queries * k, stream);
+  DLManagedTensor neighbors_tensor;
+  neighbors_tensor.dl_tensor.data               = neighbors_d.data();
+  neighbors_tensor.dl_tensor.device.device_type = kDLCUDA;
+  neighbors_tensor.dl_tensor.ndim               = 2;
+  neighbors_tensor.dl_tensor.dtype.code         = kDLUInt;
+  neighbors_tensor.dl_tensor.dtype.bits         = 32;
+  neighbors_tensor.dl_tensor.dtype.lanes        = 1;
+  neighbors_tensor.dl_tensor.shape              = out_shape;
+  neighbors_tensor.dl_tensor.strides            = nullptr;
+
+  rmm::device_uvector<float> distances_d(n_queries * k, stream);
+  DLManagedTensor distances_tensor;
+  distances_tensor.dl_tensor.data               = distances_d.data();
+  distances_tensor.dl_tensor.device.device_type = kDLCUDA;
+  distances_tensor.dl_tensor.ndim               = 2;
+  distances_tensor.dl_tensor.dtype.code         = kDLFloat;
+  distances_tensor.dl_tensor.dtype.bits         = 32;
+  distances_tensor.dl_tensor.dtype.lanes        = 1;
+  distances_tensor.dl_tensor.shape              = out_shape;
+  distances_tensor.dl_tensor.strides            = nullptr;
+
+  // Each partition supplies its OWN bitset (one bit per row in that partition). Keeping global rows
+  // 0 and 3 (removing 1 and 2) => partition 0 keeps local row 0 (0b01), partition 1 keeps local
+  // row 1 (0b10).
+  uint32_t part0_bits[1] = {0b01u};
+  uint32_t part1_bits[1] = {0b10u};
+  rmm::device_uvector<uint32_t> part0_bitset_d(1, stream);
+  rmm::device_uvector<uint32_t> part1_bitset_d(1, stream);
+  raft::copy(part0_bitset_d.data(), part0_bits, 1, stream);
+  raft::copy(part1_bitset_d.data(), part1_bits, 1, stream);
+
+  int64_t part_bitset_shape[1] = {1};
+  DLManagedTensor part0_bitset_tensor;
+  part0_bitset_tensor.dl_tensor.data               = part0_bitset_d.data();
+  part0_bitset_tensor.dl_tensor.device.device_type = kDLCUDA;
+  part0_bitset_tensor.dl_tensor.ndim               = 1;
+  part0_bitset_tensor.dl_tensor.dtype.code         = kDLUInt;
+  part0_bitset_tensor.dl_tensor.dtype.bits         = 32;
+  part0_bitset_tensor.dl_tensor.dtype.lanes        = 1;
+  part0_bitset_tensor.dl_tensor.shape              = part_bitset_shape;
+  part0_bitset_tensor.dl_tensor.strides            = nullptr;
+  DLManagedTensor part1_bitset_tensor              = part0_bitset_tensor;
+  part1_bitset_tensor.dl_tensor.data               = part1_bitset_d.data();
+
+  // One filter per partition, each over that partition's own bitset.
+  cuvsFilter filters[num_partitions];
+  filters[0].type = BITSET;
+  filters[0].addr = (uintptr_t)&part0_bitset_tensor;
+  filters[1].type = BITSET;
+  filters[1].addr = (uintptr_t)&part1_bitset_tensor;
+
+  cuvsCagraSearchParams_t search_params;
+  cuvsCagraSearchParamsCreate(&search_params);
+  ASSERT_EQ(cuvsCagraSearchMultiPartition(res,
+                                          search_params,
+                                          num_partitions,
+                                          indices,
+                                          &queries_tensor,
+                                          &partition_ids_tensor,
+                                          &neighbors_tensor,
+                                          &distances_tensor,
+                                          filters),
+            CUVS_SUCCESS);
+
+  uint32_t partition_ids_exp[4] = {1, 0, 1, 0};
+  uint32_t neighbors_exp_mp[4]  = {1, 0, 1, 0};
+  ASSERT_TRUE(cuvs::devArrMatchHost(
+    partition_ids_exp, partition_ids_d.data(), 4, cuvs::Compare<uint32_t>()));
+  ASSERT_TRUE(
+    cuvs::devArrMatchHost(neighbors_exp_mp, neighbors_d.data(), 4, cuvs::Compare<uint32_t>()));
+  ASSERT_TRUE(cuvs::devArrMatchHost(
+    distances_exp_filtered, distances_d.data(), 4, cuvs::CompareApprox<float>(0.001f)));
+
+  cuvsCagraSearchParamsDestroy(search_params);
+  cuvsCagraIndexParamsDestroy(build_params);
+  for (uint32_t p = 0; p < num_partitions; p++) {
+    cuvsCagraIndexDestroy(indices[p]);
+    cuvsDatasetDestroy(part_padded_owners[p]);
+    cuvsDatasetDestroy(part_views[p]);
+  }
+  cuvsResourcesDestroy(res);
+}
+
+// MULTI_KERNEL is intentionally unsupported in the multi-partition path; the call must return an
+// error rather than silently falling back. (cuvsError_t: CUVS_SUCCESS == 1, CUVS_ERROR == 0.)
+TEST(CagraC, SearchMultiPartitionMultiKernelRejected)
+{
+  cuvsResources_t res;
+  cuvsResourcesCreate(&res);
+  cudaStream_t stream;
+  cuvsStreamGet(res, &stream);
+
+  constexpr uint32_t num_partitions = 2;
+  constexpr int part_rows = 2, dim = 2, n_queries = 4, k = 1;
+
+  cuvsCagraIndexParams_t build_params;
+  cuvsCagraIndexParamsCreate(&build_params);
+
+  cuvsCagraIndex_t indices[num_partitions];
+  cuvsDataset_t part_views[num_partitions]         = {};
+  cuvsDataset_t part_padded_owners[num_partitions] = {};
+  for (uint32_t p = 0; p < num_partitions; p++) {
+    DLManagedTensor part_tensor;
+    part_tensor.dl_tensor.data               = &dataset[p * part_rows][0];
+    part_tensor.dl_tensor.device.device_type = kDLCPU;
+    part_tensor.dl_tensor.ndim               = 2;
+    part_tensor.dl_tensor.dtype.code         = kDLFloat;
+    part_tensor.dl_tensor.dtype.bits         = 32;
+    part_tensor.dl_tensor.dtype.lanes        = 1;
+    int64_t part_shape[2]                    = {part_rows, dim};
+    part_tensor.dl_tensor.shape              = part_shape;
+    part_tensor.dl_tensor.strides            = nullptr;
+
+    cuvsCagraIndexCreate(&indices[p]);
+    ASSERT_EQ(cuvsDatasetMakeStandardView(res, &part_tensor, &part_views[p]), CUVS_SUCCESS);
+    ASSERT_EQ(cuvsCagraBuild(res, build_params, part_views[p], indices[p]), CUVS_SUCCESS);
+
+    // The host build yields a host index; multi-partition search needs every partition to carry a
+    // device-padded dataset.
+    ASSERT_EQ(cuvsDatasetMakePadded(
+                res, &part_tensor, CUVS_DATASET_MEM_TYPE_DEVICE, &part_padded_owners[p]),
+              CUVS_SUCCESS);
+    ASSERT_EQ(cuvsCagraUpdateDataset(res, part_padded_owners[p], indices[p]), CUVS_SUCCESS);
+  }
+
+  rmm::device_uvector<float> queries_d(n_queries * dim, stream);
+  raft::copy(queries_d.data(), (float*)queries, n_queries * dim, stream);
+  DLManagedTensor queries_tensor;
+  queries_tensor.dl_tensor.data               = queries_d.data();
+  queries_tensor.dl_tensor.device.device_type = kDLCUDA;
+  queries_tensor.dl_tensor.ndim               = 2;
+  queries_tensor.dl_tensor.dtype.code         = kDLFloat;
+  queries_tensor.dl_tensor.dtype.bits         = 32;
+  queries_tensor.dl_tensor.dtype.lanes        = 1;
+  int64_t queries_shape[2]                    = {n_queries, dim};
+  queries_tensor.dl_tensor.shape              = queries_shape;
+  queries_tensor.dl_tensor.strides            = nullptr;
+
+  rmm::device_uvector<uint32_t> partition_ids_d(n_queries * k, stream);
+  rmm::device_uvector<uint32_t> neighbors_d(n_queries * k, stream);
+  rmm::device_uvector<float> distances_d(n_queries * k, stream);
+  int64_t out_shape[2] = {n_queries, k};
+
+  DLManagedTensor partition_ids_tensor;
+  partition_ids_tensor.dl_tensor.data               = partition_ids_d.data();
+  partition_ids_tensor.dl_tensor.device.device_type = kDLCUDA;
+  partition_ids_tensor.dl_tensor.ndim               = 2;
+  partition_ids_tensor.dl_tensor.dtype.code         = kDLUInt;
+  partition_ids_tensor.dl_tensor.dtype.bits         = 32;
+  partition_ids_tensor.dl_tensor.dtype.lanes        = 1;
+  partition_ids_tensor.dl_tensor.shape              = out_shape;
+  partition_ids_tensor.dl_tensor.strides            = nullptr;
+
+  DLManagedTensor neighbors_tensor;
+  neighbors_tensor.dl_tensor.data               = neighbors_d.data();
+  neighbors_tensor.dl_tensor.device.device_type = kDLCUDA;
+  neighbors_tensor.dl_tensor.ndim               = 2;
+  neighbors_tensor.dl_tensor.dtype.code         = kDLUInt;
+  neighbors_tensor.dl_tensor.dtype.bits         = 32;
+  neighbors_tensor.dl_tensor.dtype.lanes        = 1;
+  neighbors_tensor.dl_tensor.shape              = out_shape;
+  neighbors_tensor.dl_tensor.strides            = nullptr;
+
+  DLManagedTensor distances_tensor;
+  distances_tensor.dl_tensor.data               = distances_d.data();
+  distances_tensor.dl_tensor.device.device_type = kDLCUDA;
+  distances_tensor.dl_tensor.ndim               = 2;
+  distances_tensor.dl_tensor.dtype.code         = kDLFloat;
+  distances_tensor.dl_tensor.dtype.bits         = 32;
+  distances_tensor.dl_tensor.dtype.lanes        = 1;
+  distances_tensor.dl_tensor.shape              = out_shape;
+  distances_tensor.dl_tensor.strides            = nullptr;
+
+  cuvsCagraSearchParams_t search_params;
+  cuvsCagraSearchParamsCreate(&search_params);
+  search_params->algo = MULTI_KERNEL;
+
+  ASSERT_EQ(cuvsCagraSearchMultiPartition(res,
+                                          search_params,
+                                          num_partitions,
+                                          indices,
+                                          &queries_tensor,
+                                          &partition_ids_tensor,
+                                          &neighbors_tensor,
+                                          &distances_tensor,
+                                          nullptr),
+            CUVS_ERROR);
+
+  cuvsCagraSearchParamsDestroy(search_params);
+  cuvsCagraIndexParamsDestroy(build_params);
+  for (uint32_t p = 0; p < num_partitions; p++) {
+    cuvsCagraIndexDestroy(indices[p]);
+    cuvsDatasetDestroy(part_padded_owners[p]);
+    cuvsDatasetDestroy(part_views[p]);
+  }
+  cuvsResourcesDestroy(res);
 }

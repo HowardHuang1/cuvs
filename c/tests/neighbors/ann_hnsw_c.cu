@@ -57,10 +57,10 @@ TEST(CagraHnswC, BuildSearch)
   // build index
   cuvsCagraIndexParams_t build_params;
   cuvsCagraIndexParamsCreate(&build_params);
-  cuvsDatasetView_t dataset_view;
+  cuvsDataset_t dataset_view;
   ASSERT_EQ(cuvsDatasetMakeStandardView(res, &dataset_tensor, &dataset_view), CUVS_SUCCESS);
   ASSERT_EQ(cuvsCagraBuild(res, build_params, dataset_view, index), CUVS_SUCCESS);
-  ASSERT_EQ(cuvsDatasetViewDestroy(dataset_view), CUVS_SUCCESS);
+  ASSERT_EQ(cuvsDatasetDestroy(dataset_view), CUVS_SUCCESS);
 
   // A host build yields a graph-only host index. The hnswlib format stores the vectors alongside
   // the graph, so copy the host tensor into device-padded storage before serializing.
@@ -68,10 +68,7 @@ TEST(CagraHnswC, BuildSearch)
   ASSERT_EQ(cuvsDatasetMakePadded(
               res, &dataset_tensor, CUVS_DATASET_MEM_TYPE_DEVICE, &padded_dataset_owner),
             CUVS_SUCCESS);
-  cuvsDatasetView_t padded_dataset_view = nullptr;
-  ASSERT_EQ(cuvsDatasetMakeViewWrapper(padded_dataset_owner, &padded_dataset_view),
-            CUVS_SUCCESS);
-  ASSERT_EQ(cuvsCagraUpdateDataset(res, padded_dataset_view, index), CUVS_SUCCESS);
+  ASSERT_EQ(cuvsCagraUpdateDataset(res, padded_dataset_owner, index), CUVS_SUCCESS);
 
   ASSERT_EQ(cuvsCagraSerializeToHnswlib(res, "/tmp/cagra_hnswlib.index", index), CUVS_SUCCESS);
 
@@ -137,7 +134,6 @@ TEST(CagraHnswC, BuildSearch)
   ASSERT_TRUE(cuvs::hostVecMatch(neighbors_exp, neighbors, cuvs::Compare<uint64_t>()));
   ASSERT_TRUE(cuvs::hostVecMatch(distances_exp, distances, cuvs::CompareApprox<float>(0.001f)));
 
-  cuvsDatasetViewDestroy(padded_dataset_view);
   cuvsDatasetDestroy(padded_dataset_owner);
   cuvsCagraIndexParamsDestroy(build_params);
   cuvsCagraIndexDestroy(index);

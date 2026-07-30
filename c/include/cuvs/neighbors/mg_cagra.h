@@ -176,7 +176,7 @@ CUVS_EXPORT cuvsError_t cuvsMultiGpuCagraBuild(cuvsResources_t res,
  */
 CUVS_EXPORT cuvsError_t cuvsMultiGpuCagraUpdateDataset(
   cuvsResources_t res,
-  cuvsDatasetView_t device_padded_dataset,
+  cuvsDataset_t device_padded_dataset,
   cuvsMultiGpuCagraIndex_t index);
 
 /**

@@ -334,7 +334,14 @@ cuvsError_t cuvsCagraExtendParamsDestroy(cuvsCagraExtendParams_t params);
 <a id="cuvscagraextend"></a>
 ### cuvsCagraExtend
 
-Extend a CAGRA index with a `DLManagedTensor` which has underlying `DLDeviceType` equal to `kDLCUDA`, `kDLCUDAHost`, `kDLCUDAManaged`, or `kDLCPU`. Also, acceptable underlying types are:
+Extend a CAGRA index using a caller-owned pre-concatenated device-padded
+dataset view. The caller must build `extended_dataset` as `old || new`
+before calling. Rows `[0, new_start_row)` are the original vectors; rows
+`[new_start_row, n_rows)` are the additional vectors. `new_start_row`
+must equal the current index size. The library only extends the graph
+and rebinds the index to `extended_dataset`.
+
+Acceptable underlying types are:
 
 1. `kDLDataType.code == kDLFloat` and `kDLDataType.bits = 32`
 2. `kDLDataType.code == kDLFloat` and `kDLDataType.bits = 16`
@@ -344,7 +351,8 @@ Extend a CAGRA index with a `DLManagedTensor` which has underlying `DLDeviceType
 ```c
 cuvsError_t cuvsCagraExtend(cuvsResources_t res,
 cuvsCagraExtendParams_t params,
-DLManagedTensor* additional_dataset,
+cuvsDataset_t extended_dataset,
+int64_t new_start_row,
 cuvsCagraIndex_t index);
 ```
 
@@ -354,7 +362,8 @@ cuvsCagraIndex_t index);
 | --- | --- | --- | --- |
 | `res` | in | [`cuvsResources_t`](/api-reference/c-api-core-c-api#cuvsresources-t) | cuvsResources_t opaque C handle |
 | `params` | in | [`cuvsCagraExtendParams_t`](/api-reference/c-api-neighbors-cagra#cuvscagraextendparams) | cuvsCagraExtendParams_t used to extend CAGRA index |
-| `additional_dataset` | in | `DLManagedTensor*` | DLManagedTensor* additional dataset |
+| `extended_dataset` | in | `cuvsDataset_t` | Caller-owned device-padded dataset already containing old \|\| new |
+| `new_start_row` | in | `int64_t` | Row index where the additional vectors begin |
 | `index` | in,out | [`cuvsCagraIndex_t`](/api-reference/c-api-neighbors-cagra#cuvscagraindex) | cuvsCagraIndex_t CAGRA index |
 
 **Returns**
@@ -677,7 +686,7 @@ handle with the matching type-specific view factory; memory residency is inferre
 ```c
 cuvsError_t cuvsCagraBuild(cuvsResources_t res,
 cuvsCagraIndexParams_t params,
-cuvsDatasetView_t dataset,
+cuvsDataset_t dataset,
 cuvsCagraIndex_t index);
 ```
 
@@ -687,7 +696,7 @@ cuvsCagraIndex_t index);
 | --- | --- | --- | --- |
 | `res` | in | [`cuvsResources_t`](/api-reference/c-api-core-c-api#cuvsresources-t) | cuvsResources_t opaque C handle |
 | `params` | in | [`cuvsCagraIndexParams_t`](/api-reference/c-api-neighbors-cagra#cuvscagraindexparams) | cuvsCagraIndexParams_t used to build CAGRA index |
-| `dataset` | in | `cuvsDatasetView_t` | cuvsDatasetView_t view of the training dataset |
+| `dataset` | in | `cuvsDataset_t` | Training dataset or dataset view |
 | `index` | inout | [`cuvsCagraIndex_t`](/api-reference/c-api-neighbors-cagra#cuvscagraindex) | cuvsCagraIndex_t Newly built CAGRA index. This index needs to be already created with cuvsCagraIndexCreate. |
 
 **Returns**

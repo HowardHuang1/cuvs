@@ -21,12 +21,14 @@ from cuvs.common cimport cydlpack
 from cuvs.common.c_api cimport cuvsResources_t
 from cuvs.neighbors.cagra.cagra cimport (
     IndexParams as SingleGpuIndexParams,
+    PaddedDataset,
     PaddedDatasetView,
     SearchParams as SingleGpuSearchParams,
     cuvsCagraIndexParams_t,
     cuvsCagraIndexParamsDestroy,
     cuvsCagraSearchParams_t,
     cuvsCagraSearchParamsDestroy,
+    cuvsDataset_t,
 )
 
 from .cagra cimport (
@@ -166,8 +168,7 @@ def build(IndexParams index_params, dataset, resources=None):
     >>> index = cagra.build(build_params, dataset)
     >>> device_dataset = device_ndarray(dataset)
     >>> padded_dataset = sg_cagra.make_padded_dataset(device_dataset)
-    >>> padded_view = sg_cagra.make_view_wrapper(padded_dataset)
-    >>> _ = cagra.update_dataset(index, padded_view)
+    >>> _ = cagra.update_dataset(index, padded_dataset)
     >>> distances, neighbors = cagra.search(cagra.SearchParams(),
     ...                                         index, dataset, k)
     >>> # Results are already in host memory (NumPy arrays)
@@ -197,9 +198,7 @@ def build(IndexParams index_params, dataset, resources=None):
 
 
 @auto_sync_multi_gpu_resources
-def update_dataset(Index index,
-                   PaddedDatasetView padded_dataset_view,
-                   resources=None):
+def update_dataset(Index index, padded_dataset, resources=None):
     """
     Update a multi-GPU CAGRA index with a device-padded dataset view.
 
@@ -208,14 +207,23 @@ def update_dataset(Index index,
     """
     if not index.trained:
         raise ValueError("Index needs to be built before updating the dataset.")
-    if padded_dataset_view is None or padded_dataset_view.view == NULL:
-        raise ValueError("padded_dataset_view is uninitialized")
+    cdef cuvsDataset_t dataset_handle = NULL
+    if isinstance(padded_dataset, PaddedDataset):
+        dataset_handle = (<PaddedDataset>padded_dataset).dataset
+    elif isinstance(padded_dataset, PaddedDatasetView):
+        dataset_handle = (<PaddedDatasetView>padded_dataset).view
+    else:
+        raise TypeError(
+            "padded_dataset must be a PaddedDataset or PaddedDatasetView"
+        )
+    if dataset_handle == NULL:
+        raise ValueError("padded_dataset is uninitialized")
 
     cdef cuvsResources_t res = <cuvsResources_t>resources.get_c_obj()
     with cuda_interruptible():
         check_cuvs(cuvsMultiGpuCagraUpdateDataset(
             res,
-            padded_dataset_view.view,
+            dataset_handle,
             index.mg_index
         ))
     return index

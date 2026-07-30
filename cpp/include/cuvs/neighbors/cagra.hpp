@@ -5,6 +5,8 @@
 
 #pragma once
 
+#include "common.hpp"
+#include <cuvs/core/bitset.hpp>
 #include <cuvs/distance/distance.hpp>
 #include <cuvs/neighbors/common.hpp>
 #include <cuvs/neighbors/ivf_pq.hpp>
@@ -33,6 +35,7 @@
 #include <optional>
 #include <string>
 #include <variant>
+#include <vector>
 
 namespace CUVS_EXPORT cuvs {
 namespace neighbors {
@@ -1156,287 +1159,58 @@ auto build(raft::resources const& res,
 
 /** @brief Add new vectors to a CAGRA index
  *
- * Note: `extend` is allocation-free with respect to dataset repacking. Callers must provide a
- * padded index and a padded additional dataset view. No implicit standard-to-padded conversion is
- * performed inside `extend`.
+ * Note: `extend` does not concatenate datasets. The caller owns the final dataset and must
+ * pre-populate a single padded device matrix of size `(n_old + n_new) x dim` (or overallocation
+ * with a view whose logical `n_rows` is `n_old + n_new`):
+ *   - rows `[0, new_start_row)` hold the original vectors attached to `idx`
+ *   - rows `[new_start_row, n_rows)` hold the additional vectors
+ * `new_start_row` must equal `idx.size()` today. The library only extends the graph and rebinds
+ * the index to `extended_dataset`. Keep that view alive for the index lifetime.
  *
  * Usage example:
  * @code{.cpp}
  *   using namespace cuvs::neighbors;
- *   auto additional_dataset = raft::make_device_matrix<float, int64_t>(handle,add_size,dim);
- *   // set_additional_dataset(additional_dataset.view());
+ *   // Build `extended` = old || new on device, padded for CAGRA.
+ *   auto extended = make_device_padded_dataset(res, concatenated_view);
+ *   auto extended_view = extended->as_dataset_view();
  *
  *   cagra::extend_params params;
- *   cagra::extend(res, params, raft::make_const_mdspan(additional_dataset.view()), index);
+ *   int64_t new_start_row = static_cast<int64_t>(index.size());
+ *   cagra::extend(res, params, extended_view, new_start_row, index);
  * @endcode
  *
  * @param[in] handle raft resources
  * @param[in] params extend params
- * @param[in] additional_dataset additional dataset on device memory
- * @param[in,out] idx CAGRA index
- * @param[out] new_dataset_buffer_view memory buffer view for the dataset including the additional
- * part. The data will be copied from the current index in this function. The num rows must be the
- * sum of the original and additional datasets, cols must be the dimension of the dataset, and the
- * stride must be the same as the original index dataset. This view will be stored in the output
- * index. It is the caller's responsibility to ensure that dataset stays alive as long as the index.
- * This option is useful when users want to manage the memory space for the dataset themselves.
- * @param[out] new_graph_buffer_view memory buffer view for the graph including the additional part.
- * The data will be copied from the current index in this function. The num rows must be the sum of
- * the original and additional datasets and cols must be the graph degree. This view will be stored
- * in the output index. It is the caller's responsibility to ensure that dataset stays alive as long
- * as the index. This option is useful when users want to manage the memory space for the graph
- * themselves.
+ * @param[in] extended_dataset caller-owned device-padded view already containing old || new rows
+ * @param[in] new_start_row row index where the additional vectors begin (must equal `idx.size()`)
+ * @param[in,out] idx CAGRA index; graph is extended and dataset view is rebound
  */
 void extend(raft::resources const& handle,
             const cagra::extend_params& params,
-            cuvs::neighbors::device_padded_dataset_view<float, int64_t> additional_dataset,
-            cuvs::neighbors::cagra::device_padded_index<float, uint32_t>& idx,
-            cuvs::neighbors::device_padded_dataset_view<float, int64_t> extended_dataset);
+            cuvs::neighbors::device_padded_dataset_view<float, int64_t> extended_dataset,
+            int64_t new_start_row,
+            cuvs::neighbors::cagra::device_padded_index<float, uint32_t>& idx);
 
-/** @brief Add new vectors to a CAGRA index
- *
- * Usage example:
- * @code{.cpp}
- *   using namespace cuvs::neighbors;
- *   auto additional_dataset = raft::make_device_matrix<half, int64_t>(handle,add_size,dim);
- *   // set_additional_dataset(additional_dataset.view());
- *
- *   cagra::extend_params params;
- *   cagra::extend(res, params, raft::make_const_mdspan(additional_dataset.view()), index);
- * @endcode
- *
- * @param[in] handle raft resources
- * @param[in] params extend params
- * @param[in] additional_dataset additional dataset on device memory
- * @param[in,out] idx CAGRA index
- * @param[out] new_dataset_buffer_view memory buffer view for the dataset including the additional
- * part. The data will be copied from the current index in this function. The num rows must be the
- * sum of the original and additional datasets, cols must be the dimension of the dataset, and the
- * stride must be the same as the original index dataset. This view will be stored in the output
- * index. It is the caller's responsibility to ensure that dataset stays alive as long as the index.
- * This option is useful when users want to manage the memory space for the dataset themselves.
- * @param[out] new_graph_buffer_view memory buffer view for the graph including the additional part.
- * The data will be copied from the current index in this function. The num rows must be the sum of
- * the original and additional datasets and cols must be the graph degree. This view will be stored
- * in the output index. It is the caller's responsibility to ensure that dataset stays alive as long
- * as the index. This option is useful when users want to manage the memory space for the graph
- * themselves.
- */
+/** @brief Add new vectors to a CAGRA index. See the float overload for the full contract. */
 void extend(raft::resources const& handle,
             const cagra::extend_params& params,
-            cuvs::neighbors::device_padded_dataset_view<half, int64_t> additional_dataset,
-            cuvs::neighbors::cagra::device_padded_index<half, uint32_t>& idx,
-            cuvs::neighbors::device_padded_dataset_view<half, int64_t> extended_dataset);
+            cuvs::neighbors::device_padded_dataset_view<half, int64_t> extended_dataset,
+            int64_t new_start_row,
+            cuvs::neighbors::cagra::device_padded_index<half, uint32_t>& idx);
 
-/** @brief Add new vectors to a CAGRA index
- *
- * Usage example:
- * @code{.cpp}
- *   using namespace cuvs::neighbors;
- *   auto additional_dataset = raft::make_device_matrix<int8_t, int64_t>(handle,add_size,dim);
- *   // set_additional_dataset(additional_dataset.view());
- *
- *   cagra::extend_params params;
- *   cagra::extend(res, params, raft::make_const_mdspan(additional_dataset.view()), index);
- * @endcode
- *
- * @param[in] handle raft resources
- * @param[in] params extend params
- * @param[in] additional_dataset additional dataset on device memory
- * @param[in,out] idx CAGRA index
- * @param[out] new_dataset_buffer_view memory buffer view for the dataset including the additional
- * part. The data will be copied from the current index in this function. The num rows must be the
- * sum of the original and additional datasets, cols must be the dimension of the dataset, and the
- * stride must be the same as the original index dataset. This view will be stored in the output
- * index. It is the caller's responsibility to ensure that dataset stays alive as long as the index.
- * This option is useful when users want to manage the memory space for the dataset themselves.
- * @param[out] new_graph_buffer_view memory buffer view for the graph including the additional part.
- * The data will be copied from the current index in this function. The num rows must be the sum of
- * the original and additional datasets and cols must be the graph degree. This view will be stored
- * in the output index. It is the caller's responsibility to ensure that dataset stays alive as long
- * as the index. This option is useful when users want to manage the memory space for the graph
- * themselves.
- */
+/** @brief Add new vectors to a CAGRA index. See the float overload for the full contract. */
 void extend(raft::resources const& handle,
             const cagra::extend_params& params,
-            cuvs::neighbors::device_padded_dataset_view<int8_t, int64_t> additional_dataset,
-            cuvs::neighbors::cagra::device_padded_index<int8_t, uint32_t>& idx,
-            cuvs::neighbors::device_padded_dataset_view<int8_t, int64_t> extended_dataset);
+            cuvs::neighbors::device_padded_dataset_view<int8_t, int64_t> extended_dataset,
+            int64_t new_start_row,
+            cuvs::neighbors::cagra::device_padded_index<int8_t, uint32_t>& idx);
 
-/** @brief Add new vectors to a CAGRA index
- *
- * Usage example:
- * @code{.cpp}
- *   using namespace cuvs::neighbors;
- *   auto additional_dataset = raft::make_device_matrix<uint8_t, int64_t>(handle,add_size,dim);
- *   // set_additional_dataset(additional_dataset.view());
- *
- *   cagra::extend_params params;
- *   cagra::extend(res, params, raft::make_const_mdspan(additional_dataset.view()), index);
- * @endcode
- *
- * @param[in] handle raft resources
- * @param[in] params extend params
- * @param[in] additional_dataset additional dataset on device memory
- * @param[in,out] idx CAGRA index
- * @param[out] new_dataset_buffer_view memory buffer view for the dataset including the additional
- * part. The data will be copied from the current index in this function. The num rows must be the
- * sum of the original and additional datasets, cols must be the dimension of the dataset, and the
- * stride must be the same as the original index dataset. This view will be stored in the output
- * index. It is the caller's responsibility to ensure that dataset stays alive as long as the index.
- * This option is useful when users want to manage the memory space for the dataset themselves.
- * @param[out] new_graph_buffer_view memory buffer view for the graph including the additional part.
- * The data will be copied from the current index in this function. The num rows must be the sum of
- * the original and additional datasets and cols must be the graph degree. This view will be stored
- * in the output index. It is the caller's responsibility to ensure that dataset stays alive as long
- * as the index. This option is useful when users want to manage the memory space for the graph
- * themselves.
- */
+/** @brief Add new vectors to a CAGRA index. See the float overload for the full contract. */
 void extend(raft::resources const& handle,
             const cagra::extend_params& params,
-            cuvs::neighbors::device_padded_dataset_view<uint8_t, int64_t> additional_dataset,
-            cuvs::neighbors::cagra::device_padded_index<uint8_t, uint32_t>& idx,
-            cuvs::neighbors::device_padded_dataset_view<uint8_t, int64_t> extended_dataset);
-
-/** @brief Add new vectors to a CAGRA index
- *
- * Usage example:
- * @code{.cpp}
- *   using namespace cuvs::neighbors;
- *   auto additional_dataset = raft::make_host_matrix<float, int64_t>(handle,add_size,dim);
- *   // set_additional_dataset(additional_dataset.view());
- *
- *   cagra::extend_params params;
- *   cagra::extend(res, params, raft::make_const_mdspan(additional_dataset.view()), index);
- * @endcode
- *
- * @param[in] handle raft resources
- * @param[in] params extend params
- * @param[in] additional_dataset additional dataset on host memory
- * @param[in,out] idx CAGRA index
- * @param[out] new_dataset_buffer_view memory buffer view for the dataset including the additional
- * part. The data will be copied from the current index in this function. The num rows must be the
- * sum of the original and additional datasets, cols must be the dimension of the dataset, and the
- * stride must be the same as the original index dataset. This view will be stored in the output
- * index. It is the caller's responsibility to ensure that dataset stays alive as long as the index.
- * This option is useful when users want to manage the memory space for the dataset themselves.
- * @param[out] new_graph_buffer_view memory buffer view for the graph including the additional part.
- * The data will be copied from the current index in this function. The num rows must be the sum of
- * the original and additional datasets and cols must be the graph degree. This view will be stored
- * in the output index. It is the caller's responsibility to ensure that dataset stays alive as long
- * as the index. This option is useful when users want to manage the memory space for the graph
- * themselves.
- */
-void extend(raft::resources const& handle,
-            const cagra::extend_params& params,
-            cuvs::neighbors::host_padded_dataset_view<float, int64_t> additional_dataset,
-            cuvs::neighbors::cagra::device_padded_index<float, uint32_t>& idx,
-            cuvs::neighbors::device_padded_dataset_view<float, int64_t> extended_dataset);
-
-/** @brief Add new vectors to a CAGRA index
- *
- * Usage example:
- * @code{.cpp}
- *   using namespace cuvs::neighbors;
- *   auto additional_dataset = raft::make_host_matrix<half, int64_t>(handle,add_size,dim);
- *   // set_additional_dataset(additional_dataset.view());
- *
- *   cagra::extend_params params;
- *   cagra::extend(res, params, raft::make_const_mdspan(additional_dataset.view()), index);
- * @endcode
- *
- * @param[in] handle raft resources
- * @param[in] params extend params
- * @param[in] additional_dataset additional dataset on host memory
- * @param[in,out] idx CAGRA index
- * @param[out] new_dataset_buffer_view memory buffer view for the dataset including the additional
- * part. The data will be copied from the current index in this function. The num rows must be the
- * sum of the original and additional datasets, cols must be the dimension of the dataset, and the
- * stride must be the same as the original index dataset. This view will be stored in the output
- * index. It is the caller's responsibility to ensure that dataset stays alive as long as the index.
- * This option is useful when users want to manage the memory space for the dataset themselves.
- * @param[out] new_graph_buffer_view memory buffer view for the graph including the additional part.
- * The data will be copied from the current index in this function. The num rows must be the sum of
- * the original and additional datasets and cols must be the graph degree. This view will be stored
- * in the output index. It is the caller's responsibility to ensure that dataset stays alive as long
- * as the index. This option is useful when users want to manage the memory space for the graph
- * themselves.
- */
-void extend(raft::resources const& handle,
-            const cagra::extend_params& params,
-            cuvs::neighbors::host_padded_dataset_view<half, int64_t> additional_dataset,
-            cuvs::neighbors::cagra::device_padded_index<half, uint32_t>& idx,
-            cuvs::neighbors::device_padded_dataset_view<half, int64_t> extended_dataset);
-
-/** @brief Add new vectors to a CAGRA index
- *
- * Usage example:
- * @code{.cpp}
- *   using namespace cuvs::neighbors;
- *   auto additional_dataset = raft::make_host_matrix<int8_t, int64_t>(handle,add_size,dim);
- *   // set_additional_dataset(additional_dataset.view());
- *
- *   cagra::extend_params params;
- *   cagra::extend(res, params, raft::make_const_mdspan(additional_dataset.view()), index);
- * @endcode
- *
- * @param[in] handle raft resources
- * @param[in] params extend params
- * @param[in] additional_dataset additional dataset on host memory
- * @param[in,out] idx CAGRA index
- * @param[out] new_dataset_buffer_view memory buffer view for the dataset including the additional
- * part. The data will be copied from the current index in this function. The num rows must be the
- * sum of the original and additional datasets, cols must be the dimension of the dataset, and the
- * stride must be the same as the original index dataset. This view will be stored in the output
- * index. It is the caller's responsibility to ensure that dataset stays alive as long as the index.
- * This option is useful when users want to manage the memory space for the dataset themselves.
- * @param[out] new_graph_buffer_view memory buffer view for the graph including the additional part.
- * The data will be copied from the current index in this function. The num rows must be the sum of
- * the original and additional datasets and cols must be the graph degree. This view will be stored
- * in the output index. It is the caller's responsibility to ensure that dataset stays alive as long
- * as the index. This option is useful when users want to manage the memory space for the graph
- * themselves.
- */
-void extend(raft::resources const& handle,
-            const cagra::extend_params& params,
-            cuvs::neighbors::host_padded_dataset_view<int8_t, int64_t> additional_dataset,
-            cuvs::neighbors::cagra::device_padded_index<int8_t, uint32_t>& idx,
-            cuvs::neighbors::device_padded_dataset_view<int8_t, int64_t> extended_dataset);
-
-/** @brief Add new vectors to a CAGRA index
- *
- * Usage example:
- * @code{.cpp}
- *   using namespace cuvs::neighbors;
- *   auto additional_dataset = raft::make_host_matrix<uint8_t, int64_t>(handle,add_size,dim);
- *   // set_additional_dataset(additional_dataset.view());
- *
- *   cagra::extend_params params;
- *   cagra::extend(res, params, raft::make_const_mdspan(additional_dataset.view()), index);
- * @endcode
- *
- * @param[in] handle raft resources
- * @param[in] params extend params
- * @param[in] additional_dataset additional dataset on host memory
- * @param[in,out] idx CAGRA index
- * @param[out] new_dataset_buffer_view memory buffer view for the dataset including the additional
- * part. The data will be copied from the current index in this function. The num rows must be the
- * sum of the original and additional datasets, cols must be the dimension of the dataset, and the
- * stride must be the same as the original index dataset. This view will be stored in the output
- * index. It is the caller's responsibility to ensure that dataset stays alive as long as the index.
- * This option is useful when users want to manage the memory space for the dataset themselves.
- * @param[out] new_graph_buffer_view memory buffer view for the graph including the additional part.
- * The data will be copied from the current index in this function. The num rows must be the sum of
- * the original and additional datasets and cols must be the graph degree. This view will be stored
- * in the output index. It is the caller's responsibility to ensure that dataset stays alive as long
- * as the index. This option is useful when users want to manage the memory space for the graph
- * themselves.
- */
-void extend(raft::resources const& handle,
-            const cagra::extend_params& params,
-            cuvs::neighbors::host_padded_dataset_view<uint8_t, int64_t> additional_dataset,
-            cuvs::neighbors::cagra::device_padded_index<uint8_t, uint32_t>& idx,
-            cuvs::neighbors::device_padded_dataset_view<uint8_t, int64_t> extended_dataset);
+            cuvs::neighbors::device_padded_dataset_view<uint8_t, int64_t> extended_dataset,
+            int64_t new_start_row,
+            cuvs::neighbors::cagra::device_padded_index<uint8_t, uint32_t>& idx);
 
 /**
  * @}
@@ -2154,6 +1928,320 @@ void search(raft::resources const& res,
             raft::device_matrix_view<float, int64_t, raft::row_major> distances,
             const cuvs::neighbors::filtering::base_filter& sample_filter =
               cuvs::neighbors::filtering::none_sample_filter{});
+
+// TODO: Create an abstraction for multi-partition indices.
+// Reference issue: https://github.com/NVIDIA/cuvs/issues/2281
+/**
+ * @brief Search multiple CAGRA index partitions concurrently and return the global top-k per
+ * query.
+ *
+ * For each query row in @p queries, the kernel searches all partitions in parallel into an
+ * internal intermediate buffer, applies per-partition distance post-processing, runs a batched
+ * top-k merge across partitions, and writes the final outputs. The call returns when all work
+ * has been submitted to the stream associated with @p res (not necessarily completed); call
+ * @c raft::resource::sync_stream on @p res to wait for completion.
+ *
+ * @note Calling this API with a single partition (@p indices of size 1) still exercises the
+ * multi-partition implementation rather than the single-index search overloads above, and the
+ * behaviors are not guaranteed to be equivalent.
+ *
+ * @note All index partitions must use the same distance metric and graph degree; partition sizes
+ * may differ. Compressed (VPQ) datasets are not currently supported in multi-partition search, so
+ * partitions must be built on in-memory strided datasets.
+ *
+ * @param[in]  res            raft resources
+ * @param[in]  params         search parameters (shared across partitions)
+ * @param[in]  indices        CAGRA index objects, one per partition
+ * @param[in]  queries        queries matrix, shape [n_queries, dim]; searched against every
+ *                            partition
+ * @param[out] partition_ids  which partition each neighbor came from, shape [n_queries, k]
+ * @param[out] neighbors      ordinal in the corresponding partition's dataset, shape
+ *                            [n_queries, k]
+ * @param[out] distances      post-processed distance for each (query, neighbor), shape
+ *                            [n_queries, k]
+ */
+void search(
+  raft::resources const& res,
+  cuvs::neighbors::cagra::search_params const& params,
+  const std::vector<const cuvs::neighbors::cagra::index<float, uint32_t>*>& indices,
+  raft::device_matrix_view<const float, int64_t, raft::row_major> queries,
+  raft::device_matrix_view<uint32_t, int64_t, raft::row_major> partition_ids,
+  raft::device_matrix_view<uint32_t, int64_t, raft::row_major> neighbors,
+  raft::device_matrix_view<float, int64_t, raft::row_major> distances,
+  const std::vector<cuvs::core::bitset_view<std::uint32_t, int64_t>>& partition_bitsets = {});
+
+/**
+ * @brief Search multiple CAGRA index partitions concurrently and return the global top-k per
+ * query.
+ *
+ * For each query row in @p queries, the kernel searches all partitions in parallel into an
+ * internal intermediate buffer, applies per-partition distance post-processing, runs a batched
+ * top-k merge across partitions, and writes the final outputs. The call returns when all work
+ * has been submitted to the stream associated with @p res (not necessarily completed); call
+ * @c raft::resource::sync_stream on @p res to wait for completion.
+ *
+ * @note Calling this API with a single partition (@p indices of size 1) still exercises the
+ * multi-partition implementation rather than the single-index search overloads above, and the
+ * behaviors are not guaranteed to be equivalent.
+ *
+ * @note All index partitions must use the same distance metric and graph degree; partition sizes
+ * may differ. Compressed (VPQ) datasets are not currently supported in multi-partition search, so
+ * partitions must be built on in-memory strided datasets.
+ *
+ * @param[in]  res            raft resources
+ * @param[in]  params         search parameters (shared across partitions)
+ * @param[in]  indices        CAGRA index objects, one per partition
+ * @param[in]  queries        queries matrix, shape [n_queries, dim]; searched against every
+ *                            partition
+ * @param[out] partition_ids  which partition each neighbor came from, shape [n_queries, k]
+ * @param[out] neighbors      ordinal in the corresponding partition's dataset, shape
+ *                            [n_queries, k]
+ * @param[out] distances      post-processed distance for each (query, neighbor), shape
+ *                            [n_queries, k]
+ */
+void search(
+  raft::resources const& res,
+  cuvs::neighbors::cagra::search_params const& params,
+  const std::vector<const cuvs::neighbors::cagra::index<float, uint32_t>*>& indices,
+  raft::device_matrix_view<const float, int64_t, raft::row_major> queries,
+  raft::device_matrix_view<uint32_t, int64_t, raft::row_major> partition_ids,
+  raft::device_matrix_view<int64_t, int64_t, raft::row_major> neighbors,
+  raft::device_matrix_view<float, int64_t, raft::row_major> distances,
+  const std::vector<cuvs::core::bitset_view<std::uint32_t, int64_t>>& partition_bitsets = {});
+
+/**
+ * @brief Search multiple CAGRA index partitions concurrently and return the global top-k per
+ * query.
+ *
+ * For each query row in @p queries, the kernel searches all partitions in parallel into an
+ * internal intermediate buffer, applies per-partition distance post-processing, runs a batched
+ * top-k merge across partitions, and writes the final outputs. The call returns when all work
+ * has been submitted to the stream associated with @p res (not necessarily completed); call
+ * @c raft::resource::sync_stream on @p res to wait for completion.
+ *
+ * @note Calling this API with a single partition (@p indices of size 1) still exercises the
+ * multi-partition implementation rather than the single-index search overloads above, and the
+ * behaviors are not guaranteed to be equivalent.
+ *
+ * @note All index partitions must use the same distance metric and graph degree; partition sizes
+ * may differ. Compressed (VPQ) datasets are not currently supported in multi-partition search, so
+ * partitions must be built on in-memory strided datasets.
+ *
+ * @param[in]  res            raft resources
+ * @param[in]  params         search parameters (shared across partitions)
+ * @param[in]  indices        CAGRA index objects, one per partition
+ * @param[in]  queries        queries matrix, shape [n_queries, dim]; searched against every
+ *                            partition
+ * @param[out] partition_ids  which partition each neighbor came from, shape [n_queries, k]
+ * @param[out] neighbors      ordinal in the corresponding partition's dataset, shape
+ *                            [n_queries, k]
+ * @param[out] distances      post-processed distance for each (query, neighbor), shape
+ *                            [n_queries, k]
+ */
+void search(
+  raft::resources const& res,
+  cuvs::neighbors::cagra::search_params const& params,
+  const std::vector<const cuvs::neighbors::cagra::index<half, uint32_t>*>& indices,
+  raft::device_matrix_view<const half, int64_t, raft::row_major> queries,
+  raft::device_matrix_view<uint32_t, int64_t, raft::row_major> partition_ids,
+  raft::device_matrix_view<uint32_t, int64_t, raft::row_major> neighbors,
+  raft::device_matrix_view<float, int64_t, raft::row_major> distances,
+  const std::vector<cuvs::core::bitset_view<std::uint32_t, int64_t>>& partition_bitsets = {});
+
+/**
+ * @brief Search multiple CAGRA index partitions concurrently and return the global top-k per
+ * query.
+ *
+ * For each query row in @p queries, the kernel searches all partitions in parallel into an
+ * internal intermediate buffer, applies per-partition distance post-processing, runs a batched
+ * top-k merge across partitions, and writes the final outputs. The call returns when all work
+ * has been submitted to the stream associated with @p res (not necessarily completed); call
+ * @c raft::resource::sync_stream on @p res to wait for completion.
+ *
+ * @note Calling this API with a single partition (@p indices of size 1) still exercises the
+ * multi-partition implementation rather than the single-index search overloads above, and the
+ * behaviors are not guaranteed to be equivalent.
+ *
+ * @note All index partitions must use the same distance metric and graph degree; partition sizes
+ * may differ. Compressed (VPQ) datasets are not currently supported in multi-partition search, so
+ * partitions must be built on in-memory strided datasets.
+ *
+ * @param[in]  res            raft resources
+ * @param[in]  params         search parameters (shared across partitions)
+ * @param[in]  indices        CAGRA index objects, one per partition
+ * @param[in]  queries        queries matrix, shape [n_queries, dim]; searched against every
+ *                            partition
+ * @param[out] partition_ids  which partition each neighbor came from, shape [n_queries, k]
+ * @param[out] neighbors      ordinal in the corresponding partition's dataset, shape
+ *                            [n_queries, k]
+ * @param[out] distances      post-processed distance for each (query, neighbor), shape
+ *                            [n_queries, k]
+ */
+void search(
+  raft::resources const& res,
+  cuvs::neighbors::cagra::search_params const& params,
+  const std::vector<const cuvs::neighbors::cagra::index<half, uint32_t>*>& indices,
+  raft::device_matrix_view<const half, int64_t, raft::row_major> queries,
+  raft::device_matrix_view<uint32_t, int64_t, raft::row_major> partition_ids,
+  raft::device_matrix_view<int64_t, int64_t, raft::row_major> neighbors,
+  raft::device_matrix_view<float, int64_t, raft::row_major> distances,
+  const std::vector<cuvs::core::bitset_view<std::uint32_t, int64_t>>& partition_bitsets = {});
+
+/**
+ * @brief Search multiple CAGRA index partitions concurrently and return the global top-k per
+ * query.
+ *
+ * For each query row in @p queries, the kernel searches all partitions in parallel into an
+ * internal intermediate buffer, applies per-partition distance post-processing, runs a batched
+ * top-k merge across partitions, and writes the final outputs. The call returns when all work
+ * has been submitted to the stream associated with @p res (not necessarily completed); call
+ * @c raft::resource::sync_stream on @p res to wait for completion.
+ *
+ * @note Calling this API with a single partition (@p indices of size 1) still exercises the
+ * multi-partition implementation rather than the single-index search overloads above, and the
+ * behaviors are not guaranteed to be equivalent.
+ *
+ * @note All index partitions must use the same distance metric and graph degree; partition sizes
+ * may differ. Compressed (VPQ) datasets are not currently supported in multi-partition search, so
+ * partitions must be built on in-memory strided datasets.
+ *
+ * @param[in]  res            raft resources
+ * @param[in]  params         search parameters (shared across partitions)
+ * @param[in]  indices        CAGRA index objects, one per partition
+ * @param[in]  queries        queries matrix, shape [n_queries, dim]; searched against every
+ *                            partition
+ * @param[out] partition_ids  which partition each neighbor came from, shape [n_queries, k]
+ * @param[out] neighbors      ordinal in the corresponding partition's dataset, shape
+ *                            [n_queries, k]
+ * @param[out] distances      post-processed distance for each (query, neighbor), shape
+ *                            [n_queries, k]
+ */
+void search(
+  raft::resources const& res,
+  cuvs::neighbors::cagra::search_params const& params,
+  const std::vector<const cuvs::neighbors::cagra::index<int8_t, uint32_t>*>& indices,
+  raft::device_matrix_view<const int8_t, int64_t, raft::row_major> queries,
+  raft::device_matrix_view<uint32_t, int64_t, raft::row_major> partition_ids,
+  raft::device_matrix_view<uint32_t, int64_t, raft::row_major> neighbors,
+  raft::device_matrix_view<float, int64_t, raft::row_major> distances,
+  const std::vector<cuvs::core::bitset_view<std::uint32_t, int64_t>>& partition_bitsets = {});
+
+/**
+ * @brief Search multiple CAGRA index partitions concurrently and return the global top-k per
+ * query.
+ *
+ * For each query row in @p queries, the kernel searches all partitions in parallel into an
+ * internal intermediate buffer, applies per-partition distance post-processing, runs a batched
+ * top-k merge across partitions, and writes the final outputs. The call returns when all work
+ * has been submitted to the stream associated with @p res (not necessarily completed); call
+ * @c raft::resource::sync_stream on @p res to wait for completion.
+ *
+ * @note Calling this API with a single partition (@p indices of size 1) still exercises the
+ * multi-partition implementation rather than the single-index search overloads above, and the
+ * behaviors are not guaranteed to be equivalent.
+ *
+ * @note All index partitions must use the same distance metric and graph degree; partition sizes
+ * may differ. Compressed (VPQ) datasets are not currently supported in multi-partition search, so
+ * partitions must be built on in-memory strided datasets.
+ *
+ * @param[in]  res            raft resources
+ * @param[in]  params         search parameters (shared across partitions)
+ * @param[in]  indices        CAGRA index objects, one per partition
+ * @param[in]  queries        queries matrix, shape [n_queries, dim]; searched against every
+ *                            partition
+ * @param[out] partition_ids  which partition each neighbor came from, shape [n_queries, k]
+ * @param[out] neighbors      ordinal in the corresponding partition's dataset, shape
+ *                            [n_queries, k]
+ * @param[out] distances      post-processed distance for each (query, neighbor), shape
+ *                            [n_queries, k]
+ */
+void search(
+  raft::resources const& res,
+  cuvs::neighbors::cagra::search_params const& params,
+  const std::vector<const cuvs::neighbors::cagra::index<int8_t, uint32_t>*>& indices,
+  raft::device_matrix_view<const int8_t, int64_t, raft::row_major> queries,
+  raft::device_matrix_view<uint32_t, int64_t, raft::row_major> partition_ids,
+  raft::device_matrix_view<int64_t, int64_t, raft::row_major> neighbors,
+  raft::device_matrix_view<float, int64_t, raft::row_major> distances,
+  const std::vector<cuvs::core::bitset_view<std::uint32_t, int64_t>>& partition_bitsets = {});
+
+/**
+ * @brief Search multiple CAGRA index partitions concurrently and return the global top-k per
+ * query.
+ *
+ * For each query row in @p queries, the kernel searches all partitions in parallel into an
+ * internal intermediate buffer, applies per-partition distance post-processing, runs a batched
+ * top-k merge across partitions, and writes the final outputs. The call returns when all work
+ * has been submitted to the stream associated with @p res (not necessarily completed); call
+ * @c raft::resource::sync_stream on @p res to wait for completion.
+ *
+ * @note Calling this API with a single partition (@p indices of size 1) still exercises the
+ * multi-partition implementation rather than the single-index search overloads above, and the
+ * behaviors are not guaranteed to be equivalent.
+ *
+ * @note All index partitions must use the same distance metric and graph degree; partition sizes
+ * may differ. Compressed (VPQ) datasets are not currently supported in multi-partition search, so
+ * partitions must be built on in-memory strided datasets.
+ *
+ * @param[in]  res            raft resources
+ * @param[in]  params         search parameters (shared across partitions)
+ * @param[in]  indices        CAGRA index objects, one per partition
+ * @param[in]  queries        queries matrix, shape [n_queries, dim]; searched against every
+ *                            partition
+ * @param[out] partition_ids  which partition each neighbor came from, shape [n_queries, k]
+ * @param[out] neighbors      ordinal in the corresponding partition's dataset, shape
+ *                            [n_queries, k]
+ * @param[out] distances      post-processed distance for each (query, neighbor), shape
+ *                            [n_queries, k]
+ */
+void search(
+  raft::resources const& res,
+  cuvs::neighbors::cagra::search_params const& params,
+  const std::vector<const cuvs::neighbors::cagra::index<uint8_t, uint32_t>*>& indices,
+  raft::device_matrix_view<const uint8_t, int64_t, raft::row_major> queries,
+  raft::device_matrix_view<uint32_t, int64_t, raft::row_major> partition_ids,
+  raft::device_matrix_view<uint32_t, int64_t, raft::row_major> neighbors,
+  raft::device_matrix_view<float, int64_t, raft::row_major> distances,
+  const std::vector<cuvs::core::bitset_view<std::uint32_t, int64_t>>& partition_bitsets = {});
+
+/**
+ * @brief Search multiple CAGRA index partitions concurrently and return the global top-k per
+ * query.
+ *
+ * For each query row in @p queries, the kernel searches all partitions in parallel into an
+ * internal intermediate buffer, applies per-partition distance post-processing, runs a batched
+ * top-k merge across partitions, and writes the final outputs. The call returns when all work
+ * has been submitted to the stream associated with @p res (not necessarily completed); call
+ * @c raft::resource::sync_stream on @p res to wait for completion.
+ *
+ * @note Calling this API with a single partition (@p indices of size 1) still exercises the
+ * multi-partition implementation rather than the single-index search overloads above, and the
+ * behaviors are not guaranteed to be equivalent.
+ *
+ * @note All index partitions must use the same distance metric and graph degree; partition sizes
+ * may differ. Compressed (VPQ) datasets are not currently supported in multi-partition search, so
+ * partitions must be built on in-memory strided datasets.
+ *
+ * @param[in]  res            raft resources
+ * @param[in]  params         search parameters (shared across partitions)
+ * @param[in]  indices        CAGRA index objects, one per partition
+ * @param[in]  queries        queries matrix, shape [n_queries, dim]; searched against every
+ *                            partition
+ * @param[out] partition_ids  which partition each neighbor came from, shape [n_queries, k]
+ * @param[out] neighbors      ordinal in the corresponding partition's dataset, shape
+ *                            [n_queries, k]
+ * @param[out] distances      post-processed distance for each (query, neighbor), shape
+ *                            [n_queries, k]
+ */
+void search(
+  raft::resources const& res,
+  cuvs::neighbors::cagra::search_params const& params,
+  const std::vector<const cuvs::neighbors::cagra::index<uint8_t, uint32_t>*>& indices,
+  raft::device_matrix_view<const uint8_t, int64_t, raft::row_major> queries,
+  raft::device_matrix_view<uint32_t, int64_t, raft::row_major> partition_ids,
+  raft::device_matrix_view<int64_t, int64_t, raft::row_major> neighbors,
+  raft::device_matrix_view<float, int64_t, raft::row_major> distances,
+  const std::vector<cuvs::core::bitset_view<std::uint32_t, int64_t>>& partition_bitsets = {});
 
 /**
  * @}

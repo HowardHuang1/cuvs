@@ -71,6 +71,20 @@ static void with_mg_index_by_layout(mg_cagra_c_api_index_box* box,
     fn(index_ptr);
   }
 }
+
+template <typename T, typename Fn>
+static void with_device_padded_dataset_view(cuvsDataset_t dataset, Fn&& fn)
+{
+  using owner_t = cuvs::neighbors::device_padded_dataset<T, int64_t>;
+  using view_t  = cuvs::neighbors::device_padded_dataset_view<T, int64_t>;
+  if (dataset->is_owning) {
+    auto* owner = reinterpret_cast<owner_t*>(dataset->addr);
+    auto view   = owner->as_dataset_view();
+    fn(view);
+  } else {
+    fn(*reinterpret_cast<view_t*>(dataset->addr));
+  }
+}
 }  // namespace
 
 extern "C" cuvsError_t cuvsMultiGpuCagraIndexParamsCreate(
@@ -204,32 +218,31 @@ void* _mg_build(cuvsResources_t res,
 
 template <typename T>
 void _mg_update_dataset(cuvsResources_t res,
-                        cuvsDatasetView_t device_padded_dataset,
+                        cuvsDataset_t device_padded_dataset,
                         cuvsMultiGpuCagraIndex_t index)
 {
   auto* res_ptr = reinterpret_cast<raft::resources*>(res);
   auto* box     = require_mg_cagra_box(*index, "cuvsMultiGpuCagraUpdateDataset: null index handle");
-  auto const& padded_view =
-    *reinterpret_cast<cuvs::neighbors::device_padded_dataset_view<T, int64_t> const*>(
-      device_padded_dataset->addr);
-
-  if (box->layout == mg_cagra_dataset_layout::device_standard) {
-    using standard_ann_t = cuvs::neighbors::cagra::device_standard_index<T, uint32_t>;
-    using padded_ann_t   = cuvs::neighbors::cagra::device_padded_index<T, uint32_t>;
-    auto* standard_index = reinterpret_cast<mg_cagra_index_t<T, standard_ann_t>*>(box->index_ptr);
-    auto* padded_index   = new mg_cagra_index_t<T, padded_ann_t>(
-      cuvs::neighbors::cagra::attach_dataset(*res_ptr, *standard_index, padded_view));
-    auto* padded_box =
-      make_mg_cagra_box<T, padded_ann_t>(padded_index, mg_cagra_dataset_layout::device_padded);
-    destroy_mg_cagra_c_api_box(index->addr);
-    index->addr = reinterpret_cast<uintptr_t>(padded_box);
-  } else if (box->layout == mg_cagra_dataset_layout::device_padded) {
-    using padded_ann_t = cuvs::neighbors::cagra::device_padded_index<T, uint32_t>;
-    auto* padded_index = reinterpret_cast<mg_cagra_index_t<T, padded_ann_t>*>(box->index_ptr);
-    cuvs::neighbors::cagra::update_device_dataset_same_layout(*res_ptr, *padded_index, padded_view);
-  } else {
-    RAFT_FAIL("cuvsMultiGpuCagraUpdateDataset: unsupported index dataset layout");
-  }
+  with_device_padded_dataset_view<T>(device_padded_dataset, [&](auto const& padded_view) {
+    if (box->layout == mg_cagra_dataset_layout::device_standard) {
+      using standard_ann_t = cuvs::neighbors::cagra::device_standard_index<T, uint32_t>;
+      using padded_ann_t   = cuvs::neighbors::cagra::device_padded_index<T, uint32_t>;
+      auto* standard_index = reinterpret_cast<mg_cagra_index_t<T, standard_ann_t>*>(box->index_ptr);
+      auto* padded_index   = new mg_cagra_index_t<T, padded_ann_t>(
+        cuvs::neighbors::cagra::attach_dataset(*res_ptr, *standard_index, padded_view));
+      auto* padded_box =
+        make_mg_cagra_box<T, padded_ann_t>(padded_index, mg_cagra_dataset_layout::device_padded);
+      destroy_mg_cagra_c_api_box(index->addr);
+      index->addr = reinterpret_cast<uintptr_t>(padded_box);
+    } else if (box->layout == mg_cagra_dataset_layout::device_padded) {
+      using padded_ann_t = cuvs::neighbors::cagra::device_padded_index<T, uint32_t>;
+      auto* padded_index = reinterpret_cast<mg_cagra_index_t<T, padded_ann_t>*>(box->index_ptr);
+      cuvs::neighbors::cagra::update_device_dataset_same_layout(
+        *res_ptr, *padded_index, padded_view);
+    } else {
+      RAFT_FAIL("cuvsMultiGpuCagraUpdateDataset: unsupported index dataset layout");
+    }
+  });
 }
 
 template <typename T>
@@ -394,7 +407,7 @@ extern "C" cuvsError_t cuvsMultiGpuCagraBuild(cuvsResources_t res,
 
 extern "C" cuvsError_t cuvsMultiGpuCagraUpdateDataset(
   cuvsResources_t res,
-  cuvsDatasetView_t device_padded_dataset,
+  cuvsDataset_t device_padded_dataset,
   cuvsMultiGpuCagraIndex_t index)
 {
   return cuvs::core::translate_exceptions([=] {

@@ -70,9 +70,23 @@ public class CagraIndexImpl implements CagraIndex {
     this.cagraIndexReference = build(indexParameters, (CuVSMatrixInternal) dataset);
   }
 
-  private CagraIndexImpl(CuVSResources resources) {
+  /**
+   * Constructor for loading the index from an {@link InputStream}
+   *
+   * @param inputStream an instance of stream to read the index bytes from
+   * @param resources   an instance of {@link CuVSResources}
+   */
+  private CagraIndexImpl(InputStream inputStream, CuVSResources resources) throws Throwable {
+    this(inputStream, resources, null);
+  }
+
+  private CagraIndexImpl(
+      InputStream inputStream,
+      CuVSResources resources,
+      CagraIndex.DeserializeDataset outDataset)
+      throws Throwable {
     this.resources = resources;
-    this.cagraIndexReference = new IndexReference(createCagraIndex(), null);
+    this.cagraIndexReference = deserialize(inputStream, outDataset);
   }
 
   /**
@@ -187,7 +201,7 @@ public class CagraIndexImpl implements CagraIndex {
 
         MemorySegment datasetView = MemorySegment.NULL;
         try {
-          MemorySegment datasetViewPtr = localArena.allocate(cuvsDatasetView_t);
+          MemorySegment datasetViewPtr = localArena.allocate(cuvsDataset_t);
           if (layout == CUVS_DATASET_LAYOUT_PADDED()) {
             returnValue = cuvsDatasetMakePaddedView(cuvsRes, datasetTensor, datasetViewPtr);
             checkCuVSError(returnValue, "cuvsDatasetMakePaddedView");
@@ -195,13 +209,13 @@ public class CagraIndexImpl implements CagraIndex {
             returnValue = cuvsDatasetMakeStandardView(cuvsRes, datasetTensor, datasetViewPtr);
             checkCuVSError(returnValue, "cuvsDatasetMakeStandardView");
           }
-          datasetView = datasetViewPtr.get(cuvsDatasetView_t, 0);
+          datasetView = datasetViewPtr.get(cuvsDataset_t, 0);
 
           returnValue = cuvsCagraBuild(cuvsRes, indexParamsMemorySegment, datasetView, index);
           checkCuVSError(returnValue, "cuvsCagraBuild");
         } finally {
           if (datasetView.address() != 0) {
-            checkCuVSError(cuvsDatasetViewDestroy(datasetView), "cuvsDatasetViewDestroy");
+            checkCuVSError(cuvsDatasetDestroy(datasetView), "cuvsDatasetDestroy");
           }
         }
 
@@ -358,6 +372,11 @@ public class CagraIndexImpl implements CagraIndex {
     }
   }
 
+  /** Returns the underlying {@code cuvsCagraIndex_t} handle for native-side index passing. */
+  public MemorySegment getIndexHandle() {
+    return cagraIndexReference.getMemorySegment();
+  }
+
   @Override
   public CagraIndex.PaddedDataset makePaddedDataset(CuVSMatrix dataset)
       throws Throwable {
@@ -384,30 +403,7 @@ public class CagraIndexImpl implements CagraIndex {
       MemorySegment paddedDataset = paddedDatasetPtr.get(cuvsDataset_t, 0);
 
       var out = new CagraIndex.PaddedDataset();
-      out.setDelegate(new OwningDatasetCloseDelegate(paddedDataset), paddedDataset.address());
-      return out;
-    }
-  }
-
-  @Override
-  public CagraIndex.PaddedDatasetView makeViewWrapper(
-      CagraIndex.PaddedDataset paddedDataset) throws Throwable {
-    checkNotDestroyed();
-    Objects.requireNonNull(paddedDataset);
-    if (!paddedDataset.isPresent()) {
-      throw new IllegalArgumentException("paddedDataset is uninitialized");
-    }
-
-    try (var localArena = Arena.ofConfined()) {
-      MemorySegment paddedViewPtr = localArena.allocate(cuvsDatasetView_t);
-      var returnValue =
-          cuvsDatasetMakeViewWrapper(
-              MemorySegment.ofAddress(paddedDataset.nativeHandleAddress()), paddedViewPtr);
-      checkCuVSError(returnValue, "cuvsDatasetMakeViewWrapper");
-      MemorySegment paddedView = paddedViewPtr.get(cuvsDatasetView_t, 0);
-
-      var out = new CagraIndex.PaddedDatasetView();
-      out.setDelegate(new PaddedDatasetViewCloseDelegate(paddedView), paddedView.address());
+      out.setDelegate(new DatasetCloseDelegate(paddedDataset), paddedDataset.address());
       return out;
     }
   }
@@ -425,13 +421,13 @@ public class CagraIndexImpl implements CagraIndex {
         var resourcesAccessor = resources.access()) {
       var cuvsRes = resourcesAccessor.handle();
       var datasetTensor = datasetInternal.toTensor(localArena);
-      MemorySegment paddedViewPtr = localArena.allocate(cuvsDatasetView_t);
+      MemorySegment paddedViewPtr = localArena.allocate(cuvsDataset_t);
       var returnValue = cuvsDatasetMakePaddedView(cuvsRes, datasetTensor, paddedViewPtr);
       checkCuVSError(returnValue, "cuvsDatasetMakePaddedView");
-      MemorySegment paddedView = paddedViewPtr.get(cuvsDatasetView_t, 0);
+      MemorySegment paddedView = paddedViewPtr.get(cuvsDataset_t, 0);
 
       var out = new CagraIndex.PaddedDatasetView();
-      out.setDelegate(new PaddedDatasetViewCloseDelegate(paddedView), paddedView.address());
+      out.setDelegate(new DatasetCloseDelegate(paddedView), paddedView.address());
       return out;
     }
   }
@@ -449,14 +445,13 @@ public class CagraIndexImpl implements CagraIndex {
         var resourcesAccessor = resources.access()) {
       var cuvsRes = resourcesAccessor.handle();
       var datasetTensor = datasetInternal.toTensor(localArena);
-      MemorySegment standardViewPtr = localArena.allocate(cuvsDatasetView_t);
+      MemorySegment standardViewPtr = localArena.allocate(cuvsDataset_t);
       var returnValue = cuvsDatasetMakeStandardView(cuvsRes, datasetTensor, standardViewPtr);
       checkCuVSError(returnValue, "cuvsDatasetMakeStandardView");
-      MemorySegment standardView = standardViewPtr.get(cuvsDatasetView_t, 0);
+      MemorySegment standardView = standardViewPtr.get(cuvsDataset_t, 0);
 
       var out = new CagraIndex.StandardDatasetView();
-      out.setDelegate(
-          new StandardDatasetViewCloseDelegate(standardView), standardView.address());
+      out.setDelegate(new DatasetCloseDelegate(standardView), standardView.address());
       return out;
     }
   }
@@ -468,61 +463,28 @@ public class CagraIndexImpl implements CagraIndex {
     if (!datasetView.isPresent()) {
       throw new IllegalArgumentException("datasetView is uninitialized");
     }
+    updateDataset(datasetView.nativeHandleAddress());
+  }
 
+  @Override
+  public void updateDataset(CagraIndex.PaddedDataset dataset) throws Throwable {
+    checkNotDestroyed();
+    Objects.requireNonNull(dataset);
+    if (!dataset.isPresent()) {
+      throw new IllegalArgumentException("dataset is uninitialized");
+    }
+    updateDataset(dataset.nativeHandleAddress());
+  }
+
+  private void updateDataset(long datasetHandleAddress) {
     try (var resourcesAccessor = resources.access()) {
       var cuvsRes = resourcesAccessor.handle();
       var returnValue =
           cuvsCagraUpdateDataset(
               cuvsRes,
-              MemorySegment.ofAddress(datasetView.nativeHandleAddress()),
+              MemorySegment.ofAddress(datasetHandleAddress),
               cagraIndexReference.getMemorySegment());
       checkCuVSError(returnValue, "cuvsCagraUpdateDataset");
-    }
-  }
-
-  @Override
-  public void deserialize(InputStream inputStream, CagraIndex.DeserializeDataset outDataset)
-      throws Throwable {
-    checkNotDestroyed();
-    if (outDataset != null && outDataset.isPresent()) {
-      throw new IllegalArgumentException("outDataset must be empty before deserialization");
-    }
-    MemorySegment index = cagraIndexReference.getMemorySegment();
-    Path tmpIndexFile =
-        Files.createTempFile(resources.tempDirectory(), UUID.randomUUID().toString(), ".cag")
-            .toAbsolutePath();
-    try (inputStream;
-        var outputStream = Files.newOutputStream(tmpIndexFile);
-        var arena = Arena.ofConfined()) {
-      inputStream.transferTo(outputStream);
-      try (var resourcesAccessor = resources.access()) {
-        var cuvsRes = resourcesAccessor.handle();
-        MemorySegment path = arena.allocateFrom(tmpIndexFile.toString());
-        if (outDataset == null) {
-          var returnValue = cuvsCagraDeserializeGraph(cuvsRes, path, index);
-          checkCuVSError(returnValue, "cuvsCagraDeserializeGraph");
-        } else if (outDataset instanceof CagraIndex.PaddedDataset
-            || outDataset instanceof CagraIndex.StandardDataset) {
-          MemorySegment datasetOutPtr = arena.allocate(cuvsDataset_t);
-          datasetOutPtr.set(cuvsDataset_t, 0, MemorySegment.NULL);
-          var returnValue =
-              cuvsCagraDeserializeGraphAndDataset(cuvsRes, path, index, datasetOutPtr);
-          checkCuVSError(returnValue, "cuvsCagraDeserializeGraphAndDataset");
-          MemorySegment datasetHandle = datasetOutPtr.get(cuvsDataset_t, 0);
-          if (datasetHandle.address() == 0) {
-            outDataset.setDelegate(null, 0);
-          } else {
-            outDataset.setDelegate(
-                new DatasetCloseDelegate(datasetHandle), datasetHandle.address());
-          }
-        } else {
-          throw new IllegalArgumentException(
-              "outDataset must be null, CagraIndex.PaddedDataset, or "
-                  + "CagraIndex.StandardDataset");
-        }
-      }
-    } finally {
-      Files.deleteIfExists(tmpIndexFile);
     }
   }
 
@@ -590,6 +552,17 @@ public class CagraIndexImpl implements CagraIndex {
     }
   }
 
+  @Override
+  public long getGraphDegree() {
+    try (var localArena = Arena.ofConfined()) {
+      MemorySegment graphDegree = localArena.allocate(int64_t);
+      checkCuVSError(
+          cuvsCagraIndexGetGraphDegree(cagraIndexReference.getMemorySegment(), graphDegree),
+          "cuvsCagraIndexGetGraphDegree");
+      return graphDegree.get(int64_t, 0);
+    }
+  }
+
   private IndexReference fromGraph(
       CagraIndexParams.CuvsDistanceType metric,
       CuVSMatrixInternal graph,
@@ -652,67 +625,85 @@ public class CagraIndexImpl implements CagraIndex {
     }
   }
 
-  private static final class DatasetCloseDelegate implements AutoCloseable {
-    private MemorySegment handle;
-
-    private DatasetCloseDelegate(MemorySegment handle) {
-      this.handle = handle;
+  /**
+   * Gets an instance of {@link IndexReference} by deserializing a CAGRA index
+   * using an {@link InputStream}.
+   *
+   * @param inputStream an instance of {@link InputStream}
+   * @return an instance of {@link IndexReference}
+   */
+  private IndexReference deserialize(
+      InputStream inputStream, CagraIndex.DeserializeDataset outDataset) throws Throwable {
+    if (outDataset != null && outDataset.isPresent()) {
+      throw new IllegalArgumentException("outDataset must be empty before deserialization");
+    }
+    if (outDataset != null
+        && !(outDataset instanceof CagraIndex.PaddedDataset)
+        && !(outDataset instanceof CagraIndex.StandardDataset)) {
+      throw new IllegalArgumentException(
+          "outDataset must be CagraIndex.PaddedDataset or CagraIndex.StandardDataset");
     }
 
-    @Override
-    public void close() {
-      if (handle != null && handle.address() != 0) {
-        checkCuVSError(cuvsDatasetDestroy(handle), "cuvsDatasetDestroy");
-        handle = MemorySegment.NULL;
+    Path tmpIndexFile =
+        Files.createTempFile(resources.tempDirectory(), UUID.randomUUID().toString(), ".cag")
+            .toAbsolutePath();
+    MemorySegment index = createCagraIndex();
+    MemorySegment dataset = MemorySegment.NULL;
+
+    try (inputStream;
+        var outputStream = Files.newOutputStream(tmpIndexFile);
+        var arena = Arena.ofConfined()) {
+      inputStream.transferTo(outputStream);
+
+      try (var resourcesAccessor = resources.access()) {
+        MemorySegment datasetOutPtr = arena.allocate(cuvsDataset_t);
+        datasetOutPtr.set(cuvsDataset_t, 0, MemorySegment.NULL);
+        var returnValue =
+            cuvsCagraDeserializeGraphAndDataset(
+                resourcesAccessor.handle(),
+                arena.allocateFrom(tmpIndexFile.toString()),
+                index,
+                datasetOutPtr);
+        checkCuVSError(returnValue, "cuvsCagraDeserializeGraphAndDataset");
+        dataset = datasetOutPtr.get(cuvsDataset_t, 0);
       }
-    }
-  }
 
-  private static final class OwningDatasetCloseDelegate implements AutoCloseable {
-    private MemorySegment handle;
-
-    private OwningDatasetCloseDelegate(MemorySegment handle) {
-      this.handle = handle;
-    }
-
-    @Override
-    public void close() {
-      if (handle != null && handle.address() != 0) {
-        checkCuVSError(cuvsDatasetDestroy(handle), "cuvsDatasetDestroy");
-        handle = MemorySegment.NULL;
+      if (outDataset != null) {
+        int expectedLayout =
+            outDataset instanceof CagraIndex.PaddedDataset
+                ? CUVS_DATASET_LAYOUT_PADDED()
+                : CUVS_DATASET_LAYOUT_STANDARD();
+        if (cuvsDataset.layout(dataset) != expectedLayout) {
+          throw new IllegalArgumentException(
+              "outDataset type does not match the serialized dataset layout");
+        }
       }
-    }
-  }
 
-  private static final class PaddedDatasetViewCloseDelegate implements AutoCloseable {
-    private MemorySegment handle;
-
-    private PaddedDatasetViewCloseDelegate(MemorySegment handle) {
-      this.handle = handle;
-    }
-
-    @Override
-    public void close() {
-      if (handle != null && handle.address() != 0) {
-        checkCuVSError(cuvsDatasetViewDestroy(handle), "cuvsDatasetViewDestroy");
-        handle = MemorySegment.NULL;
+      var datasetOwner = new OwningDatasetCloseDelegate(dataset);
+      if (outDataset == null) {
+        dataset = MemorySegment.NULL;
+        return new IndexReference(index, null, datasetOwner);
       }
-    }
-  }
 
-  private static final class StandardDatasetViewCloseDelegate implements AutoCloseable {
-    private MemorySegment handle;
-
-    private StandardDatasetViewCloseDelegate(MemorySegment handle) {
-      this.handle = handle;
-    }
-
-    @Override
-    public void close() {
-      if (handle != null && handle.address() != 0) {
-        checkCuVSError(cuvsDatasetViewDestroy(handle), "cuvsDatasetViewDestroy");
-        handle = MemorySegment.NULL;
+      outDataset.setDelegate(datasetOwner, dataset.address());
+      dataset = MemorySegment.NULL;
+      return new IndexReference(index, null, null);
+    } catch (Throwable t) {
+      if (dataset.address() != 0) {
+        try {
+          checkCuVSError(cuvsDatasetDestroy(dataset), "cuvsDatasetDestroy");
+        } catch (Throwable cleanupError) {
+          t.addSuppressed(cleanupError);
+        }
       }
+      try {
+        checkCuVSError(cuvsCagraIndexDestroy(index), "cuvsCagraIndexDestroy");
+      } catch (Throwable cleanupError) {
+        t.addSuppressed(cleanupError);
+      }
+      throw t;
+    } finally {
+      Files.deleteIfExists(tmpIndexFile);
     }
   }
 
@@ -916,7 +907,7 @@ public class CagraIndexImpl implements CagraIndex {
         MemorySegment mergedDatasetPtr = localArena.allocate(cuvsDataset_t);
         checkCuVSError(cuvsDatasetCreate(mergedDatasetPtr), "cuvsDatasetCreate");
         MemorySegment mergedDataset = mergedDatasetPtr.get(cuvsDataset_t, 0);
-        AutoCloseable datasetOwner = new OwningDatasetCloseDelegate(mergedDataset);
+        AutoCloseable datasetOwner = new DatasetCloseDelegate(mergedDataset);
         try {
           checkCuVSError(
               cuvsCagraMerge(
@@ -948,12 +939,29 @@ public class CagraIndexImpl implements CagraIndex {
   public static class Builder implements CagraIndex.Builder {
 
     private CuVSMatrix dataset;
+    private InputStream inputStream;
+    private CagraIndex.DeserializeDataset outDataset;
     private CagraIndexParams cagraIndexParams;
     private final CuVSResources cuvsResources;
     private CuVSMatrix graph;
 
     public Builder(CuVSResources cuvsResources) {
       this.cuvsResources = cuvsResources;
+    }
+
+    @Override
+    public Builder from(InputStream inputStream) {
+      this.inputStream = inputStream;
+      this.outDataset = null;
+      return this;
+    }
+
+    @Override
+    public Builder from(
+        InputStream inputStream, CagraIndex.DeserializeDataset outDataset) {
+      this.inputStream = inputStream;
+      this.outDataset = Objects.requireNonNull(outDataset);
+      return this;
     }
 
     @Override
@@ -982,7 +990,11 @@ public class CagraIndexImpl implements CagraIndex {
 
     @Override
     public CagraIndexImpl build() throws Throwable {
-      if (graph != null) {
+      if (inputStream != null) {
+        return outDataset == null
+            ? new CagraIndexImpl(inputStream, cuvsResources)
+            : new CagraIndexImpl(inputStream, cuvsResources, outDataset);
+      } else if (graph != null) {
         if (cagraIndexParams == null || dataset == null) {
           throw new IllegalArgumentException(
               "In order to reconstruct a CAGRA index from a graph, "
@@ -993,7 +1005,7 @@ public class CagraIndexImpl implements CagraIndex {
       } else if (dataset != null) {
         return new CagraIndexImpl(cagraIndexParams, dataset, cuvsResources);
       } else {
-        return new CagraIndexImpl(cuvsResources);
+        return new CagraIndexImpl(cagraIndexParams, dataset, cuvsResources);
       }
     }
   }

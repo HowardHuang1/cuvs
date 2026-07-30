@@ -22,14 +22,19 @@ type PaddedDataset struct {
 	dataset C.cuvsDataset_t
 }
 
+// PaddedDatasetHandle is an owning padded dataset or non-owning padded dataset view.
+type PaddedDatasetHandle interface {
+	datasetHandle() C.cuvsDataset_t
+}
+
 // Non-owning padded dataset view handle.
 type PaddedDatasetView struct {
-	view C.cuvsDatasetView_t
+	view C.cuvsDataset_t
 }
 
 // Non-owning standard dataset view handle.
 type StandardDatasetView struct {
-	view C.cuvsDatasetView_t
+	view C.cuvsDataset_t
 }
 
 // MakePaddedDataset creates an owning padded dataset from a tensor.
@@ -57,19 +62,11 @@ func MakePaddedDataset[T any](Resources cuvs.Resource, dataset *cuvs.Tensor[T]) 
 	return &PaddedDataset{dataset: paddedDataset}, nil
 }
 
-// MakeViewWrapper creates a non-owning view from an owning padded dataset.
-func MakeViewWrapper(paddedDataset *PaddedDataset) (*PaddedDatasetView, error) {
-	if paddedDataset == nil || paddedDataset.dataset == nil {
-		return nil, errors.New("paddedDataset is nil")
+func (dataset *PaddedDataset) datasetHandle() C.cuvsDataset_t {
+	if dataset == nil {
+		return nil
 	}
-	var paddedView C.cuvsDatasetView_t
-	err := cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsDatasetMakeViewWrapper(
-		paddedDataset.dataset, &paddedView,
-	)))
-	if err != nil {
-		return nil, err
-	}
-	return &PaddedDatasetView{view: paddedView}, nil
+	return dataset.dataset
 }
 
 // MakePaddedDatasetView creates a non-owning padded dataset view from a tensor.
@@ -79,7 +76,7 @@ func MakePaddedDatasetView[T any](Resources cuvs.Resource, dataset *cuvs.Tensor[
 		return nil, errors.New("dataset is nil")
 	}
 	datasetTensor := (*C.DLManagedTensor)(unsafe.Pointer(dataset.C_tensor))
-	var paddedView C.cuvsDatasetView_t
+	var paddedView C.cuvsDataset_t
 	err := cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsDatasetMakePaddedView(
 		C.cuvsResources_t(Resources.Resource), datasetTensor, &paddedView,
 	)))
@@ -87,6 +84,13 @@ func MakePaddedDatasetView[T any](Resources cuvs.Resource, dataset *cuvs.Tensor[
 		return nil, err
 	}
 	return &PaddedDatasetView{view: paddedView}, nil
+}
+
+func (view *PaddedDatasetView) datasetHandle() C.cuvsDataset_t {
+	if view == nil {
+		return nil
+	}
+	return view.view
 }
 
 // Destroys an owning padded dataset handle.
@@ -107,7 +111,7 @@ func (view *PaddedDatasetView) Close() error {
 	if view == nil || view.view == nil {
 		return nil
 	}
-	err := cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsDatasetViewDestroy(view.view)))
+	err := cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsDatasetDestroy(view.view)))
 	if err != nil {
 		return err
 	}
@@ -122,7 +126,7 @@ func MakeStandardDatasetView[T any](Resources cuvs.Resource, dataset *cuvs.Tenso
 		return nil, errors.New("dataset is nil")
 	}
 	datasetTensor := (*C.DLManagedTensor)(unsafe.Pointer(dataset.C_tensor))
-	var standardView C.cuvsDatasetView_t
+	var standardView C.cuvsDataset_t
 	err := cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsDatasetMakeStandardView(
 		C.cuvsResources_t(Resources.Resource), datasetTensor, &standardView,
 	)))
@@ -137,7 +141,7 @@ func (view *StandardDatasetView) Close() error {
 	if view == nil || view.view == nil {
 		return nil
 	}
-	err := cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsDatasetViewDestroy(view.view)))
+	err := cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsDatasetDestroy(view.view)))
 	if err != nil {
 		return err
 	}
@@ -146,17 +150,17 @@ func (view *StandardDatasetView) Close() error {
 }
 
 // UpdateDataset updates any CAGRA index layout with a caller-provided padded
-// dataset view and leaves the same handle search-ready.
-func UpdateDataset(Resources cuvs.Resource, paddedView *PaddedDatasetView, index *CagraIndex) error {
+// dataset or view and leaves the same handle search-ready.
+func UpdateDataset(Resources cuvs.Resource, paddedDataset PaddedDatasetHandle, index *CagraIndex) error {
 	if !index.trained {
 		return errors.New("index needs to be built before attaching dataset")
 	}
-	if paddedView == nil || paddedView.view == nil {
-		return errors.New("padded dataset view is nil")
+	if paddedDataset == nil || paddedDataset.datasetHandle() == nil {
+		return errors.New("padded dataset is nil")
 	}
 	err := cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsCagraUpdateDataset(
 		C.cuvsResources_t(Resources.Resource),
-		paddedView.view,
+		paddedDataset.datasetHandle(),
 		index.index,
 	)))
 	if err != nil {
@@ -196,10 +200,10 @@ func BuildIndex[T any](Resources cuvs.Resource, params *IndexParams, dataset *cu
 		return err
 	}
 
-	var datasetView C.cuvsDatasetView_t
+	var datasetView C.cuvsDataset_t
 	defer func() {
 		if datasetView != nil {
-			_ = cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsDatasetViewDestroy(datasetView)))
+			_ = cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsDatasetDestroy(datasetView)))
 		}
 	}()
 
@@ -235,31 +239,28 @@ func BuildIndex[T any](Resources cuvs.Resource, params *IndexParams, dataset *cu
 	return nil
 }
 
-// Extends the index with additional data
+// Extends the index with a caller-owned pre-concatenated padded dataset.
 //
 // # Arguments
 //
 // * `Resources` - Resources to use
 // * `params` - Parameters for extending the index
-// * `additional_dataset` - Explicit padded dataset view to extend the index with
-// * `extended_dataset` - Caller-owned writable padded dataset view receiving extended rows
+// * `extended_dataset` - Caller-owned padded dataset already containing old || new rows
+// * `newStartRow` - Row index where the additional vectors begin (must equal current index size)
 // * `index` - CagraIndex to extend
-func ExtendIndex(Resources cuvs.Resource, params *ExtendParams, additional_dataset *PaddedDatasetView, extended_dataset *PaddedDatasetView, index *CagraIndex) error {
+func ExtendIndex(Resources cuvs.Resource, params *ExtendParams, extended_dataset PaddedDatasetHandle, newStartRow int64, index *CagraIndex) error {
 	if !index.trained {
 		return errors.New("index needs to be built before calling extend")
 	}
-	if additional_dataset == nil || additional_dataset.view == nil {
-		return errors.New("additional_dataset padded view is nil")
-	}
-	if extended_dataset == nil || extended_dataset.view == nil {
-		return errors.New("extended_dataset padded view is nil")
+	if extended_dataset == nil || extended_dataset.datasetHandle() == nil {
+		return errors.New("extended_dataset is nil")
 	}
 
 	err := cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsCagraExtend(
 		C.cuvsResources_t(Resources.Resource),
 		params.params,
-		additional_dataset.view,
-		extended_dataset.view,
+		extended_dataset.datasetHandle(),
+		C.int64_t(newStartRow),
 		index.index,
 	)))
 	if err != nil {

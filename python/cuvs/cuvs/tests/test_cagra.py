@@ -56,40 +56,28 @@ def run_cagra_build_search_test(
         extend_params = cagra.ExtendParams()
         if array_type == "device":
             dataset_1_device = device_ndarray(dataset_1)
-            dataset_2_device = device_ndarray(dataset_2)
 
             index = cagra.build(build_params, dataset_1_device)
             # Explicit caller-side preparation for padded-only extend contract:
             # 1) Ensure the index is device_padded before extend.
-            # 2) Prepare a padded view for additional dataset via factories.
+            # 2) Concatenate old || new into a single padded dataset.
             extend_keepalive = []
             if cagra.get_dataset_view_kind(index.dataset) == "device_standard":
                 base_padded_dataset = cagra.make_padded_dataset(
                     dataset_1_device
                 )
-                base_padded_view = cagra.make_view_wrapper(base_padded_dataset)
-                cagra.update_dataset(index, base_padded_view)
-                extend_keepalive.extend(
-                    [base_padded_dataset, base_padded_view]
-                )
-            add_padded_dataset = cagra.make_padded_dataset(dataset_2_device)
-            add_padded_view = cagra.make_view_wrapper(add_padded_dataset)
+                cagra.update_dataset(index, base_padded_dataset)
+                extend_keepalive.append(base_padded_dataset)
+            new_start_row = dataset_1.shape[0]
             extended_dataset_owner = cagra.make_padded_dataset(
                 device_ndarray(np.concatenate((dataset_1, dataset_2), axis=0))
             )
-            extended_dataset_view = cagra.make_view_wrapper(
-                extended_dataset_owner
-            )
-            extend_keepalive.extend(
-                [
-                    add_padded_dataset,
-                    add_padded_view,
-                    extended_dataset_owner,
-                    extended_dataset_view,
-                ]
-            )
+            extend_keepalive.append(extended_dataset_owner)
             index = cagra.extend(
-                extend_params, index, add_padded_view, extended_dataset_view
+                extend_params,
+                index,
+                extended_dataset_owner,
+                new_start_row,
             )
         else:
             pytest.skip(
@@ -132,11 +120,8 @@ def run_cagra_build_search_test(
             or out_dataset.layout != "padded"
         ):
             padded_dataset = cagra.make_padded_dataset(dataset_device)
-            padded_view = cagra.make_view_wrapper(padded_dataset)
-            cagra.update_dataset(index, padded_view)
-            index_keepalive.extend(
-                [dataset_device, padded_dataset, padded_view]
-            )
+            cagra.update_dataset(index, padded_dataset)
+            index_keepalive.extend([dataset_device, padded_dataset])
     else:
         index_keepalive = []
         view_kind = cagra.get_dataset_view_kind(
@@ -144,22 +129,18 @@ def run_cagra_build_search_test(
         )
         if view_kind == "device_standard":
             padded_dataset = cagra.make_padded_dataset(dataset_device)
-            padded_view = cagra.make_view_wrapper(padded_dataset)
-            cagra.update_dataset(index, padded_view)
-            index_keepalive = [padded_dataset, padded_view]
+            cagra.update_dataset(index, padded_dataset)
+            index_keepalive = [padded_dataset]
         elif view_kind == "host_padded":
             padded_dataset = cagra.make_padded_dataset(dataset_device)
-            padded_view = cagra.make_view_wrapper(padded_dataset)
-            cagra.update_dataset(index, padded_view)
-            index_keepalive = [dataset_device, padded_dataset, padded_view]
+            cagra.update_dataset(index, padded_dataset)
+            index_keepalive = [dataset_device, padded_dataset]
         elif view_kind == "host_standard":
             padded_dataset = cagra.make_padded_dataset(dataset_device)
-            padded_view = cagra.make_view_wrapper(padded_dataset)
-            cagra.update_dataset(index, padded_view)
+            cagra.update_dataset(index, padded_dataset)
             index_keepalive = [
                 dataset_device,
                 padded_dataset,
-                padded_view,
             ]
 
     assert index_keepalive is not None
@@ -235,12 +216,10 @@ def run_cagra_build_search_test(
         reloaded_padded_dataset = cagra.make_padded_dataset(
             reloaded_dataset_device
         )
-        reloaded_padded_view = cagra.make_view_wrapper(reloaded_padded_dataset)
-        cagra.update_dataset(reloaded_index, reloaded_padded_view)
+        cagra.update_dataset(reloaded_index, reloaded_padded_dataset)
         reloaded_keepalive = [
             reloaded_dataset_device,
             reloaded_padded_dataset,
-            reloaded_padded_view,
         ]
 
     assert reloaded_keepalive is not None
@@ -380,9 +359,8 @@ def test_cagra_ivf_pq(
     keepalive = []
     if cagra.get_dataset_view_kind(dataset_device) == "device_standard":
         padded_dataset = cagra.make_padded_dataset(dataset_device)
-        padded_view = cagra.make_view_wrapper(padded_dataset)
-        cagra.update_dataset(index, padded_view)
-        keepalive = [padded_dataset, padded_view]
+        cagra.update_dataset(index, padded_dataset)
+        keepalive = [padded_dataset]
 
     assert keepalive is not None
     queries = generate_data((n_queries, n_cols), dtype)

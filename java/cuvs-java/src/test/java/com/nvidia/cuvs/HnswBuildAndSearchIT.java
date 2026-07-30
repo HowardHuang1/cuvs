@@ -64,11 +64,10 @@ public class HnswBuildAndSearchIT extends CuVSTestCase {
         CagraIndex.newBuilder(resources).withDataset(dataset).withIndexParams(indexParams).build();
 
     // Host-built indexes are graph-only. Dim=2 is not 16-byte aligned, so allocate an owning
-    // device-padded dataset, then update via a view. Keep padded alive until the index is closed.
+    // device-padded dataset, then update the index. Keep padded alive until the index is closed.
     try (var deviceDataset = CuVSMatrix.ofArray(dataset).toDevice(resources);
-        var paddedDataset = index.makePaddedDataset(deviceDataset);
-        var paddedView = index.makeViewWrapper(paddedDataset)) {
-      index.updateDataset(paddedView);
+        var paddedDataset = index.makePaddedDataset(deviceDataset)) {
+      index.updateDataset(paddedDataset);
 
       // Saving the HNSW index on to the disk.
       String hnswIndexFileName = UUID.randomUUID() + ".hnsw";
