@@ -63,46 +63,41 @@ public class HnswBuildAndSearchIT extends CuVSTestCase {
     CagraIndex index =
         CagraIndex.newBuilder(resources).withDataset(dataset).withIndexParams(indexParams).build();
 
-    // Host-built indexes are graph-only. Dim=2 is not 16-byte aligned, so allocate an owning
-    // device-padded dataset, then update the index. Keep padded alive until the index is closed.
-    try (var deviceDataset = CuVSMatrix.ofArray(dataset).toDevice(resources);
-        var paddedDataset = index.makePaddedDataset(deviceDataset)) {
-      index.updateDataset(paddedDataset);
-
-      // Saving the HNSW index on to the disk.
-      String hnswIndexFileName = UUID.randomUUID() + ".hnsw";
-      var hnswIndexPath = Path.of(hnswIndexFileName);
-      try {
-        try (var outputStream = Files.newOutputStream(hnswIndexPath)) {
-          index.serializeToHNSW(outputStream);
-        }
-
-        // Use NONE hierarchy since serializeToHNSW creates a base-layer-only index
-        HnswIndexParams hnswIndexParams =
-            new HnswIndexParams.Builder()
-                .withVectorDimension(2)
-                .withHierarchy(HnswHierarchy.NONE)
-                .build();
-        try (var inputStreamHNSW = Files.newInputStream(hnswIndexPath)) {
-          var hnswIndex =
-              HnswIndex.newBuilder(resources)
-                  .from(inputStreamHNSW)
-                  .withIndexParams(hnswIndexParams)
-                  .build();
-
-          SearchResults results = hnswIndex.search(hnswQuery);
-
-          // Check results
-          log.debug(results.getResults().toString());
-          checkResults(expectedResults, results.getResults());
-
-          // Cleanup
-          hnswIndex.close();
-        }
-      } finally {
-        index.close();
-        Files.deleteIfExists(hnswIndexPath);
+    // hnswlib search runs on the host, so a host-built index serializes straight from its own
+    // host-resident vectors without a detour through device-padded storage.
+    // Saving the HNSW index on to the disk.
+    String hnswIndexFileName = UUID.randomUUID() + ".hnsw";
+    var hnswIndexPath = Path.of(hnswIndexFileName);
+    try {
+      try (var outputStream = Files.newOutputStream(hnswIndexPath)) {
+        index.serializeToHNSW(outputStream);
       }
+
+      // Use NONE hierarchy since serializeToHNSW creates a base-layer-only index
+      HnswIndexParams hnswIndexParams =
+          new HnswIndexParams.Builder()
+              .withVectorDimension(2)
+              .withHierarchy(HnswHierarchy.NONE)
+              .build();
+      try (var inputStreamHNSW = Files.newInputStream(hnswIndexPath)) {
+        var hnswIndex =
+            HnswIndex.newBuilder(resources)
+                .from(inputStreamHNSW)
+                .withIndexParams(hnswIndexParams)
+                .build();
+
+        SearchResults results = hnswIndex.search(hnswQuery);
+
+        // Check results
+        log.debug(results.getResults().toString());
+        checkResults(expectedResults, results.getResults());
+
+        // Cleanup
+        hnswIndex.close();
+      }
+    } finally {
+      index.close();
+      Files.deleteIfExists(hnswIndexPath);
     }
   }
 

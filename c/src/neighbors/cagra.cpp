@@ -1082,11 +1082,9 @@ void _serialize_to_hnswlib(cuvsResources_t res, const char *filename,
                            cuvsCagraIndex_t index) {
   auto res_ptr = reinterpret_cast<raft::resources *>(res);
   auto *box = reinterpret_cast<sg_cagra_c_api_index_box *>(index->addr);
-  with_index_by_layout<T, uint32_t, false>(
+  with_index_by_layout<T, uint32_t, true>(
       box, "cuvsCagraSerializeToHnswlib: null index handle",
-      "cuvsCagraSerializeToHnswlib: host index must be converted to device "
-      "first via "
-      "cuvsCagraUpdateDataset with a device padded dataset view",
+      "cuvsCagraSerializeToHnswlib: host indices are allowed",
       [&](auto &idx) {
         cuvs::neighbors::cagra::serialize_to_hnswlib(
             *res_ptr, std::string(filename), idx);

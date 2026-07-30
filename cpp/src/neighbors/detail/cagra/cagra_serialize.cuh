@@ -20,6 +20,7 @@
 #include "../../../util/serialize_validation.hpp"
 #include "../dataset_serialize.hpp"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <fstream>
@@ -236,7 +237,26 @@ void serialize_to_hnswlib(
     raft::resource::sync_stream(res);
     host_dataset_view = raft::make_const_mdspan(host_dataset.view());
   } else if constexpr (is_host_cagra_hnsw_serialize_index_v<T, IdxT, CagraIndexT>) {
-    RAFT_FAIL("serialize_to_hnswlib requires dataset for host CAGRA index");
+    auto dataset_view = index_.dataset();
+    RAFT_EXPECTS(dataset_view.n_rows() > 0,
+                 "Invalid CAGRA dataset of size 0 during serialization, shape %zux%zu",
+                 static_cast<size_t>(dataset_view.n_rows()),
+                 static_cast<size_t>(dataset_view.dim()));
+    auto const n_rows      = static_cast<int64_t>(dataset_view.n_rows());
+    auto const logical_dim = static_cast<int64_t>(dataset_view.dim());
+    auto const stride      = static_cast<int64_t>(dataset_view.stride());
+    auto const* src        = dataset_view.view().data_handle();
+    if (stride == logical_dim) {
+      host_dataset_view =
+        raft::make_host_matrix_view<const T, int64_t, raft::row_major>(src, n_rows, logical_dim);
+    } else {
+      // Padded host layout: compact the rows so the writer below sees contiguous vectors.
+      host_dataset = raft::make_host_matrix<T, int64_t>(n_rows, logical_dim);
+      for (int64_t i = 0; i < n_rows; i++) {
+        std::copy_n(src + i * stride, logical_dim, &host_dataset(i, 0));
+      }
+      host_dataset_view = raft::make_const_mdspan(host_dataset.view());
+    }
   } else {
     static_assert(is_cagra_hnsw_serialize_index_v<T, IdxT, CagraIndexT>,
                   "serialize_to_hnswlib: unsupported CagraIndexT");
