@@ -60,7 +60,7 @@ public interface CagraIndex extends AutoCloseable {
     }
   }
 
-  /** Caller-owned padded dataset view for {@link #updateDataset(PaddedDatasetView)}. */
+  /** Caller-owned padded dataset view. */
   final class PaddedDatasetView extends DatasetView {
     public PaddedDatasetView() {}
   }
@@ -118,8 +118,8 @@ public interface CagraIndex extends AutoCloseable {
   }
 
   /**
-   * Owning padded dataset handle. Keep this alive for as long as any index that was updated
-   * with a view derived from it remains in use.
+   * Owning padded dataset handle. Keep this alive for as long as any index using it remains in
+   * use.
    */
   final class PaddedDataset extends DeserializeDataset {
     public PaddedDataset() {}
@@ -154,15 +154,9 @@ public interface CagraIndex extends AutoCloseable {
   PaddedDataset makePaddedDataset(CuVSMatrix dataset) throws Throwable;
 
   /**
-   * Create a non-owning dataset view from an owning padded dataset.
-   * The owning {@code paddedDataset} must outlive any index updated with the returned view.
-   */
-  PaddedDatasetView makeViewWrapper(PaddedDataset paddedDataset) throws Throwable;
-
-  /**
    * Create a caller-owned padded dataset view handle from a matrix that is already
    * padded to CAGRA's required row stride. For unpadded matrices use
-   * {@link #makePaddedDataset(CuVSMatrix)} + {@link #makeViewWrapper(PaddedDataset)}.
+   * {@link #makePaddedDataset(CuVSMatrix)}.
    */
   PaddedDatasetView makePaddedDatasetView(CuVSMatrix dataset) throws Throwable;
 
@@ -175,6 +169,12 @@ public interface CagraIndex extends AutoCloseable {
    * padded storage and must keep it alive while this index uses it.
    */
   void updateDataset(PaddedDatasetView datasetView) throws Throwable;
+
+  /**
+   * Update this index with a caller-owned padded device dataset. The dataset must remain alive
+   * while this index uses it.
+   */
+  void updateDataset(PaddedDataset dataset) throws Throwable;
 
   /** Returns the CAGRA graph
    *

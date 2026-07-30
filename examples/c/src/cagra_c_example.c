@@ -53,7 +53,7 @@ void cagra_build_search_simple()
   cuvsCagraIndex_t index;
   CHECK_CUVS(cuvsCagraIndexCreate(&index));
 
-  cuvsDatasetView_t host_dataset_view = NULL;
+  cuvsDataset_t host_dataset_view = NULL;
   CHECK_CUVS(cuvsDatasetMakeStandardView(res, &dataset_tensor, &host_dataset_view));
   CHECK_CUVS(cuvsCagraBuild(res, index_params, host_dataset_view, index));
 
@@ -104,9 +104,7 @@ void cagra_build_search_simple()
   cuvsDataset_t padded_owner = NULL;
   CHECK_CUVS(
     cuvsDatasetMakePadded(res, &dataset_tensor, CUVS_DATASET_MEM_TYPE_DEVICE, &padded_owner));
-  cuvsDatasetView_t padded_view = NULL;
-  CHECK_CUVS(cuvsDatasetMakeViewWrapper(padded_owner, &padded_view));
-  CHECK_CUVS(cuvsCagraUpdateDataset(res, padded_view, index));
+  CHECK_CUVS(cuvsCagraUpdateDataset(res, padded_owner, index));
 
   // Search the CAGRA index
   cuvsCagraSearchParams_t search_params;
@@ -134,9 +132,8 @@ void cagra_build_search_simple()
   free(distances_h);
 
   CHECK_CUVS(cuvsCagraSearchParamsDestroy(search_params));
-  CHECK_CUVS(cuvsDatasetViewDestroy(padded_view));
   CHECK_CUVS(cuvsDatasetDestroy(padded_owner));
-  CHECK_CUVS(cuvsDatasetViewDestroy(host_dataset_view));
+  CHECK_CUVS(cuvsDatasetDestroy(host_dataset_view));
 
   CHECK_CUVS(cuvsRMMFree(res, distances, sizeof(float) * n_queries * topk));
   CHECK_CUVS(cuvsRMMFree(res, neighbors, sizeof(uint32_t) * n_queries * topk));

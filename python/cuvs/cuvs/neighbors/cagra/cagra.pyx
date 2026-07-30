@@ -454,7 +454,7 @@ cdef class PaddedDatasetView:
 
     def __dealloc__(self):
         if self.view != NULL:
-            check_cuvs(cuvsDatasetViewDestroy(self.view))
+            check_cuvs(cuvsDatasetDestroy(self.view))
 
 
 cdef class StandardDatasetView:
@@ -463,7 +463,7 @@ cdef class StandardDatasetView:
 
     def __dealloc__(self):
         if self.view != NULL:
-            check_cuvs(cuvsDatasetViewDestroy(self.view))
+            check_cuvs(cuvsDatasetDestroy(self.view))
 
 
 @auto_sync_resources
@@ -514,8 +514,7 @@ def build(IndexParams index_params, dataset, resources=None):
     >>> build_params = cagra.IndexParams(metric="sqeuclidean")
     >>> index = cagra.build(build_params, dataset)
     >>> padded_dataset = cagra.make_padded_dataset(dataset)
-    >>> padded_view = cagra.make_view_wrapper(padded_dataset)
-    >>> _ = cagra.update_dataset(index, padded_view)
+    >>> _ = cagra.update_dataset(index, padded_dataset)
     >>> queries = cp.random.random_sample((n_queries, n_features),
     ...                                   dtype=cp.float32)
     >>> distances, neighbors = cagra.search(cagra.SearchParams(),
@@ -557,7 +556,7 @@ def build(IndexParams index_params, dataset, resources=None):
 
     cdef cuvsDatasetMemType_t mem_type
     cdef cuvsDatasetLayout_t layout
-    cdef cuvsDatasetView_t dataset_view = NULL
+    cdef cuvsDataset_t dataset_view = NULL
 
     with cuda_interruptible():
         try:
@@ -575,7 +574,7 @@ def build(IndexParams index_params, dataset, resources=None):
             idx.active_index_type = dataset_ai.dtype.name
         finally:
             if dataset_view != NULL:
-                cuvsDatasetViewDestroy(dataset_view)
+                cuvsDatasetDestroy(dataset_view)
 
     return idx
 
@@ -660,20 +659,6 @@ def make_padded_dataset_view(dataset, resources=None):
     return padded_view
 
 
-def make_view_wrapper(PaddedDataset padded_dataset):
-    """
-    Create a padded dataset view handle from an owning padded dataset handle.
-    """
-    if padded_dataset is None or padded_dataset.dataset == NULL:
-        raise ValueError("padded_dataset is uninitialized")
-    cdef PaddedDatasetView padded_view = PaddedDatasetView()
-    check_cuvs(cuvsDatasetMakeViewWrapper(
-        padded_dataset.dataset,
-        &padded_view.view
-    ))
-    return padded_view
-
-
 @auto_sync_resources
 def make_standard_dataset_view(dataset, resources=None):
     """
@@ -700,7 +685,7 @@ def make_standard_dataset_view(dataset, resources=None):
 
 
 @auto_sync_resources
-def update_dataset(Index index, PaddedDatasetView padded_dataset_view, resources=None):
+def update_dataset(Index index, padded_dataset, resources=None):
     """
     Update any CAGRA index layout with a caller-provided padded dataset view.
 
@@ -708,13 +693,22 @@ def update_dataset(Index index, PaddedDatasetView padded_dataset_view, resources
     """
     if not index.trained:
         raise ValueError("Index needs to be built before attaching dataset.")
-    if padded_dataset_view is None or padded_dataset_view.view == NULL:
-        raise ValueError("padded_dataset_view is uninitialized")
+    cdef cuvsDataset_t dataset_handle = NULL
+    if isinstance(padded_dataset, PaddedDataset):
+        dataset_handle = (<PaddedDataset>padded_dataset).dataset
+    elif isinstance(padded_dataset, PaddedDatasetView):
+        dataset_handle = (<PaddedDatasetView>padded_dataset).view
+    else:
+        raise TypeError(
+            "padded_dataset must be a PaddedDataset or PaddedDatasetView"
+        )
+    if dataset_handle == NULL:
+        raise ValueError("padded_dataset is uninitialized")
     cdef cuvsResources_t res = <cuvsResources_t>resources.get_c_obj()
     with cuda_interruptible():
         check_cuvs(cuvsCagraUpdateDataset(
             res,
-            padded_dataset_view.view,
+            dataset_handle,
             index.index
         ))
     return index
@@ -965,8 +959,7 @@ def search(SearchParams search_params,
     >>> # Build index
     >>> index = cagra.build(cagra.IndexParams(), dataset)
     >>> padded_dataset = cagra.make_padded_dataset(dataset)
-    >>> padded_view = cagra.make_view_wrapper(padded_dataset)
-    >>> _ = cagra.update_dataset(index, padded_view)
+    >>> _ = cagra.update_dataset(index, padded_dataset)
     >>> # Search using the built index
     >>> queries = cp.random.random_sample((n_queries, n_features),
     ...                                   dtype=cp.float32)
@@ -1229,23 +1222,24 @@ def extend(ExtendParams params, Index index, extended_dataset, new_start_row,
     params : ExtendParams object
     index: Index
        Existing cagra index to extend
-    extended_dataset : PaddedDatasetView
-        Caller-owned padded dataset view already containing old || new rows.
+    extended_dataset : PaddedDataset or PaddedDatasetView
+        Caller-owned padded dataset already containing old || new rows.
     new_start_row : int
         Row index where the additional vectors begin (must equal ``index`` size).
     {resources_docstring}
 
     """
-    if not isinstance(extended_dataset, PaddedDatasetView):
+    cdef cuvsDataset_t extended_handle = NULL
+    if isinstance(extended_dataset, PaddedDataset):
+        extended_handle = (<PaddedDataset>extended_dataset).dataset
+    elif isinstance(extended_dataset, PaddedDatasetView):
+        extended_handle = (<PaddedDatasetView>extended_dataset).view
+    else:
         raise TypeError(
-            "extended_dataset must be a PaddedDatasetView. "
-            "Concatenate the original and additional vectors, then create the "
-            "view via make_padded_dataset_view() or "
-            "make_padded_dataset() + make_view_wrapper()."
+            "extended_dataset must be a PaddedDataset or PaddedDatasetView"
         )
-    cdef cuvsDatasetView_t out_extended_dataset = (<PaddedDatasetView>extended_dataset).view
-    if out_extended_dataset == NULL:
-        raise ValueError("extended_dataset padded view is uninitialized")
+    if extended_handle == NULL:
+        raise ValueError("extended_dataset is uninitialized")
 
     cdef int64_t c_new_start_row = new_start_row
     cdef cuvsResources_t res = <cuvsResources_t>resources.get_c_obj()
@@ -1254,7 +1248,7 @@ def extend(ExtendParams params, Index index, extended_dataset, new_start_row,
         check_cuvs(cuvsCagraExtend(
             res,
             params.params,
-            out_extended_dataset,
+            extended_handle,
             c_new_start_row,
             index.index
         ))

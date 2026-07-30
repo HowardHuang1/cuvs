@@ -81,17 +81,14 @@ def run_cagra_ace_build_search_test(
             dataset_device = device_ndarray(dataset)
             if dataset_kind == "host_padded":
                 padded_dataset = cagra.make_padded_dataset(dataset_device)
-                padded_view = cagra.make_view_wrapper(padded_dataset)
-                cagra.update_dataset(index, padded_view)
-                keepalive = [dataset_device, padded_dataset, padded_view]
+                cagra.update_dataset(index, padded_dataset)
+                keepalive = [dataset_device, padded_dataset]
             elif dataset_kind == "host_standard":
                 padded_dataset = cagra.make_padded_dataset(dataset_device)
-                padded_view = cagra.make_view_wrapper(padded_dataset)
-                cagra.update_dataset(index, padded_view)
+                cagra.update_dataset(index, padded_dataset)
                 keepalive = [
                     dataset_device,
                     padded_dataset,
-                    padded_view,
                 ]
             else:
                 raise ValueError(

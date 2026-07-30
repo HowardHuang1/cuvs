@@ -49,7 +49,7 @@ def make_padded_view(dataset):
     return (
         device_dataset,
         padded_dataset,
-        cagra.make_view_wrapper(padded_dataset),
+        padded_dataset,
     )
 
 

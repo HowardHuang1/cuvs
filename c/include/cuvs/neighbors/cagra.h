@@ -589,12 +589,12 @@ CUVS_EXPORT cuvsError_t cuvsCagraIndexGetGraph(cuvsCagraIndex_t index, DLManaged
  * \p device_padded_dataset and must keep it alive while \p index uses it.
  *
  * @param[in] res             cuvsResources_t opaque C handle
- * @param[in] padded_dataset  padded dataset view handle created by \ref cuvsDatasetMakePaddedView
+ * @param[in] device_padded_dataset owning or non-owning device-padded dataset handle
  * @param[inout] index        CAGRA index handle
  * @return cuvsError_t
  */
 CUVS_EXPORT cuvsError_t cuvsCagraUpdateDataset(cuvsResources_t res,
-                                               cuvsDatasetView_t device_padded_dataset,
+                                               cuvsDataset_t device_padded_dataset,
                                                cuvsCagraIndex_t index);
 
 /**
@@ -623,7 +623,7 @@ CUVS_EXPORT cuvsError_t cuvsCagraGetDatasetMemTypeAndLayout(DLManagedTensor* dat
                                                             cuvsDatasetLayout_t* layout);
 
 /**
- * @brief Build a CAGRA index from a dataset view handle. Acceptable underlying
+ * @brief Build a CAGRA index from a dataset handle. Acceptable underlying
  *        types are:
  *        1. `kDLDataType.code == kDLFloat` and `kDLDataType.bits = 32`
  *        2. `kDLDataType.code == kDLFloat` and `kDLDataType.bits = 16`
@@ -631,12 +631,12 @@ CUVS_EXPORT cuvsError_t cuvsCagraGetDatasetMemTypeAndLayout(DLManagedTensor* dat
  *        4. `kDLDataType.code == kDLUInt` and `kDLDataType.bits = 8`
  *
  * The memory space and layout \p dataset was constructed with select the C++ build overload.
- * Build the handle with the matching dataset view factory;
+ * Build the handle with an owning factory or the matching dataset view factory;
  * `cuvsCagraGetDatasetMemTypeAndLayout` resolves which one an input tensor calls for.
  *
  * Note that a dataset residing in host memory produces a host-backed index, which
  * must be made search-ready with `cuvsCagraUpdateDataset` (using a device-padded
- * dataset view) before calling `cuvsCagraSearch`.
+ * dataset) before calling `cuvsCagraSearch`.
  *
  * @code {.c}
  * #include <cuvs/core/c_api.h>
@@ -649,8 +649,8 @@ CUVS_EXPORT cuvsError_t cuvsCagraGetDatasetMemTypeAndLayout(DLManagedTensor* dat
  * // Assume a populated `DLManagedTensor` type here holding a device padded dataset
  * DLManagedTensor dataset;
  *
- * // Wrap it in a dataset view handle
- * cuvsDatasetView_t dataset_view;
+ * // Wrap it in a non-owning dataset handle
+ * cuvsDataset_t dataset_view;
  * cuvsError_t view_create_status = cuvsDatasetMakePaddedView(res, &dataset, &dataset_view);
  *
  * // Create default index params
@@ -665,7 +665,7 @@ CUVS_EXPORT cuvsError_t cuvsCagraGetDatasetMemTypeAndLayout(DLManagedTensor* dat
  * cuvsError_t build_status = cuvsCagraBuild(res, params, dataset_view, index);
  *
  * // de-allocate `dataset_view`, `params`, `index` and `res`
- * cuvsError_t view_destroy_status = cuvsDatasetViewDestroy(dataset_view);
+ * cuvsError_t view_destroy_status = cuvsDatasetDestroy(dataset_view);
  * cuvsError_t params_destroy_status = cuvsCagraIndexParamsDestroy(params);
  * cuvsError_t index_destroy_status = cuvsCagraIndexDestroy(index);
  * cuvsError_t res_destroy_status = cuvsResourcesDestroy(res);
@@ -673,14 +673,14 @@ CUVS_EXPORT cuvsError_t cuvsCagraGetDatasetMemTypeAndLayout(DLManagedTensor* dat
  *
  * @param[in] res cuvsResources_t opaque C handle
  * @param[in] params cuvsCagraIndexParams_t used to build CAGRA index
- * @param[in] dataset cuvsDatasetView_t view of the training dataset
+ * @param[in] dataset cuvsDataset_t training dataset or dataset view
  * @param[inout] index cuvsCagraIndex_t Newly built CAGRA index. This index needs to be already
  *                                      created with cuvsCagraIndexCreate.
  * @return cuvsError_t
  */
 CUVS_EXPORT cuvsError_t cuvsCagraBuild(cuvsResources_t res,
                                        cuvsCagraIndexParams_t params,
-                                       cuvsDatasetView_t dataset,
+                                       cuvsDataset_t dataset,
                                        cuvsCagraIndex_t index);
 
 /**
@@ -693,24 +693,24 @@ CUVS_EXPORT cuvsError_t cuvsCagraBuild(cuvsResources_t res,
  */
 
 /**
- * @brief Extend a CAGRA index with a caller-owned pre-concatenated padded dataset view.
+ * @brief Extend a CAGRA index with a caller-owned pre-concatenated padded dataset.
  *
  * The caller must build `extended_dataset` as `old || new` (size `n_old + n_new`) before calling.
  * Rows `[0, new_start_row)` are the original vectors; rows `[new_start_row, n_rows)` are the
  * additional vectors. `new_start_row` must equal the current index size. The library only extends
- * the graph and rebinds the index to `extended_dataset`; keep that view alive for the index
+ * the graph and rebinds the index to `extended_dataset`; keep that dataset alive for the index
  * lifetime.
  *
  * @param[in] res cuvsResources_t opaque C handle
  * @param[in] params cuvsCagraExtendParams_t used to extend CAGRA index
- * @param[in] extended_dataset cuvsDatasetView_t caller-owned device-padded view of old || new
+ * @param[in] extended_dataset cuvsDataset_t caller-owned device-padded dataset of old || new
  * @param[in] new_start_row row index where the additional vectors begin
  * @param[in,out] index cuvsCagraIndex_t CAGRA index
  * @return cuvsError_t
  */
 CUVS_EXPORT cuvsError_t cuvsCagraExtend(cuvsResources_t res,
                             cuvsCagraExtendParams_t params,
-                            cuvsDatasetView_t extended_dataset,
+                            cuvsDataset_t extended_dataset,
                             int64_t new_start_row,
                             cuvsCagraIndex_t index);
 

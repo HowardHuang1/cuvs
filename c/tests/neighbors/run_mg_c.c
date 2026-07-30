@@ -369,7 +369,7 @@ int run_mg_cagra_test(mg_test_params params,
   // Create index
   cuvsMultiGpuCagraIndex_t index;
   cuvsMultiGpuCagraIndexCreate(&index);
-  cuvsDatasetView_t padded_view = NULL;
+  cuvsDataset_t padded_view = NULL;
   cuvsMultiGpuCagraSearchParams_t search_params = NULL;
   void* device_dataset_data = NULL;
 
@@ -484,7 +484,7 @@ int run_mg_cagra_test(mg_test_params params,
   printf("MG CAGRA test completed successfully\n");
 
 cleanup:
-  cuvsDatasetViewDestroy(padded_view);
+  cuvsDatasetDestroy(padded_view);
   cudaFree(device_dataset_data);
   cuvsMultiGpuCagraSearchParamsDestroy(search_params);
   cuvsMultiGpuCagraIndexParamsDestroy(build_params);

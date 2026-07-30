@@ -28,12 +28,12 @@ cuvsResourcesCreate(&res);
 cuvsCagraIndexParamsCreate(&index_params);
 cuvsCagraIndexCreate(&index);
 
-cuvsDatasetView_t dataset_view;
+cuvsDataset_t dataset_view;
 cuvsDatasetMakeStandardView(res, dataset, &dataset_view);
 
 cuvsCagraBuild(res, index_params, dataset_view, index);
 
-cuvsDatasetViewDestroy(dataset_view);
+cuvsDatasetDestroy(dataset_view);
 cuvsCagraIndexDestroy(index);
 cuvsCagraIndexParamsDestroy(index_params);
 cuvsResourcesDestroy(res);
@@ -161,7 +161,7 @@ index to that view.
 cuvsResources_t res;
 cuvsCagraExtendParams_t extend_params;
 cuvsCagraIndex_t index;
-cuvsDatasetView_t extended_dataset;  // already = old || new, device-padded
+cuvsDataset_t extended_dataset;      // already = old || new, device-padded
 int64_t new_start_row;               // == current index size (n_old)
 
 cuvsResourcesCreate(&res);
@@ -211,8 +211,7 @@ new_start_row = dataset.shape[0]
 extended = cagra.make_padded_dataset(
     np.concatenate((dataset, additional_dataset), axis=0)
 )
-extended_view = cagra.make_view_wrapper(extended)
-index = cagra.extend(cagra.ExtendParams(), index, extended_view, new_start_row)
+index = cagra.extend(cagra.ExtendParams(), index, extended, new_start_row)
 ```
 
 </Tab>
@@ -576,14 +575,14 @@ hnsw_params->hierarchy = GPU;
 hnsw_search_params->ef = 200;
 hnsw_search_params->num_threads = 0;
 
-cuvsDatasetView_t dataset_view;
+cuvsDataset_t dataset_view;
 cuvsDatasetMakeStandardView(res, dataset, &dataset_view);
 
 cuvsCagraBuild(res, cagra_params, dataset_view, cagra_index);
 cuvsHnswFromCagra(res, hnsw_params, cagra_index, hnsw_index);
 cuvsHnswSearch(res, hnsw_search_params, hnsw_index, queries, neighbors, distances);
 
-cuvsDatasetViewDestroy(dataset_view);
+cuvsDatasetDestroy(dataset_view);
 cuvsHnswSearchParamsDestroy(hnsw_search_params);
 cuvsHnswIndexDestroy(hnsw_index);
 cuvsHnswIndexParamsDestroy(hnsw_params);
@@ -771,12 +770,12 @@ load_dataset(dataset);
 load_queries(queries);
 allocate_outputs(neighbors, distances);
 
-cuvsDatasetView_t dataset_view;
+cuvsDataset_t dataset_view;
 cuvsDatasetMakeStandardView(res, dataset, &dataset_view);
 
 cuvsCagraBuild(res, index_params, dataset_view, index);
 
-cuvsDatasetViewDestroy(dataset_view);
+cuvsDatasetDestroy(dataset_view);
 
 // Create a device uint32 bitset with one bit per indexed vector. Bit 1 means
 // allowed; bit 0 means filtered out.

@@ -351,7 +351,7 @@ Acceptable underlying types are:
 ```c
 cuvsError_t cuvsCagraExtend(cuvsResources_t res,
 cuvsCagraExtendParams_t params,
-cuvsDatasetView_t extended_dataset,
+cuvsDataset_t extended_dataset,
 int64_t new_start_row,
 cuvsCagraIndex_t index);
 ```
@@ -362,7 +362,7 @@ cuvsCagraIndex_t index);
 | --- | --- | --- | --- |
 | `res` | in | [`cuvsResources_t`](/api-reference/c-api-core-c-api#cuvsresources-t) | cuvsResources_t opaque C handle |
 | `params` | in | [`cuvsCagraExtendParams_t`](/api-reference/c-api-neighbors-cagra#cuvscagraextendparams) | cuvsCagraExtendParams_t used to extend CAGRA index |
-| `extended_dataset` | in | `cuvsDatasetView_t` | Caller-owned device-padded view already containing old \|\| new |
+| `extended_dataset` | in | `cuvsDataset_t` | Caller-owned device-padded dataset already containing old \|\| new |
 | `new_start_row` | in | `int64_t` | Row index where the additional vectors begin |
 | `index` | in,out | [`cuvsCagraIndex_t`](/api-reference/c-api-neighbors-cagra#cuvscagraindex) | cuvsCagraIndex_t CAGRA index |
 
@@ -686,7 +686,7 @@ handle with the matching type-specific view factory; memory residency is inferre
 ```c
 cuvsError_t cuvsCagraBuild(cuvsResources_t res,
 cuvsCagraIndexParams_t params,
-cuvsDatasetView_t dataset,
+cuvsDataset_t dataset,
 cuvsCagraIndex_t index);
 ```
 
@@ -696,7 +696,7 @@ cuvsCagraIndex_t index);
 | --- | --- | --- | --- |
 | `res` | in | [`cuvsResources_t`](/api-reference/c-api-core-c-api#cuvsresources-t) | cuvsResources_t opaque C handle |
 | `params` | in | [`cuvsCagraIndexParams_t`](/api-reference/c-api-neighbors-cagra#cuvscagraindexparams) | cuvsCagraIndexParams_t used to build CAGRA index |
-| `dataset` | in | `cuvsDatasetView_t` | cuvsDatasetView_t view of the training dataset |
+| `dataset` | in | `cuvsDataset_t` | Training dataset or dataset view |
 | `index` | inout | [`cuvsCagraIndex_t`](/api-reference/c-api-neighbors-cagra#cuvscagraindex) | cuvsCagraIndex_t Newly built CAGRA index. This index needs to be already created with cuvsCagraIndexCreate. |
 
 **Returns**

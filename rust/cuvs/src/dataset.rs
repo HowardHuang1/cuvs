@@ -57,8 +57,9 @@ impl DatasetKind {
 /// it never copies vector storage.
 #[derive(Debug)]
 pub struct DatasetView<'a> {
-    handle: ffi::cuvsDatasetView_t,
+    handle: ffi::cuvsDataset_t,
     kind: DatasetKind,
+    destroy_handle: bool,
     _dataset: PhantomData<&'a ()>,
 }
 
@@ -91,7 +92,7 @@ impl<'a> DatasetView<'a> {
                     ffi::cuvsDatasetMakeStandardView(res.handle(), dataset_c.as_mut_ptr(), out)
                 }
             })?;
-            Ok(Self { handle, kind, _dataset: PhantomData })
+            Ok(Self { handle, kind, destroy_handle: true, _dataset: PhantomData })
         }
     }
 
@@ -100,15 +101,17 @@ impl<'a> DatasetView<'a> {
         self.kind
     }
 
-    pub(crate) fn raw(&self) -> ffi::cuvsDatasetView_t {
+    pub(crate) fn raw(&self) -> ffi::cuvsDataset_t {
         self.handle
     }
 }
 
 impl Drop for DatasetView<'_> {
     fn drop(&mut self) {
-        if let Err(e) = check_cuvs(unsafe { ffi::cuvsDatasetViewDestroy(self.handle) }) {
-            report_drop_failure("dataset view", &e);
+        if self.destroy_handle {
+            if let Err(e) = check_cuvs(unsafe { ffi::cuvsDatasetDestroy(self.handle) }) {
+                report_drop_failure("dataset view", &e);
+            }
         }
     }
 }
@@ -158,9 +161,12 @@ impl PaddedDataset {
 
     /// Borrow this allocation as a padded view.
     pub fn as_view(&self) -> Result<DatasetView<'_>> {
-        let handle =
-            unsafe { init_handle(|out| ffi::cuvsDatasetMakeViewWrapper(self.handle, out))? };
-        Ok(DatasetView { handle, kind: self.kind, _dataset: PhantomData })
+        Ok(DatasetView {
+            handle: self.handle,
+            kind: self.kind,
+            destroy_handle: false,
+            _dataset: PhantomData,
+        })
     }
 }
 

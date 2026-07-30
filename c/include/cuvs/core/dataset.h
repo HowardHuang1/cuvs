@@ -32,25 +32,19 @@ typedef enum {
 } cuvsDatasetMemType_t;
 
 /**
- * @brief Owning dataset handle.
- *
- * `addr` points to C++ owning dataset storage managed by the C API. `mem_type` identifies the
- * memory space and `layout` identifies the data layout (standard or padded).
+ * @brief Ownership kind for C API dataset handles.
  */
-typedef struct {
-  uintptr_t addr;
-  void (*destroy_addr)(void*);
-  DLDataType dtype;
-  cuvsDatasetMemType_t mem_type;
-  cuvsDatasetLayout_t layout;
-} cuvsDataset;
-typedef cuvsDataset* cuvsDataset_t;
+typedef enum {
+  CUVS_DATASET_OWNERSHIP_VIEW   = 0,
+  CUVS_DATASET_OWNERSHIP_OWNING = 1
+} cuvsDatasetOwnership_t;
 
 /**
- * @brief Non-owning dataset view handle.
+ * @brief Dataset handle representing owning storage or a non-owning view.
  *
- * `addr` points to C API-owned metadata that references caller-provided tensor memory. The
- * `mem_type` and `layout` fields identify the concrete dataset view type.
+ * `addr` points to C++ dataset storage or view metadata managed by the C API. `mem_type`
+ * identifies the memory space, `layout` identifies the data layout, and `ownership` indicates
+ * whether the handle owns its backing data.
  */
 typedef struct {
   uintptr_t addr;
@@ -58,8 +52,9 @@ typedef struct {
   DLDataType dtype;
   cuvsDatasetMemType_t mem_type;
   cuvsDatasetLayout_t layout;
-} cuvsDatasetView;
-typedef cuvsDatasetView* cuvsDatasetView_t;
+  cuvsDatasetOwnership_t ownership;
+} cuvsDataset;
+typedef cuvsDataset* cuvsDataset_t;
 
 /**
  * @brief Create an empty owning dataset handle.
@@ -92,7 +87,7 @@ CUVS_EXPORT cuvsError_t cuvsDatasetMakePadded(cuvsResources_t res,
  */
 CUVS_EXPORT cuvsError_t cuvsDatasetMakePaddedView(cuvsResources_t res,
                                                   DLManagedTensor* dataset,
-                                                  cuvsDatasetView_t* padded_dataset);
+                                                  cuvsDataset_t* padded_dataset);
 
 /**
  * @brief Create a non-owning standard dataset view from a host- or device-resident tensor.
@@ -101,27 +96,10 @@ CUVS_EXPORT cuvsError_t cuvsDatasetMakePaddedView(cuvsResources_t res,
  */
 CUVS_EXPORT cuvsError_t cuvsDatasetMakeStandardView(cuvsResources_t res,
                                                     DLManagedTensor* dataset,
-                                                    cuvsDatasetView_t* standard_dataset);
+                                                    cuvsDataset_t* standard_dataset);
 
-/**
- * @brief Create a non-owning view wrapper from an owning dataset.
- *
- * The returned view references the owning dataset's storage. The dataset must outlive the view.
- *
- * @param[in] dataset owning dataset handle
- * @param[out] view output view handle
- */
-CUVS_EXPORT cuvsError_t cuvsDatasetMakeViewWrapper(cuvsDataset_t dataset,
-                                                   cuvsDatasetView_t* view);
-
-/** @brief Destroy an owning dataset handle created by a `cuvsDatasetMake*` function. */
+/** @brief Destroy a dataset handle created by a `cuvsDatasetMake*` function. */
 CUVS_EXPORT cuvsError_t cuvsDatasetDestroy(cuvsDataset_t dataset);
-
-/**
- * @brief Destroy a non-owning dataset view handle created by a dataset view factory or
- * `cuvsDatasetMakeViewWrapper`.
- */
-CUVS_EXPORT cuvsError_t cuvsDatasetViewDestroy(cuvsDatasetView_t dataset_view);
 
 #ifdef __cplusplus
 }
