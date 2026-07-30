@@ -1103,6 +1103,14 @@ template <typename ValueT, typename SrcT>
 {
   cudaPointerAttributes ptr_attrs;
   RAFT_CUDA_TRY(cudaPointerGetAttributes(&ptr_attrs, src.data_handle()));
+  // `devicePointer` is relative to the *current* device: it is null for an allocation owned by
+  // another device without peer access, even though that allocation is perfectly usable once the
+  // caller switches to the owning device (as the multi-GPU paths do). Accept device and managed
+  // allocations on their own merit and only consult `devicePointer` for host memory, which needs a
+  // mapping to be reachable at all.
+  if (ptr_attrs.type == cudaMemoryTypeDevice || ptr_attrs.type == cudaMemoryTypeManaged) {
+    return const_cast<ValueT*>(src.data_handle());
+  }
   auto* device_ptr = reinterpret_cast<ValueT*>(ptr_attrs.devicePointer);
   RAFT_EXPECTS(device_ptr != nullptr, "%s", error_msg);
   return device_ptr;

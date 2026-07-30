@@ -218,9 +218,9 @@ class AnnMGTest : public ::testing::TestWithParam<AnnMGInputs> {
         d_mode = distribution_mode::SHARDED;
 
       mg_index_params<cagra::index_params> index_params;
-      // Host dataset uses ACE build path; must set ace_params (not ivf_pq_params).
-      index_params.graph_build_params = cagra::graph_build_params::ace_params{};
-      index_params.mode               = d_mode;
+      index_params.graph_build_params = cagra::graph_build_params::ivf_pq_params(
+        raft::matrix_extent<int64_t>(ps.num_db_vecs, ps.dim));
+      index_params.mode = d_mode;
 
       mg_search_params<cagra::search_params> search_params;
 
@@ -576,9 +576,9 @@ class AnnMGTest : public ::testing::TestWithParam<AnnMGInputs> {
       ASSERT_TRUE(ps.num_queries <= 4);
 
       mg_index_params<cagra::index_params> index_params;
-      // Host dataset uses ACE build path; must set ace_params (not ivf_pq_params).
-      index_params.graph_build_params = cagra::graph_build_params::ace_params{};
-      index_params.mode               = REPLICATED;
+      index_params.graph_build_params = cagra::graph_build_params::ivf_pq_params(
+        raft::matrix_extent<int64_t>(ps.num_db_vecs, ps.dim));
+      index_params.mode = REPLICATED;
 
       mg_search_params<cagra::search_params> search_params;
       search_params.search_mode = ROUND_ROBIN;

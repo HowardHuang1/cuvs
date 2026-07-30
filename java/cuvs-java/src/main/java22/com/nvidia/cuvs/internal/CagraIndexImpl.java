@@ -679,7 +679,7 @@ public class CagraIndexImpl implements CagraIndex {
         }
       }
 
-      var datasetOwner = new OwningDatasetCloseDelegate(dataset);
+      var datasetOwner = new DatasetCloseDelegate(dataset);
       if (outDataset == null) {
         dataset = MemorySegment.NULL;
         return new IndexReference(index, null, datasetOwner);
@@ -704,6 +704,22 @@ public class CagraIndexImpl implements CagraIndex {
       throw t;
     } finally {
       Files.deleteIfExists(tmpIndexFile);
+    }
+  }
+
+  private static final class DatasetCloseDelegate implements AutoCloseable {
+    private MemorySegment handle;
+
+    private DatasetCloseDelegate(MemorySegment handle) {
+      this.handle = handle;
+    }
+
+    @Override
+    public void close() {
+      if (handle != null && handle.address() != 0) {
+        checkCuVSError(cuvsDatasetDestroy(handle), "cuvsDatasetDestroy");
+        handle = MemorySegment.NULL;
+      }
     }
   }
 
