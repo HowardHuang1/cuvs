@@ -321,22 +321,12 @@ TEST(CagraC, BuildExtendSearch)
   dataset_tensor.dl_tensor.shape              = dataset_shape;
   dataset_tensor.dl_tensor.strides            = nullptr;
 
-  // create additional dataset DLTensor
+  // create additional dataset (concatenated into extended_dataset below)
   rmm::device_uvector<float> additional_d(additional_data_size * dimensions, stream);
   raft::copy(additional_d.data(),
              random_data_d.data() + main_d.size(),
              additional_data_size * dimensions,
              stream);
-  DLManagedTensor additional_dataset_tensor;
-  additional_dataset_tensor.dl_tensor.data               = additional_d.data();
-  additional_dataset_tensor.dl_tensor.device.device_type = kDLCUDA;
-  additional_dataset_tensor.dl_tensor.ndim               = 2;
-  additional_dataset_tensor.dl_tensor.dtype.code         = kDLFloat;
-  additional_dataset_tensor.dl_tensor.dtype.bits         = 32;
-  additional_dataset_tensor.dl_tensor.dtype.lanes        = 1;
-  int64_t additional_dataset_shape[2]                    = {additional_data_size, dimensions};
-  additional_dataset_tensor.dl_tensor.shape              = additional_dataset_shape;
-  additional_dataset_tensor.dl_tensor.strides            = nullptr;
 
   // create index
   cuvsCagraIndex_t index;
@@ -351,14 +341,15 @@ TEST(CagraC, BuildExtendSearch)
 
   cuvsStreamSync(res);
 
-  // extend index
+  // extend index — caller concatenates old || new into extended_dataset first
   cuvsCagraExtendParams_t extend_params;
   cuvsCagraExtendParamsCreate(&extend_params);
-  cuvsDatasetView_t additional_padded_dataset_view = nullptr;
-  ASSERT_EQ(cuvsDatasetMakePaddedView(
-              res, &additional_dataset_tensor, &additional_padded_dataset_view),
-            CUVS_SUCCESS);
   rmm::device_uvector<float> extended_d((main_data_size + additional_data_size) * dimensions, stream);
+  raft::copy(extended_d.data(), main_d.data(), main_data_size * dimensions, stream);
+  raft::copy(extended_d.data() + main_data_size * dimensions,
+             additional_d.data(),
+             additional_data_size * dimensions,
+             stream);
   DLManagedTensor extended_dataset_tensor;
   extended_dataset_tensor.dl_tensor.data               = extended_d.data();
   extended_dataset_tensor.dl_tensor.device.device_type = kDLCUDA;
@@ -373,8 +364,7 @@ TEST(CagraC, BuildExtendSearch)
   cuvsDatasetView_t extended_dataset_view        = nullptr;
   ASSERT_EQ(cuvsDatasetMakePaddedView(res, &extended_dataset_tensor, &extended_dataset_view),
             CUVS_SUCCESS);
-  ASSERT_EQ(cuvsCagraExtend(
-              res, extend_params, additional_padded_dataset_view, extended_dataset_view, index),
+  ASSERT_EQ(cuvsCagraExtend(res, extend_params, extended_dataset_view, main_data_size, index),
             CUVS_SUCCESS);
 
   // create queries DLTensor
@@ -489,7 +479,6 @@ TEST(CagraC, BuildExtendSearch)
   // de-allocate index and res
   cuvsCagraSearchParamsDestroy(search_params);
   cuvsDatasetViewDestroy(dataset_view);
-  cuvsDatasetViewDestroy(additional_padded_dataset_view);
   cuvsDatasetViewDestroy(extended_dataset_view);
   cuvsCagraExtendParamsDestroy(extend_params);
   cuvsCagraIndexParamsDestroy(build_params);

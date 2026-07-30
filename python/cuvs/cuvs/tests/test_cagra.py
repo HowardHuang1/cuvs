@@ -56,12 +56,11 @@ def run_cagra_build_search_test(
         extend_params = cagra.ExtendParams()
         if array_type == "device":
             dataset_1_device = device_ndarray(dataset_1)
-            dataset_2_device = device_ndarray(dataset_2)
 
             index = cagra.build(build_params, dataset_1_device)
             # Explicit caller-side preparation for padded-only extend contract:
             # 1) Ensure the index is device_padded before extend.
-            # 2) Prepare a padded view for additional dataset via factories.
+            # 2) Concatenate old || new into a single padded dataset view.
             extend_keepalive = []
             if cagra.get_dataset_view_kind(index.dataset) == "device_standard":
                 base_padded_dataset = cagra.make_padded_dataset(
@@ -72,8 +71,7 @@ def run_cagra_build_search_test(
                 extend_keepalive.extend(
                     [base_padded_dataset, base_padded_view]
                 )
-            add_padded_dataset = cagra.make_padded_dataset(dataset_2_device)
-            add_padded_view = cagra.make_view_wrapper(add_padded_dataset)
+            new_start_row = dataset_1.shape[0]
             extended_dataset_owner = cagra.make_padded_dataset(
                 device_ndarray(np.concatenate((dataset_1, dataset_2), axis=0))
             )
@@ -82,14 +80,12 @@ def run_cagra_build_search_test(
             )
             extend_keepalive.extend(
                 [
-                    add_padded_dataset,
-                    add_padded_view,
                     extended_dataset_owner,
                     extended_dataset_view,
                 ]
             )
             index = cagra.extend(
-                extend_params, index, add_padded_view, extended_dataset_view
+                extend_params, index, extended_dataset_view, new_start_row
             )
         else:
             pytest.skip(

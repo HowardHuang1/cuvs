@@ -465,65 +465,49 @@ void search(raft::resources const& res,
 template <class T, class IdxT, cuvs::neighbors::ann_dataset_view DatasetViewT>
 void extend(raft::resources const& handle,
             const cagra::extend_params& params,
-            cuvs::neighbors::device_padded_dataset_view<T, int64_t> additional_dataset,
-            cuvs::neighbors::cagra::index<T, IdxT, DatasetViewT>& index,
-            cuvs::neighbors::device_padded_dataset_view<T, int64_t> extended_dataset)
+            cuvs::neighbors::device_padded_dataset_view<T, int64_t> extended_dataset,
+            int64_t new_start_row,
+            cuvs::neighbors::cagra::index<T, IdxT, DatasetViewT>& index)
 {
   static_assert(cuvs::neighbors::is_padded_dataset_view_v<DatasetViewT>,
                 "cagra::extend requires a padded index dataset type");
-  auto out_ds_view        = extended_dataset.view();
-  const auto stride_elems = out_ds_view.stride(0) > 0 ? static_cast<int64_t>(out_ds_view.stride(0))
-                                                      : static_cast<int64_t>(out_ds_view.extent(1));
-  auto ndv =
-    raft::make_device_strided_matrix_view<T, int64_t>(const_cast<T*>(out_ds_view.data_handle()),
-                                                      out_ds_view.extent(0),
-                                                      static_cast<int64_t>(index.dim()),
-                                                      stride_elems);
-  extend_core<T, IdxT, DatasetViewT>(handle, additional_dataset.view(), index, params, ndv);
+  extend_core<T, IdxT, DatasetViewT>(handle, index, params, extended_dataset, new_start_row);
 }
 
 template <class T, class IdxT, cuvs::neighbors::ann_dataset_view DatasetViewT>
 void extend(raft::resources const& handle,
             const cagra::extend_params& params,
-            cuvs::neighbors::host_padded_dataset_view<T, int64_t> additional_dataset,
-            cuvs::neighbors::cagra::index<T, IdxT, DatasetViewT>& index,
-            cuvs::neighbors::device_padded_dataset_view<T, int64_t> extended_dataset)
-{
-  static_assert(cuvs::neighbors::is_padded_dataset_view_v<DatasetViewT>,
-                "cagra::extend requires a padded index dataset type");
-  auto out_ds_view        = extended_dataset.view();
-  const auto stride_elems = out_ds_view.stride(0) > 0 ? static_cast<int64_t>(out_ds_view.stride(0))
-                                                      : static_cast<int64_t>(out_ds_view.extent(1));
-  auto ndv =
-    raft::make_device_strided_matrix_view<T, int64_t>(const_cast<T*>(out_ds_view.data_handle()),
-                                                      out_ds_view.extent(0),
-                                                      static_cast<int64_t>(index.dim()),
-                                                      stride_elems);
-  extend_core<T, IdxT, DatasetViewT>(handle, additional_dataset.view(), index, params, ndv);
-}
-
-template <class T, class IdxT, cuvs::neighbors::ann_dataset_view DatasetViewT>
-void extend(raft::resources const& handle,
-            const cagra::extend_params& params,
-            cuvs::neighbors::device_standard_dataset_view<T, int64_t> additional_dataset,
-            cuvs::neighbors::cagra::index<T, IdxT, DatasetViewT>& index,
-            cuvs::neighbors::device_padded_dataset_view<T, int64_t> extended_dataset)
+            cuvs::neighbors::device_standard_dataset_view<T, int64_t> extended_dataset,
+            int64_t new_start_row,
+            cuvs::neighbors::cagra::index<T, IdxT, DatasetViewT>& index)
 {
   RAFT_FAIL(
-    "cagra::extend requires a padded additional dataset view. "
-    "Call make_device_padded_dataset() and pass its padded view.");
+    "cagra::extend requires a padded extended dataset view. "
+    "Concatenate the original and additional vectors into a padded dataset and pass that view.");
 }
 
 template <class T, class IdxT, cuvs::neighbors::ann_dataset_view DatasetViewT>
 void extend(raft::resources const& handle,
             const cagra::extend_params& params,
-            cuvs::neighbors::host_standard_dataset_view<T, int64_t> additional_dataset,
-            cuvs::neighbors::cagra::index<T, IdxT, DatasetViewT>& index,
-            cuvs::neighbors::device_padded_dataset_view<T, int64_t> extended_dataset)
+            cuvs::neighbors::host_padded_dataset_view<T, int64_t> extended_dataset,
+            int64_t new_start_row,
+            cuvs::neighbors::cagra::index<T, IdxT, DatasetViewT>& index)
 {
   RAFT_FAIL(
-    "cagra::extend requires a padded additional dataset view. "
-    "Call make_host_padded_dataset() and pass its padded view.");
+    "cagra::extend requires a device-padded extended dataset view. "
+    "Concatenate on the device (or copy the concatenated host matrix to device) before extend.");
+}
+
+template <class T, class IdxT, cuvs::neighbors::ann_dataset_view DatasetViewT>
+void extend(raft::resources const& handle,
+            const cagra::extend_params& params,
+            cuvs::neighbors::host_standard_dataset_view<T, int64_t> extended_dataset,
+            int64_t new_start_row,
+            cuvs::neighbors::cagra::index<T, IdxT, DatasetViewT>& index)
+{
+  RAFT_FAIL(
+    "cagra::extend requires a device-padded extended dataset view. "
+    "Concatenate the original and additional vectors into a padded device dataset first.");
 }
 
 template <class T, class IdxT, cuvs::neighbors::ann_dataset_view DatasetViewT>

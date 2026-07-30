@@ -698,29 +698,17 @@ class AnnCagraAddNodesTest : public ::testing::TestWithParam<AnnCagraInputs> {
         }
         cagra_build_into_index(handle_, index_params, ace_host_dataset, initial_padded.view, index);
 
-        auto additional_dataset =
-          raft::make_host_matrix<DataT, int64_t>(ps.n_rows - initial_database_size, index.dim());
-        raft::copy(additional_dataset.data_handle(),
-                   static_cast<const DataT*>(database.data()) + initial_database_view.size(),
-                   additional_dataset.size(),
-                   stream_);
-
         cagra::extend_params extend_params;
-        std::unique_ptr<cuvs::neighbors::host_padded_dataset<DataT, int64_t>> add_padded_owner{
-          nullptr};
         auto all_database_device_view = raft::make_device_matrix_view<const DataT, int64_t>(
           static_cast<const DataT*>(database.data()), ps.n_rows, ps.dim);
+        // Caller owns concatenation: extended_padded already holds old || new.
         cuvs::neighbors::test::padded_device_matrix_for_cagra<DataT> extended_padded(
           handle_, all_database_device_view);
-        if (cuvs::neighbors::matrix_row_width_matches_cagra_required(additional_dataset.view())) {
-          auto add_view = cuvs::neighbors::make_host_padded_dataset_view(additional_dataset.view());
-          cagra::extend(handle_, extend_params, add_view, index, extended_padded.view);
-        } else {
-          add_padded_owner =
-            cuvs::neighbors::make_host_padded_dataset(handle_, additional_dataset.view());
-          auto add_view = add_padded_owner->as_dataset_view();
-          cagra::extend(handle_, extend_params, add_view, index, extended_padded.view);
-        }
+        cagra::extend(handle_,
+                      extend_params,
+                      extended_padded.view,
+                      static_cast<int64_t>(initial_database_size),
+                      index);
 
         auto search_queries_view = raft::make_device_matrix_view<const DataT, int64_t>(
           search_queries.data(), ps.n_queries, ps.dim);

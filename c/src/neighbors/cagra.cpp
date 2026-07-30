@@ -723,8 +723,8 @@ template <typename T>
 void _extend(cuvsResources_t res,
              cuvsCagraExtendParams params,
              cuvsCagraIndex index,
-             cuvsDatasetView_t additional_dataset,
-             cuvsDatasetView_t extended_dataset)
+             cuvsDatasetView_t extended_dataset,
+             int64_t new_start_row)
 {
   auto* box      = reinterpret_cast<sg_cagra_c_api_index_box*>(index.addr);
   auto res_ptr   = reinterpret_cast<raft::resources*>(res);
@@ -733,12 +733,7 @@ void _extend(cuvsResources_t res,
     box->layout == sg_cagra_c_api_index_box::dataset_layout::device_padded,
     "cuvsCagraExtend: only device_padded indices are extendable. "
     "For standard indices, explicitly create/attach a padded dataset first.");
-  RAFT_EXPECTS(additional_dataset != nullptr, "cuvsCagraExtend: null additional dataset view");
-  RAFT_EXPECTS(additional_dataset->addr != 0,
-               "cuvsCagraExtend: null additional dataset view storage");
-  RAFT_EXPECTS(additional_dataset->layout == CUVS_DATASET_LAYOUT_PADDED,
-               "cuvsCagraExtend: additional dataset must be a padded dataset view");
-  RAFT_EXPECTS(extended_dataset != nullptr, "cuvsCagraExtend: null extended dataset handle");
+  RAFT_EXPECTS(extended_dataset != nullptr, "cuvsCagraExtend: null extended dataset view");
   RAFT_EXPECTS(extended_dataset->mem_type == CUVS_DATASET_MEM_TYPE_DEVICE &&
                  extended_dataset->layout == CUVS_DATASET_LAYOUT_PADDED,
                "cuvsCagraExtend: extended dataset must be a device-padded dataset view");
@@ -762,19 +757,8 @@ void _extend(cuvsResources_t res,
       if constexpr (!idx_is_padded) {
         RAFT_FAIL("cuvsCagraExtend: only device_padded indices are extendable");
       } else {
-        if (additional_dataset->mem_type == CUVS_DATASET_MEM_TYPE_DEVICE) {
-          auto* ds_view =
-            reinterpret_cast<cuvs::neighbors::device_padded_dataset_view<T, int64_t>*>(
-              additional_dataset->addr);
-          cuvs::neighbors::cagra::extend(
-            *res_ptr, extend_params, *ds_view, idx, *out_dataset);
-        } else {
-          auto* ds_view =
-            reinterpret_cast<cuvs::neighbors::host_padded_dataset_view<T, int64_t>*>(
-              additional_dataset->addr);
-          cuvs::neighbors::cagra::extend(
-            *res_ptr, extend_params, *ds_view, idx, *out_dataset);
-        }
+        cuvs::neighbors::cagra::extend(
+          *res_ptr, extend_params, *out_dataset, new_start_row, idx);
       }
     });
 }
@@ -1727,29 +1711,25 @@ extern "C" cuvsError_t cuvsCagraIndexFromArgs(cuvsResources_t res,
 
 extern "C" cuvsError_t cuvsCagraExtend(cuvsResources_t res,
                                        cuvsCagraExtendParams_t params,
-                                       cuvsDatasetView_t additional_dataset,
                                        cuvsDatasetView_t extended_dataset,
+                                       int64_t new_start_row,
                                        cuvsCagraIndex_t index_c_ptr)
 {
   return cuvs::core::translate_exceptions([=] {
     auto index   = *index_c_ptr;
-    RAFT_EXPECTS(additional_dataset != nullptr, "cuvsCagraExtend: null additional dataset view");
-    RAFT_EXPECTS(additional_dataset->dtype.code == index.dtype.code &&
-                   additional_dataset->dtype.bits == index.dtype.bits,
-                 "cuvsCagraExtend: dtype mismatch between index and additional dataset view");
-    RAFT_EXPECTS(extended_dataset != nullptr, "cuvsCagraExtend: null extended dataset handle");
+    RAFT_EXPECTS(extended_dataset != nullptr, "cuvsCagraExtend: null extended dataset view");
     RAFT_EXPECTS(extended_dataset->dtype.code == index.dtype.code &&
                    extended_dataset->dtype.bits == index.dtype.bits,
                  "cuvsCagraExtend: dtype mismatch between index and extended dataset");
 
     if ((index.dtype.code == kDLFloat) && (index.dtype.bits == 32)) {
-      _extend<float>(res, *params, index, additional_dataset, extended_dataset);
+      _extend<float>(res, *params, index, extended_dataset, new_start_row);
     } else if (index.dtype.code == kDLFloat && index.dtype.bits == 16) {
-      _extend<half>(res, *params, index, additional_dataset, extended_dataset);
+      _extend<half>(res, *params, index, extended_dataset, new_start_row);
     } else if (index.dtype.code == kDLInt && index.dtype.bits == 8) {
-      _extend<int8_t>(res, *params, index, additional_dataset, extended_dataset);
+      _extend<int8_t>(res, *params, index, extended_dataset, new_start_row);
     } else if (index.dtype.code == kDLUInt && index.dtype.bits == 8) {
-      _extend<uint8_t>(res, *params, index, additional_dataset, extended_dataset);
+      _extend<uint8_t>(res, *params, index, extended_dataset, new_start_row);
     } else {
       RAFT_FAIL("Unsupported dataset DLtensor dtype: %d and bits: %d",
                 index.dtype.code,

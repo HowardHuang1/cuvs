@@ -1385,8 +1385,8 @@ unsafe extern "C" {
     pub fn cuvsCagraExtend(
         res: cuvsResources_t,
         params: cuvsCagraExtendParams_t,
-        additional_dataset: cuvsDatasetView_t,
         extended_dataset: cuvsDatasetView_t,
+        new_start_row: i64,
         index: cuvsCagraIndex_t,
     ) -> cuvsError_t;
 }

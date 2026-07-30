@@ -145,6 +145,13 @@ func buildCagraIndex(dataset cuvs.Tensor[float32]) (*cagra.CagraIndex, error) {
 
 ### Extending an index
 
+The caller owns dataset concatenation. Allocate a single padded device
+dataset of size `(n_old + n_new)`, place the original vectors in rows
+`[0, new_start_row)` and the additional vectors in rows
+`[new_start_row, n_rows)`, then pass that view plus `new_start_row`
+(= current index size). `extend` only grows the graph and rebinds the
+index to that view.
+
 <Tabs>
 <Tab title="C">
 
@@ -154,16 +161,15 @@ func buildCagraIndex(dataset cuvs.Tensor[float32]) (*cagra.CagraIndex, error) {
 cuvsResources_t res;
 cuvsCagraExtendParams_t extend_params;
 cuvsCagraIndex_t index;
-DLManagedTensor *additional_dataset;
-
-load_additional_dataset(additional_dataset);
+cuvsDatasetView_t extended_dataset;  // already = old || new, device-padded
+int64_t new_start_row;               // == current index size (n_old)
 
 cuvsResourcesCreate(&res);
 cuvsCagraExtendParamsCreate(&extend_params);
 cuvsCagraIndexCreate(&index);
 
-// ... build or load index ...
-cuvsCagraExtend(res, extend_params, additional_dataset, index);
+// ... build index, concatenate old || new into extended_dataset ...
+cuvsCagraExtend(res, extend_params, extended_dataset, new_start_row, index);
 
 cuvsCagraIndexDestroy(index);
 cuvsCagraExtendParamsDestroy(extend_params);
@@ -182,10 +188,11 @@ raft::device_resources res;
 cagra::index_params index_params;
 cagra::extend_params extend_params;
 auto dataset = load_dataset();
-auto additional_dataset = load_additional_dataset();
+auto extended = load_extended_dataset();  // old || new, device-padded
 
 auto index = cagra::build(res, index_params, dataset);
-cagra::extend(res, extend_params, additional_dataset, index);
+int64_t new_start_row = static_cast<int64_t>(index.size());
+cagra::extend(res, extend_params, extended, new_start_row, index);
 ```
 
 </Tab>
@@ -193,12 +200,19 @@ cagra::extend(res, extend_params, additional_dataset, index);
 
 ```python
 from cuvs.neighbors import cagra
+import numpy as np
 
 dataset = load_data()
 additional_dataset = load_additional_data()
 
 index = cagra.build(cagra.IndexParams(), dataset)
-index = cagra.extend(cagra.ExtendParams(), index, additional_dataset)
+# Ensure index is device-padded, then concatenate old || new yourself.
+new_start_row = dataset.shape[0]
+extended = cagra.make_padded_dataset(
+    np.concatenate((dataset, additional_dataset), axis=0)
+)
+extended_view = cagra.make_view_wrapper(extended)
+index = cagra.extend(cagra.ExtendParams(), index, extended_view, new_start_row)
 ```
 
 </Tab>
@@ -215,7 +229,8 @@ import (
 func extendCagraIndex(
 	resource cuvs.Resource,
 	index *cagra.CagraIndex,
-	additionalDataset cuvs.Tensor[float32],
+	extendedDataset *cagra.PaddedDatasetView,
+	newStartRow int64,
 ) error {
 	extendParams, err := cagra.CreateExtendParams()
 	if err != nil {
@@ -223,12 +238,7 @@ func extendCagraIndex(
 	}
 	defer extendParams.Close()
 
-	_, err = additionalDataset.ToDevice(&resource)
-	if err != nil {
-		return err
-	}
-
-	return cagra.ExtendIndex(resource, extendParams, &additionalDataset, index)
+	return cagra.ExtendIndex(resource, extendParams, extendedDataset, newStartRow, index)
 }
 ```
 

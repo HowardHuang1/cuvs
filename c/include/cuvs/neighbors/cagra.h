@@ -693,20 +693,25 @@ CUVS_EXPORT cuvsError_t cuvsCagraBuild(cuvsResources_t res,
  */
 
 /**
- * @brief Extend a CAGRA index with an explicit padded dataset view.
+ * @brief Extend a CAGRA index with a caller-owned pre-concatenated padded dataset view.
+ *
+ * The caller must build `extended_dataset` as `old || new` (size `n_old + n_new`) before calling.
+ * Rows `[0, new_start_row)` are the original vectors; rows `[new_start_row, n_rows)` are the
+ * additional vectors. `new_start_row` must equal the current index size. The library only extends
+ * the graph and rebinds the index to `extended_dataset`; keep that view alive for the index
+ * lifetime.
  *
  * @param[in] res cuvsResources_t opaque C handle
  * @param[in] params cuvsCagraExtendParams_t used to extend CAGRA index
- * @param[in] additional_dataset cuvsDatasetView_t additional dataset
- * @param[in,out] extended_dataset caller-owned writable device-padded dataset view receiving the
- * extended rows
+ * @param[in] extended_dataset cuvsDatasetView_t caller-owned device-padded view of old || new
+ * @param[in] new_start_row row index where the additional vectors begin
  * @param[in,out] index cuvsCagraIndex_t CAGRA index
  * @return cuvsError_t
  */
 CUVS_EXPORT cuvsError_t cuvsCagraExtend(cuvsResources_t res,
                             cuvsCagraExtendParams_t params,
-                            cuvsDatasetView_t additional_dataset,
                             cuvsDatasetView_t extended_dataset,
+                            int64_t new_start_row,
                             cuvsCagraIndex_t index);
 
 /**

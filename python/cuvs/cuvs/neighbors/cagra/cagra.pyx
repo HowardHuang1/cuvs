@@ -1212,49 +1212,50 @@ cdef class ExtendParams:
 
 
 @auto_sync_resources
-def extend(ExtendParams params, Index index, additional_dataset, extended_dataset,
+def extend(ExtendParams params, Index index, extended_dataset, new_start_row,
            resources=None):
     """
     Extend a CAGRA index with additional vectors
+
+    The caller owns dataset concatenation. Build a single padded device
+    dataset of shape ``(n_old + n_new, dim)`` with the original vectors in
+    rows ``[0, new_start_row)`` and the additional vectors in rows
+    ``[new_start_row, n_rows)``. ``new_start_row`` must equal the current
+    index size. This function only extends the graph and rebinds the index
+    to ``extended_dataset``; keep that view alive for the index lifetime.
 
     Parameters
     ----------
     params : ExtendParams object
     index: Index
        Existing cagra index to extend
-    additional_dataset : PaddedDatasetView
-        Explicit padded dataset view for vectors to append.
     extended_dataset : PaddedDatasetView
-        Caller-owned writable padded dataset view that receives the
-        extended dataset.
+        Caller-owned padded dataset view already containing old || new rows.
+    new_start_row : int
+        Row index where the additional vectors begin (must equal ``index`` size).
     {resources_docstring}
 
     """
-    if not isinstance(additional_dataset, PaddedDatasetView):
-        raise TypeError(
-            "additional_dataset must be a PaddedDatasetView. "
-            "Create it explicitly via make_padded_dataset_view() or "
-            "make_padded_dataset() + make_view_wrapper()."
-        )
-    cdef cuvsDatasetView_t padded_view = (<PaddedDatasetView>additional_dataset).view
-    if padded_view == NULL:
-        raise ValueError("additional_dataset padded view is uninitialized")
     if not isinstance(extended_dataset, PaddedDatasetView):
         raise TypeError(
-            "extended_dataset must be a PaddedDatasetView."
+            "extended_dataset must be a PaddedDatasetView. "
+            "Concatenate the original and additional vectors, then create the "
+            "view via make_padded_dataset_view() or "
+            "make_padded_dataset() + make_view_wrapper()."
         )
     cdef cuvsDatasetView_t out_extended_dataset = (<PaddedDatasetView>extended_dataset).view
     if out_extended_dataset == NULL:
         raise ValueError("extended_dataset padded view is uninitialized")
 
+    cdef int64_t c_new_start_row = new_start_row
     cdef cuvsResources_t res = <cuvsResources_t>resources.get_c_obj()
 
     with cuda_interruptible():
         check_cuvs(cuvsCagraExtend(
             res,
             params.params,
-            padded_view,
             out_extended_dataset,
+            c_new_start_row,
             index.index
         ))
 

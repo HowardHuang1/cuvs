@@ -223,8 +223,8 @@ cdef extern from "cuvs/neighbors/cagra.h" nogil:
     cuvsError_t cuvsCagraExtendParamsDestroy(cuvsCagraExtendParams_t params)
     cuvsError_t cuvsCagraExtend(cuvsResources_t res,
                                 cuvsCagraExtendParams_t params,
-                                cuvsDatasetView_t additional_dataset,
                                 cuvsDatasetView_t extended_dataset,
+                                int64_t new_start_row,
                                 cuvsCagraIndex_t index)
 
 

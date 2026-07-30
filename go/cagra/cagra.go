@@ -235,21 +235,18 @@ func BuildIndex[T any](Resources cuvs.Resource, params *IndexParams, dataset *cu
 	return nil
 }
 
-// Extends the index with additional data
+// Extends the index with a caller-owned pre-concatenated padded dataset.
 //
 // # Arguments
 //
 // * `Resources` - Resources to use
 // * `params` - Parameters for extending the index
-// * `additional_dataset` - Explicit padded dataset view to extend the index with
-// * `extended_dataset` - Caller-owned writable padded dataset view receiving extended rows
+// * `extended_dataset` - Caller-owned padded dataset view already containing old || new rows
+// * `newStartRow` - Row index where the additional vectors begin (must equal current index size)
 // * `index` - CagraIndex to extend
-func ExtendIndex(Resources cuvs.Resource, params *ExtendParams, additional_dataset *PaddedDatasetView, extended_dataset *PaddedDatasetView, index *CagraIndex) error {
+func ExtendIndex(Resources cuvs.Resource, params *ExtendParams, extended_dataset *PaddedDatasetView, newStartRow int64, index *CagraIndex) error {
 	if !index.trained {
 		return errors.New("index needs to be built before calling extend")
-	}
-	if additional_dataset == nil || additional_dataset.view == nil {
-		return errors.New("additional_dataset padded view is nil")
 	}
 	if extended_dataset == nil || extended_dataset.view == nil {
 		return errors.New("extended_dataset padded view is nil")
@@ -258,8 +255,8 @@ func ExtendIndex(Resources cuvs.Resource, params *ExtendParams, additional_datas
 	err := cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsCagraExtend(
 		C.cuvsResources_t(Resources.Resource),
 		params.params,
-		additional_dataset.view,
 		extended_dataset.view,
+		C.int64_t(newStartRow),
 		index.index,
 	)))
 	if err != nil {
