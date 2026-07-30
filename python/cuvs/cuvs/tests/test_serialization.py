@@ -69,8 +69,9 @@ def run_save_load(ann_module, dtype, filename="my_index.bin"):
             or out_dataset.layout != "padded"
         ):
             padded_dataset = ann_module.make_padded_dataset(dataset_device)
-            ann_module.update_dataset(loaded_index, padded_dataset)
-            ann_module.update_dataset(index, padded_dataset)
+            padded_view = ann_module.make_view_wrapper(padded_dataset)
+            ann_module.update_dataset(loaded_index, padded_view)
+            ann_module.update_dataset(index, padded_view)
     else:
         loaded_index = ann_module.load(filename)
 
@@ -128,8 +129,8 @@ def test_cagra_graph_only_serialization(tmp_path):
     index = cagra.build(cagra.IndexParams(), dataset_device)
 
     # Keep the caller-owned device array alive while either index uses its view.
-    padded_dataset = cagra.make_padded_dataset(dataset_device)
-    cagra.update_dataset(index, padded_dataset)
+    padded_view = cagra.make_padded_dataset_view(dataset_device)
+    cagra.update_dataset(index, padded_view)
 
     graph_path = tmp_path / "cagra-graph.bin"
     cagra.save(str(graph_path), index, include_dataset=False)
@@ -146,7 +147,7 @@ def test_cagra_graph_only_serialization(tmp_path):
             out_dataset=missing_dataset_owner,
         )
 
-    cagra.update_dataset(loaded, padded_dataset)
+    cagra.update_dataset(loaded, padded_view)
     queries = device_ndarray(generate_data((64, n_cols), np.float32))
     search_params = cagra.SearchParams()
     original_distances, original_neighbors = cagra.search(

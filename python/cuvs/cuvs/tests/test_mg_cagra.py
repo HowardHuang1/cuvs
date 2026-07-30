@@ -36,16 +36,21 @@ def has_multiple_gpus():
     return get_gpu_count() > 1
 
 
-def make_padded_dataset_for_update(dataset):
-    """Create a device-padded dataset suitable for update_dataset."""
+def make_padded_view(dataset):
+    """Create a padded view and keep its backing storage alive."""
     device_dataset = device_ndarray(dataset)
     if cagra.get_dataset_view_kind(device_dataset) == "device_padded":
         return (
             device_dataset,
+            None,
             cagra.make_padded_dataset_view(device_dataset),
         )
     padded_dataset = cagra.make_padded_dataset(device_dataset)
-    return device_dataset, padded_dataset
+    return (
+        device_dataset,
+        padded_dataset,
+        cagra.make_view_wrapper(padded_dataset),
+    )
 
 
 def _n_rows_for_distribution(
@@ -117,8 +122,8 @@ def run_mg_cagra_build_search_test(
     # Build index
     index = mg_cagra.build(build_params, dataset, resources=resources)
     assert index.trained
-    device_dataset, padded_dataset = make_padded_dataset_for_update(dataset)
-    mg_cagra.update_dataset(index, padded_dataset, resources=resources)
+    device_dataset, padded_dataset, padded_view = make_padded_view(dataset)
+    mg_cagra.update_dataset(index, padded_view, resources=resources)
 
     # Search parameters
     search_params = dict(search_params or {})
@@ -319,10 +324,8 @@ def test_mg_cagra_serialize():
         intermediate_graph_degree=intermediate_graph_degree,
     )
     original_index = mg_cagra.build(build_params, dataset, resources=resources)
-    device_dataset, padded_dataset = make_padded_dataset_for_update(dataset)
-    mg_cagra.update_dataset(
-        original_index, padded_dataset, resources=resources
-    )
+    device_dataset, padded_dataset, padded_view = make_padded_view(dataset)
+    mg_cagra.update_dataset(original_index, padded_view, resources=resources)
 
     # Search with original index
     search_params = mg_cagra.SearchParams(itopk_size=32)
@@ -340,9 +343,7 @@ def test_mg_cagra_serialize():
         # Load index from file
         loaded_index = mg_cagra.load(temp_filename, resources=resources)
         assert loaded_index.trained
-        mg_cagra.update_dataset(
-            loaded_index, padded_dataset, resources=resources
-        )
+        mg_cagra.update_dataset(loaded_index, padded_view, resources=resources)
 
         # Search with loaded index
         loaded_distances, loaded_neighbors = mg_cagra.search(
@@ -406,11 +407,9 @@ def test_mg_cagra_distribute():
             temp_filename, resources=resources
         )
         assert distributed_index.trained
-        device_dataset, padded_dataset = make_padded_dataset_for_update(
-            dataset
-        )
+        device_dataset, padded_dataset, padded_view = make_padded_view(dataset)
         mg_cagra.update_dataset(
-            distributed_index, padded_dataset, resources=resources
+            distributed_index, padded_view, resources=resources
         )
 
         # Search should work with distributed index (using host memory arrays)
@@ -460,8 +459,8 @@ def test_memory_location_validation():
 
     # Test that host arrays work for build
     index = mg_cagra.build(build_params, host_data, resources=resources)
-    device_dataset, padded_dataset = make_padded_dataset_for_update(host_data)
-    mg_cagra.update_dataset(index, padded_dataset, resources=resources)
+    device_dataset, padded_dataset, padded_view = make_padded_view(host_data)
+    mg_cagra.update_dataset(index, padded_view, resources=resources)
 
     # Test that device arrays are rejected for search
     queries = generate_data((20, n_cols), np.float32)
@@ -561,8 +560,8 @@ def test_mg_cagra_with_prealloc_output():
         intermediate_graph_degree=intermediate_graph_degree,
     )
     index = mg_cagra.build(build_params, dataset, resources=resources)
-    device_dataset, padded_dataset = make_padded_dataset_for_update(dataset)
-    mg_cagra.update_dataset(index, padded_dataset, resources=resources)
+    device_dataset, padded_dataset, padded_view = make_padded_view(dataset)
+    mg_cagra.update_dataset(index, padded_view, resources=resources)
 
     # Pre-allocate output arrays in host memory
     neighbors = np.empty((n_queries, k), dtype=np.int64)
@@ -627,8 +626,8 @@ def test_mg_cagra_simple():
 
     # Build index
     index = mg_cagra.build(build_params, dataset, resources=resources)
-    device_dataset, padded_dataset = make_padded_dataset_for_update(dataset)
-    mg_cagra.update_dataset(index, padded_dataset, resources=resources)
+    device_dataset, padded_dataset, padded_view = make_padded_view(dataset)
+    mg_cagra.update_dataset(index, padded_view, resources=resources)
 
     # Search with basic parameters
     search_params = mg_cagra.SearchParams(itopk_size=16)
@@ -680,8 +679,8 @@ def test_mg_cagra_integration():
         intermediate_graph_degree=intermediate_graph_degree,
     )
     index = mg_cagra.build(build_params, dataset, resources=resources)
-    device_dataset, padded_dataset = make_padded_dataset_for_update(dataset)
-    mg_cagra.update_dataset(index, padded_dataset, resources=resources)
+    device_dataset, padded_dataset, padded_view = make_padded_view(dataset)
+    mg_cagra.update_dataset(index, padded_view, resources=resources)
 
     # Initial search
     search_params = mg_cagra.SearchParams(
@@ -701,7 +700,7 @@ def test_mg_cagra_integration():
         mg_cagra.save(index, temp_filename, resources=resources)
         reloaded_index = mg_cagra.load(temp_filename, resources=resources)
         mg_cagra.update_dataset(
-            reloaded_index, padded_dataset, resources=resources
+            reloaded_index, padded_view, resources=resources
         )
 
         # Search with reloaded index
