@@ -4,7 +4,6 @@
 
 import numpy as np
 import pytest
-from pylibraft.common import device_ndarray
 from sklearn.neighbors import NearestNeighbors
 from sklearn.preprocessing import normalize
 
@@ -46,10 +45,6 @@ def run_hnsw_build_search_test(
     index = cagra.build(build_params, dataset)
 
     assert index.trained
-
-    dataset_device = device_ndarray(dataset)
-    padded_dataset = cagra.make_padded_dataset(dataset_device)
-    cagra.update_dataset(index, padded_dataset)
 
     hnsw_params = hnsw.IndexParams(hierarchy=hierarchy)
     hnsw_index = hnsw.from_cagra(hnsw_params, index)
@@ -136,10 +131,6 @@ def run_hnsw_extend_test(
     index = cagra.build(build_params, dataset)
 
     assert index.trained
-
-    dataset_device = device_ndarray(dataset)
-    padded_dataset = cagra.make_padded_dataset(dataset_device)
-    cagra.update_dataset(index, padded_dataset)
 
     hnsw_params = hnsw.IndexParams(hierarchy=hierarchy)
     hnsw_index = hnsw.from_cagra(hnsw_params, index)

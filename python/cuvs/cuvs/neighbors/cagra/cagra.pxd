@@ -230,6 +230,8 @@ cdef class Index:
     cdef cuvsCagraIndex_t index
     cdef bool trained
     cdef str active_index_type
+    cdef object _dataset_owner
+    cdef object _dataset_source
 
 
 cdef class Dataset:
