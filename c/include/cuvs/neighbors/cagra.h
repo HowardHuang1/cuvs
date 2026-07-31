@@ -1017,9 +1017,12 @@ CUVS_EXPORT cuvsError_t cuvsCagraIndexFromArgs(cuvsResources_t res,
  * @param[in] indices Array of input cuvsCagraIndex_t handles to merge
  * @param[in] num_indices Number of input indices
  * @param[in] filter Filter that can be used to filter out vectors from the merged index
- * @param[out] merged_dataset Empty owning dataset handle. Merge allocates and populates its device
- *                            storage with the same layout as the input indices. Keep it alive while
- *                            using \p output_index.
+ * @param[out] merged_dataset Empty owning dataset handle. Merge first attempts to allocate and
+ *                            populate device storage with the same layout as the input indices. For
+ *                            an unfiltered merge, if device allocation fails, it falls back to host
+ *                            storage and returns a host-backed output index. Keep this dataset alive
+ *                            while using \p output_index. A host-backed output index must be updated
+ *                            with `cuvsCagraUpdateDataset` before device search.
  * @param[out] output_index Output handle that will store the merged index.
  *                          Must be initialized using `cuvsCagraIndexCreate` before use.
  */

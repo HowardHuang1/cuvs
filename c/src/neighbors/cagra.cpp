@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+#include <algorithm>
 #include <cstdint>
 #include <cstring>
 #include <dlpack/dlpack.h>
@@ -144,21 +145,69 @@ static void merge_indices_for_layout(
     auto const dim    = static_cast<uint32_t>(index_ptrs.front()->dim());
     auto const stride = static_cast<int64_t>(index_ptrs.front()->dataset().stride());
 
-    auto matrix = raft::make_device_matrix<T, int64_t>(*res_ptr, final_row_count, stride);
-    using owner_t = cuvs::neighbors::owning_dataset_for_view_t<DatasetViewT>;
-    auto owner    = std::make_unique<owner_t>(std::move(matrix), dim);
-    auto view     = owner->as_dataset_view();
-    auto merged_idx =
-      cuvs::neighbors::cagra::merge(*res_ptr, params_cpp, index_ptrs, view, row_filter);
+    try {
+      auto matrix = raft::make_device_matrix<T, int64_t>(*res_ptr, final_row_count, stride);
+      using owner_t = cuvs::neighbors::owning_dataset_for_view_t<DatasetViewT>;
+      auto owner    = std::make_unique<owner_t>(std::move(matrix), dim);
+      auto view     = owner->as_dataset_view();
+      auto merged_idx =
+        cuvs::neighbors::cagra::merge(*res_ptr, params_cpp, index_ptrs, view, row_filter);
+      auto* holder =
+        new cuvs_cagra_c_api_index_lifetime_holder<T, DatasetViewT>{std::move(merged_idx)};
+      bind_index_lifetime_holder_to_C_index<T, DatasetViewT>(
+        output_index, output_index->dtype, holder);
+
+      merged_dataset->addr         = reinterpret_cast<uintptr_t>(owner.release());
+      merged_dataset->destroy_addr = &destroy_typed_addr<owner_t>;
+      merged_dataset->dtype        = output_index->dtype;
+      merged_dataset->mem_type     = CUVS_DATASET_MEM_TYPE_DEVICE;
+      merged_dataset->layout       = output_layout;
+      merged_dataset->is_owning    = true;
+      return;
+    } catch (std::bad_alloc const&) {
+      // Filtered merge gathers rows with device-only primitives, matching the restriction on the
+      // legacy host fallback.
+      RAFT_EXPECTS(filter.type == NO_FILTER,
+                   "Filtered merge isn't available with the host-memory OOM fallback");
+      RAFT_LOG_DEBUG("cagra::merge: device allocation failed; using host memory for merged dataset");
+    }
+
+    using host_view_t = std::conditional_t<
+      cuvs::neighbors::is_padded_dataset_view_v<DatasetViewT>,
+      cuvs::neighbors::host_padded_dataset_view<T, int64_t>,
+      cuvs::neighbors::host_standard_dataset_view<T, int64_t>>;
+    using host_owner_t = cuvs::neighbors::owning_dataset_for_view_t<host_view_t>;
+
+    auto matrix = raft::make_host_matrix<T, int64_t>(final_row_count, stride);
+    std::fill_n(matrix.data_handle(), static_cast<std::size_t>(matrix.size()), T{});
+
+    std::size_t row_offset = 0;
+    auto stream            = raft::resource::get_cuda_stream(*res_ptr);
+    for (auto* index : index_ptrs) {
+      auto const& input = index->dataset();
+      raft::copy_matrix(matrix.data_handle() + row_offset * static_cast<std::size_t>(stride),
+                        static_cast<std::size_t>(stride),
+                        input.view().data_handle(),
+                        static_cast<std::size_t>(input.stride()),
+                        static_cast<std::size_t>(dim),
+                        static_cast<std::size_t>(input.n_rows()),
+                        stream);
+      row_offset += static_cast<std::size_t>(input.n_rows());
+    }
+    raft::resource::sync_stream(*res_ptr);
+
+    auto owner      = std::make_unique<host_owner_t>(std::move(matrix), dim);
+    auto view       = owner->as_dataset_view();
+    auto merged_idx = cuvs::neighbors::cagra::build(*res_ptr, params_cpp, view);
     auto* holder =
-      new cuvs_cagra_c_api_index_lifetime_holder<T, DatasetViewT>{std::move(merged_idx)};
-    bind_index_lifetime_holder_to_C_index<T, DatasetViewT>(
+      new cuvs_cagra_c_api_index_lifetime_holder<T, host_view_t>{std::move(merged_idx)};
+    bind_index_lifetime_holder_to_C_index<T, host_view_t>(
       output_index, output_index->dtype, holder);
 
     merged_dataset->addr         = reinterpret_cast<uintptr_t>(owner.release());
-    merged_dataset->destroy_addr = &destroy_typed_addr<owner_t>;
+    merged_dataset->destroy_addr = &destroy_typed_addr<host_owner_t>;
     merged_dataset->dtype        = output_index->dtype;
-    merged_dataset->mem_type     = CUVS_DATASET_MEM_TYPE_DEVICE;
+    merged_dataset->mem_type     = CUVS_DATASET_MEM_TYPE_HOST;
     merged_dataset->layout       = output_layout;
     merged_dataset->is_owning    = true;
   };
