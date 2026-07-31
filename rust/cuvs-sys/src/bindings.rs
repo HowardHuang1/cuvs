@@ -170,6 +170,13 @@ unsafe extern "C" {
 }
 unsafe extern "C" {
     #[must_use]
+    pub fn cuvsResourcesSetWorkspacePool(
+        res: cuvsResources_t,
+        initial_size_bytes: usize,
+    ) -> cuvsError_t;
+}
+unsafe extern "C" {
+    #[must_use]
     pub fn cuvsMultiGpuResourcesCreate(res: *mut cuvsResources_t) -> cuvsError_t;
 }
 unsafe extern "C" {
@@ -216,6 +223,10 @@ unsafe extern "C" {
 }
 unsafe extern "C" {
     #[must_use]
+    pub fn cuvsRMMAsyncMemoryResourceEnable() -> cuvsError_t;
+}
+unsafe extern "C" {
+    #[must_use]
     pub fn cuvsRMMMemoryResourceReset() -> cuvsError_t;
 }
 unsafe extern "C" {
@@ -247,32 +258,6 @@ unsafe extern "C" {
         end: i64,
         dst: *mut DLManagedTensor,
     ) -> cuvsError_t;
-}
-#[repr(u32)]
-#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
-pub enum cuvsFilterType {
-    NO_FILTER = 0,
-    BITSET = 1,
-    BITMAP = 2,
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct cuvsFilter {
-    pub addr: usize,
-    pub type_: cuvsFilterType,
-}
-#[allow(clippy::unnecessary_operation, clippy::identity_op)]
-const _: () = {
-    ["Size of cuvsFilter"][::std::mem::size_of::<cuvsFilter>() - 16usize];
-    ["Alignment of cuvsFilter"][::std::mem::align_of::<cuvsFilter>() - 8usize];
-    ["Offset of field: cuvsFilter::addr"][::std::mem::offset_of!(cuvsFilter, addr) - 0usize];
-    ["Offset of field: cuvsFilter::type_"][::std::mem::offset_of!(cuvsFilter, type_) - 8usize];
-};
-#[repr(u32)]
-#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
-pub enum cuvsMergeStrategy {
-    MERGE_STRATEGY_PHYSICAL = 0,
-    MERGE_STRATEGY_LOGICAL = 1,
 }
 #[repr(u32)]
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
@@ -312,7 +297,6 @@ const _: () = {
         [::std::mem::offset_of!(cuvsDataset, is_owning) - 28usize];
 };
 pub type cuvsDataset_t = *mut cuvsDataset;
-pub type cuvsCagraIndex_t = *mut cuvsCagraIndex;
 unsafe extern "C" {
     #[must_use]
     pub fn cuvsDatasetCreate(dataset: *mut cuvsDataset_t) -> cuvsError_t;
@@ -345,6 +329,28 @@ unsafe extern "C" {
 unsafe extern "C" {
     #[must_use]
     pub fn cuvsDatasetDestroy(dataset: cuvsDataset_t) -> cuvsError_t;
+}
+unsafe extern "C" {
+    #[must_use]
+    pub fn cuvsDatasetGetMemType(
+        dataset: cuvsDataset_t,
+        mem_type: *mut cuvsDatasetMemType_t,
+    ) -> cuvsError_t;
+}
+unsafe extern "C" {
+    #[must_use]
+    pub fn cuvsDatasetGetLayout(
+        dataset: cuvsDataset_t,
+        layout: *mut cuvsDatasetLayout_t,
+    ) -> cuvsError_t;
+}
+unsafe extern "C" {
+    #[must_use]
+    pub fn cuvsDatasetGetIsOwning(dataset: cuvsDataset_t, is_owning: *mut bool) -> cuvsError_t;
+}
+unsafe extern "C" {
+    #[must_use]
+    pub fn cuvsDatasetGetDtype(dataset: cuvsDataset_t, dtype: *mut DLDataType) -> cuvsError_t;
 }
 #[repr(u32)]
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
@@ -933,6 +939,32 @@ unsafe extern "C" {
         alpha: f32,
     ) -> cuvsError_t;
 }
+#[repr(u32)]
+#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
+pub enum cuvsFilterType {
+    NO_FILTER = 0,
+    BITSET = 1,
+    BITMAP = 2,
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct cuvsFilter {
+    pub addr: usize,
+    pub type_: cuvsFilterType,
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of cuvsFilter"][::std::mem::size_of::<cuvsFilter>() - 16usize];
+    ["Alignment of cuvsFilter"][::std::mem::align_of::<cuvsFilter>() - 8usize];
+    ["Offset of field: cuvsFilter::addr"][::std::mem::offset_of!(cuvsFilter, addr) - 0usize];
+    ["Offset of field: cuvsFilter::type_"][::std::mem::offset_of!(cuvsFilter, type_) - 8usize];
+};
+#[repr(u32)]
+#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
+pub enum cuvsMergeStrategy {
+    MERGE_STRATEGY_PHYSICAL = 0,
+    MERGE_STRATEGY_LOGICAL = 1,
+}
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct cuvsBruteForceIndex {
@@ -1154,7 +1186,6 @@ unsafe extern "C" {
 }
 unsafe extern "C" {
     #[must_use]
-    #[doc = " @brief Create CAGRA index parameters heuristically tuned for a dataset\n\n This factory function selects the graph build algorithm and its parameters based on the shape of\n the dataset.\n\n @param[out] params The CAGRA index params to populate\n @param[in] n_rows Number of rows in the dataset\n @param[in] dim Number of dimensions in the dataset\n @param[in] graph_degree Degree of the output graph\n @param[in] metric Distance metric to use\n @param[in] build_quality Higher values increase build quality (and cost) up to a point\n @return cuvsError_t"]
     pub fn cuvsCagraIndexParamsFromDataset(
         params: cuvsCagraIndexParams_t,
         n_rows: i64,
@@ -1164,7 +1195,6 @@ unsafe extern "C" {
         build_quality: usize,
     ) -> cuvsError_t;
 }
-#[doc = " @defgroup cagra_c_extend_params C API for CUDA ANN Graph-based nearest neighbor search\n @{\n/\n/**\n @brief Supplemental parameters to extend CAGRA Index\n"]
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct cuvsCagraExtendParams {
@@ -1284,6 +1314,7 @@ const _: () = {
     ["Offset of field: cuvsCagraIndex::dtype"]
         [::std::mem::offset_of!(cuvsCagraIndex, dtype) - 8usize];
 };
+pub type cuvsCagraIndex_t = *mut cuvsCagraIndex;
 unsafe extern "C" {
     #[must_use]
     pub fn cuvsCagraIndexCreate(index: *mut cuvsCagraIndex_t) -> cuvsError_t;
@@ -1358,6 +1389,20 @@ unsafe extern "C" {
         neighbors: *mut DLManagedTensor,
         distances: *mut DLManagedTensor,
         filter: cuvsFilter,
+    ) -> cuvsError_t;
+}
+unsafe extern "C" {
+    #[must_use]
+    pub fn cuvsCagraSearchMultiPartition(
+        res: cuvsResources_t,
+        params: cuvsCagraSearchParams_t,
+        num_partitions: u32,
+        indices: *mut cuvsCagraIndex_t,
+        queries: *mut DLManagedTensor,
+        partition_ids: *mut DLManagedTensor,
+        neighbors: *mut DLManagedTensor,
+        distances: *mut DLManagedTensor,
+        filters: *mut cuvsFilter,
     ) -> cuvsError_t;
 }
 unsafe extern "C" {
@@ -3026,5 +3071,14 @@ unsafe extern "C" {
         quantizer: cuvsScalarQuantizer_t,
         dataset: *mut DLManagedTensor,
         out: *mut DLManagedTensor,
+    ) -> cuvsError_t;
+}
+unsafe extern "C" {
+    #[must_use]
+    pub fn cuvsSelectK(
+        res: cuvsResources_t,
+        in_val: *mut DLManagedTensor,
+        out_val: *mut DLManagedTensor,
+        out_idx: *mut DLManagedTensor,
     ) -> cuvsError_t;
 }

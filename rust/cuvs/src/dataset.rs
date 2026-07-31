@@ -28,46 +28,52 @@ pub enum DatasetKind {
 }
 
 impl DatasetKind {
-    fn from_residency_and_padded(is_device: bool, is_padded: bool) -> Self {
-        match (is_device, is_padded) {
-            (true, true) => Self::DevicePadded,
-            (true, false) => Self::DeviceStandard,
-            (false, true) => Self::HostPadded,
-            (false, false) => Self::HostStandard,
-        }
+    fn from_handle(handle: ffi::cuvsDataset_t) -> Result<Self> {
+        let mem_type = unsafe { init_handle(|out| ffi::cuvsDatasetGetMemType(handle, out))? };
+        let layout = unsafe { init_handle(|out| ffi::cuvsDatasetGetLayout(handle, out))? };
+        Ok(match (mem_type, layout) {
+            (
+                ffi::cuvsDatasetMemType_t::CUVS_DATASET_MEM_TYPE_DEVICE,
+                ffi::cuvsDatasetLayout_t::CUVS_DATASET_LAYOUT_PADDED,
+            ) => Self::DevicePadded,
+            (
+                ffi::cuvsDatasetMemType_t::CUVS_DATASET_MEM_TYPE_DEVICE,
+                ffi::cuvsDatasetLayout_t::CUVS_DATASET_LAYOUT_STANDARD,
+            ) => Self::DeviceStandard,
+            (
+                ffi::cuvsDatasetMemType_t::CUVS_DATASET_MEM_TYPE_HOST,
+                ffi::cuvsDatasetLayout_t::CUVS_DATASET_LAYOUT_PADDED,
+            ) => Self::HostPadded,
+            (
+                ffi::cuvsDatasetMemType_t::CUVS_DATASET_MEM_TYPE_HOST,
+                ffi::cuvsDatasetLayout_t::CUVS_DATASET_LAYOUT_STANDARD,
+            ) => Self::HostStandard,
+        })
     }
+}
 
-    fn from_handle_fields(
-        mem_type: ffi::cuvsDatasetMemType_t,
-        layout: ffi::cuvsDatasetLayout_t,
-    ) -> Self {
-        Self::from_residency_and_padded(
-            mem_type == ffi::cuvsDatasetMemType_t::CUVS_DATASET_MEM_TYPE_DEVICE,
-            layout == ffi::cuvsDatasetLayout_t::CUVS_DATASET_LAYOUT_PADDED,
-        )
+pub(crate) mod private {
+    pub trait Sealed {
+        fn raw_dataset_handle(&self) -> ffi::cuvsDataset_t;
+    }
+}
+
+/// A Rust wrapper accepted by native cuVS dataset operations.
+///
+/// This trait is sealed; dataset handles can only be created by this crate.
+pub trait CuvsDataset: private::Sealed {
+    /// Query this dataset's residency and row layout.
+    fn dataset_kind(&self) -> Result<DatasetKind> {
+        DatasetKind::from_handle(private::Sealed::raw_dataset_handle(self))
     }
 }
 
 /// Matches C++ `cagra_required_row_width` (16-byte default alignment).
 fn cagra_required_row_width(logical_columns: u32, sizeof_value: usize) -> u32 {
     let align_bytes: usize = 16;
-    let lcm = lcm(align_bytes, sizeof_value);
     let bytes = (logical_columns as usize) * sizeof_value;
-    let rounded = ((bytes + lcm - 1) / lcm) * lcm;
+    let rounded = bytes.div_ceil(align_bytes) * align_bytes;
     (rounded / sizeof_value) as u32
-}
-
-fn gcd(mut a: usize, mut b: usize) -> usize {
-    while b != 0 {
-        let t = a % b;
-        a = b;
-        b = t;
-    }
-    a
-}
-
-fn lcm(a: usize, b: usize) -> usize {
-    a / gcd(a, b) * b
 }
 
 fn dlpack_element_size(dtype: &ffi::DLDataType) -> Option<usize> {
@@ -108,8 +114,6 @@ fn is_cagra_padded_layout(tensor: &ffi::DLTensor) -> Result<bool> {
 #[derive(Debug)]
 pub struct DatasetView<'a> {
     handle: ffi::cuvsDataset_t,
-    kind: DatasetKind,
-    destroy_handle: bool,
     _dataset: PhantomData<&'a ()>,
 }
 
@@ -123,9 +127,7 @@ impl<'a> DatasetView<'a> {
         let dataset = dataset.as_dl_tensor()?;
         let mut dataset_c = dataset.to_c();
         unsafe {
-            let is_device = dataset_c.inner.dl_tensor.device.device_type.is_device_compatible();
             let is_padded = is_cagra_padded_layout(&dataset_c.inner.dl_tensor)?;
-            let kind = DatasetKind::from_residency_and_padded(is_device, is_padded);
 
             let handle = init_handle(|out| {
                 if is_padded {
@@ -134,29 +136,26 @@ impl<'a> DatasetView<'a> {
                     ffi::cuvsDatasetMakeStandardView(res.handle(), dataset_c.as_mut_ptr(), out)
                 }
             })?;
-            Ok(Self { handle, kind, destroy_handle: true, _dataset: PhantomData })
+            Ok(Self { handle, _dataset: PhantomData })
         }
-    }
-
-    /// Return this view's immutable residency/layout classification.
-    pub fn kind(&self) -> DatasetKind {
-        self.kind
-    }
-
-    pub(crate) fn raw(&self) -> ffi::cuvsDataset_t {
-        self.handle
     }
 }
 
 impl Drop for DatasetView<'_> {
     fn drop(&mut self) {
-        if self.destroy_handle {
-            if let Err(e) = check_cuvs(unsafe { ffi::cuvsDatasetDestroy(self.handle) }) {
-                report_drop_failure("dataset view", &e);
-            }
+        if let Err(e) = check_cuvs(unsafe { ffi::cuvsDatasetDestroy(self.handle) }) {
+            report_drop_failure("dataset view", &e);
         }
     }
 }
+
+impl private::Sealed for DatasetView<'_> {
+    fn raw_dataset_handle(&self) -> ffi::cuvsDataset_t {
+        self.handle
+    }
+}
+
+impl CuvsDataset for DatasetView<'_> {}
 
 /// Storage owned by the caller, padded to CAGRA's required row width.
 ///
@@ -166,7 +165,6 @@ impl Drop for DatasetView<'_> {
 #[derive(Debug)]
 pub struct PaddedDataset {
     handle: ffi::cuvsDataset_t,
-    kind: DatasetKind,
 }
 
 impl PaddedDataset {
@@ -178,15 +176,10 @@ impl PaddedDataset {
         let dataset = dataset.as_dl_tensor()?;
         let mut dataset_c = dataset.to_c();
         let device_type = dataset_c.inner.dl_tensor.device.device_type;
-        let kind = if device_type.is_device_compatible() {
-            DatasetKind::DevicePadded
+        let target_mem_type = if device_type.is_device_compatible() {
+            ffi::cuvsDatasetMemType_t::CUVS_DATASET_MEM_TYPE_DEVICE
         } else {
-            DatasetKind::HostPadded
-        };
-        let target_mem_type = match kind {
-            DatasetKind::DevicePadded => ffi::cuvsDatasetMemType_t::CUVS_DATASET_MEM_TYPE_DEVICE,
-            DatasetKind::HostPadded => ffi::cuvsDatasetMemType_t::CUVS_DATASET_MEM_TYPE_HOST,
-            DatasetKind::DeviceStandard | DatasetKind::HostStandard => unreachable!(),
+            ffi::cuvsDatasetMemType_t::CUVS_DATASET_MEM_TYPE_HOST
         };
         unsafe {
             let handle = init_handle(|out| {
@@ -197,18 +190,8 @@ impl PaddedDataset {
                     out,
                 )
             })?;
-            Ok(Self { handle, kind })
+            Ok(Self { handle })
         }
-    }
-
-    /// Borrow this allocation as a padded view.
-    pub fn as_view(&self) -> Result<DatasetView<'_>> {
-        Ok(DatasetView {
-            handle: self.handle,
-            kind: self.kind,
-            destroy_handle: false,
-            _dataset: PhantomData,
-        })
     }
 }
 
@@ -220,6 +203,14 @@ impl Drop for PaddedDataset {
     }
 }
 
+impl private::Sealed for PaddedDataset {
+    fn raw_dataset_handle(&self) -> ffi::cuvsDataset_t {
+        self.handle
+    }
+}
+
+impl CuvsDataset for PaddedDataset {}
+
 /// Owning dataset storage returned by CAGRA deserialization.
 ///
 /// The allocation preserves the serialized host/device residency and
@@ -228,19 +219,16 @@ impl Drop for PaddedDataset {
 #[derive(Debug)]
 pub struct Dataset {
     handle: ffi::cuvsDataset_t,
-    kind: DatasetKind,
 }
 
 impl Dataset {
-    pub(crate) fn from_raw(handle: ffi::cuvsDataset_t) -> Self {
-        debug_assert!(!handle.is_null());
-        let kind = unsafe { DatasetKind::from_handle_fields((*handle).mem_type, (*handle).layout) };
-        Self { handle, kind }
-    }
-
-    /// Return this allocation's immutable residency/layout classification.
-    pub fn kind(&self) -> DatasetKind {
-        self.kind
+    pub(crate) fn from_raw(handle: ffi::cuvsDataset_t) -> Result<Self> {
+        if handle.is_null() {
+            return Err(CagraError::Validation(
+                "deserialization returned a null dataset handle".to_string(),
+            ));
+        }
+        Ok(Self { handle })
     }
 }
 
@@ -252,6 +240,14 @@ impl Drop for Dataset {
     }
 }
 
+impl private::Sealed for Dataset {
+    fn raw_dataset_handle(&self) -> ffi::cuvsDataset_t {
+        self.handle
+    }
+}
+
+impl CuvsDataset for Dataset {}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -262,7 +258,6 @@ mod tests {
         let dataset = ndarray::Array::<f32, _>::zeros((256, 15));
 
         let owner = PaddedDataset::new(&res, &*dataset).expect("host padded dataset");
-        let view = owner.as_view().expect("host padded dataset view");
-        assert_eq!(view.kind(), DatasetKind::HostPadded);
+        assert_eq!(owner.dataset_kind().unwrap(), DatasetKind::HostPadded);
     }
 }

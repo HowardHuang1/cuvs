@@ -236,6 +236,7 @@ impl SearchParams {
         max_iterations: Option<usize>,
         algo: Option<SearchAlgo>,
         team_size: Option<usize>,
+        search_width: Option<usize>,
         min_iterations: Option<usize>,
         thread_block_size: Option<usize>,
         hashmap_mode: Option<HashMode>,
@@ -243,6 +244,9 @@ impl SearchParams {
         hashmap_max_fill_rate: Option<f32>,
         num_random_samplings: Option<u32>,
         rand_xor_mask: Option<u64>,
+        persistent: Option<bool>,
+        persistent_lifetime: Option<f32>,
+        persistent_device_usage: Option<f32>,
     ) -> Result<Self, CagraError> {
         let params = Self::create_handle()?;
 
@@ -260,10 +264,10 @@ impl SearchParams {
         }
 
         if let Some(n) = team_size
-            && !matches!(n, 0 | 8 | 16 | 32)
+            && !matches!(n, 0 | 4 | 8 | 16 | 32)
         {
             return Err(CagraError::Validation(format!(
-                "team_size must be 0 (auto), 8, 16, or 32, got {n}"
+                "team_size must be 0 (auto), 4, 8, 16, or 32, got {n}"
             )));
         }
 
@@ -276,18 +280,35 @@ impl SearchParams {
         }
 
         if let Some(bitlen) = hashmap_min_bitlen
-            && bitlen > 20
+            && bitlen != 0
+            && !(9..=20).contains(&bitlen)
         {
             return Err(CagraError::Validation(format!(
-                "hashmap_min_bitlen must be <= 20, got {bitlen}"
+                "hashmap_min_bitlen must be 0 (auto) or in [9, 20], got {bitlen}"
             )));
         }
 
         if let Some(rate) = hashmap_max_fill_rate
-            && !(0.1..0.9).contains(&rate)
+            && (!rate.is_finite() || rate <= 0.1 || rate >= 0.9)
         {
             return Err(CagraError::Validation(format!(
-                "hashmap_max_fill_rate must be in [0.1, 0.9), got {rate}"
+                "hashmap_max_fill_rate must be in (0.1, 0.9), got {rate}"
+            )));
+        }
+
+        if let Some(n) = num_random_samplings
+            && n == 0
+        {
+            return Err(CagraError::Validation(
+                "num_random_samplings must be greater than 0".to_string(),
+            ));
+        }
+
+        if let Some(usage) = persistent_device_usage
+            && (!usage.is_finite() || usage <= 0.0 || usage > 1.0)
+        {
+            return Err(CagraError::Validation(format!(
+                "persistent_device_usage must be in (0, 1], got {usage}"
             )));
         }
 
@@ -313,6 +334,9 @@ impl SearchParams {
             if let Some(v) = team_size {
                 (*params.handle).team_size = v;
             }
+            if let Some(v) = search_width {
+                (*params.handle).search_width = v;
+            }
             if let Some(v) = min_iterations {
                 (*params.handle).min_iterations = v;
             }
@@ -333,6 +357,15 @@ impl SearchParams {
             }
             if let Some(v) = rand_xor_mask {
                 (*params.handle).rand_xor_mask = v;
+            }
+            if let Some(v) = persistent {
+                (*params.handle).persistent = v;
+            }
+            if let Some(v) = persistent_lifetime {
+                (*params.handle).persistent_lifetime = v;
+            }
+            if let Some(v) = persistent_device_usage {
+                (*params.handle).persistent_device_usage = v;
             }
         }
 
@@ -465,8 +498,33 @@ mod tests {
 
     #[test]
     fn search_params_rejects_invalid_team_size() {
-        let err = SearchParams::builder().team_size(4).build().unwrap_err();
+        let err = SearchParams::builder().team_size(2).build().unwrap_err();
         assert!(err.to_string().contains("team_size must be"));
+    }
+
+    #[test]
+    fn search_params_sets_latest_fields() {
+        let params = SearchParams::builder()
+            .team_size(4)
+            .search_width(2)
+            .hashmap_min_bitlen(9)
+            .hashmap_max_fill_rate(0.5)
+            .num_random_samplings(2)
+            .persistent(true)
+            .persistent_lifetime(1.5)
+            .persistent_device_usage(0.8)
+            .build()
+            .unwrap();
+
+        unsafe {
+            assert_eq!((*params.handle).team_size, 4);
+            assert_eq!((*params.handle).search_width, 2);
+            assert_eq!((*params.handle).hashmap_min_bitlen, 9);
+            assert_eq!((*params.handle).num_random_samplings, 2);
+            assert!((*params.handle).persistent);
+            assert_eq!((*params.handle).persistent_lifetime, 1.5);
+            assert_eq!((*params.handle).persistent_device_usage, 0.8);
+        }
     }
 
     #[test]

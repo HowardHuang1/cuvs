@@ -657,7 +657,8 @@ public class CagraBuildAndSearchIT extends CuVSTestCase {
       CagraQuery query =
           new CagraQuery.Builder(resources)
               .withTopK(1)
-              // Pin SINGLE_CTA; AUTO may pick MULTI_CTA, which drops neighbors on this tiny dataset.
+              // Pin SINGLE_CTA; AUTO may pick MULTI_CTA, which drops neighbors on this tiny
+              // dataset.
               .withSearchParams(
                   new CagraSearchParams.Builder()
                       .withAlgo(CagraSearchParams.SearchAlgo.SINGLE_CTA)
@@ -869,49 +870,62 @@ public class CagraBuildAndSearchIT extends CuVSTestCase {
               .withIndexParams(indexParams)
               .build();
 
-      log.trace("Merging indexes...");
-      CagraIndex mergedIndex = CagraIndex.merge(new CagraIndex[] {index1, index2});
-      log.trace("Merge completed successfully");
+      // Host-built indexes are not mergeable. Dim=2 is not 16-byte aligned, so upload to device,
+      // allocate owning padded copies, and attach them before merge. Keep them alive until the
+      // inputs are closed.
+      try (var device1 = CuVSMatrix.ofArray(vector1).toDevice(resources);
+          var device2 = CuVSMatrix.ofArray(vector2).toDevice(resources);
+          var padded1 = index1.makePaddedDataset(device1);
+          var padded2 = index2.makePaddedDataset(device2)) {
+        index1.updateDataset(padded1);
+        index2.updateDataset(padded2);
 
-      // Pin SINGLE_CTA; AUTO may pick MULTI_CTA, which drops neighbors on this tiny dataset.
-      CagraSearchParams searchParams =
-          new CagraSearchParams.Builder().withAlgo(CagraSearchParams.SearchAlgo.SINGLE_CTA).build();
+        log.trace("Merging indexes...");
+        CagraIndex mergedIndex = CagraIndex.merge(new CagraIndex[] {index1, index2});
+        log.trace("Merge completed successfully");
 
-      try (var queryVectors = CuVSMatrix.ofArray(queries)) {
-        CagraQuery query =
-            new CagraQuery.Builder(resources)
-                .withTopK(3)
-                .withSearchParams(searchParams)
-                .withQueryVectors(queryVectors)
-                .withMapping(SearchResults.IDENTITY_MAPPING)
+        // Pin SINGLE_CTA; AUTO may pick MULTI_CTA, which drops neighbors on this tiny dataset.
+        CagraSearchParams searchParams =
+            new CagraSearchParams.Builder()
+                .withAlgo(CagraSearchParams.SearchAlgo.SINGLE_CTA)
                 .build();
 
-        log.trace("Searching merged index...");
-        SearchResults results = mergedIndex.search(query);
-        log.debug("Search results: " + results.getResults().toString());
+        try (var queryVectors = CuVSMatrix.ofArray(queries)) {
+          CagraQuery query =
+              new CagraQuery.Builder(resources)
+                  .withTopK(3)
+                  .withSearchParams(searchParams)
+                  .withQueryVectors(queryVectors)
+                  .withMapping(SearchResults.IDENTITY_MAPPING)
+                  .build();
 
-        assertEquals(expectedResults, results.getResults());
+          log.trace("Searching merged index...");
+          SearchResults results = mergedIndex.search(query);
+          log.debug("Search results: " + results.getResults().toString());
 
-        // --- Serialization/deserialization check ---
-        String indexFileName = UUID.randomUUID() + ".cag";
-        var indexFile = Path.of(indexFileName);
+          assertEquals(expectedResults, results.getResults());
 
-        try (var out = Files.newOutputStream(indexFile)) {
-          mergedIndex.serialize(out);
+          // --- Serialization/deserialization check ---
+          String indexFileName = UUID.randomUUID() + ".cag";
+          var indexFile = Path.of(indexFileName);
+
+          try (var out = Files.newOutputStream(indexFile)) {
+            mergedIndex.serialize(out);
+          }
+
+          try (var inputStream = Files.newInputStream(indexFile);
+              CagraIndex loadedMergedIndex =
+                  CagraIndex.newBuilder(resources).from(inputStream).build()) {
+
+            SearchResults resultsFromLoaded = loadedMergedIndex.search(query);
+            assertEquals(expectedResults, resultsFromLoaded.getResults());
+            mergedIndex.close();
+          } finally {
+            Files.deleteIfExists(indexFile);
+          }
+          index1.close();
+          index2.close();
         }
-
-        try (var inputStream = Files.newInputStream(indexFile);
-            CagraIndex loadedMergedIndex =
-                CagraIndex.newBuilder(resources).from(inputStream).build()) {
-
-          SearchResults resultsFromLoaded = loadedMergedIndex.search(query);
-          assertEquals(expectedResults, resultsFromLoaded.getResults());
-          mergedIndex.close();
-        } finally {
-          Files.deleteIfExists(indexFile);
-        }
-        index1.close();
-        index2.close();
       }
     }
   }
@@ -974,57 +988,68 @@ public class CagraBuildAndSearchIT extends CuVSTestCase {
               .withMetric(CuvsDistanceType.L2Expanded)
               .build();
 
-      log.trace("Merging indexes with PHYSICAL strategy...");
-      try (CagraIndex physicalMergedIndex =
-          CagraIndex.merge(new CagraIndex[] {index1, index2}, outputIndexParams)) {
-        log.trace("Physical merge completed successfully");
+      // Host-built indexes are not mergeable. Dim=2 is not 16-byte aligned, so upload to device,
+      // allocate owning padded copies, and attach them before merge. Keep them alive until the
+      // inputs are closed.
+      try (var device1 = CuVSMatrix.ofArray(vector1).toDevice(resources);
+          var device2 = CuVSMatrix.ofArray(vector2).toDevice(resources);
+          var padded1 = index1.makePaddedDataset(device1);
+          var padded2 = index2.makePaddedDataset(device2)) {
+        index1.updateDataset(padded1);
+        index2.updateDataset(padded2);
 
-        // Pin SINGLE_CTA; AUTO may pick MULTI_CTA, which drops neighbors on this tiny dataset.
-        CagraSearchParams searchParams =
-            new CagraSearchParams.Builder()
-                .withAlgo(CagraSearchParams.SearchAlgo.SINGLE_CTA)
-                .build();
+        log.trace("Merging indexes with PHYSICAL strategy...");
+        try (CagraIndex physicalMergedIndex =
+            CagraIndex.merge(new CagraIndex[] {index1, index2}, outputIndexParams)) {
+          log.trace("Physical merge completed successfully");
 
-        try (var queryVectors = CuVSMatrix.ofArray(queries)) {
-          CagraQuery query =
-              new CagraQuery.Builder(resources)
-                  .withTopK(3)
-                  .withSearchParams(searchParams)
-                  .withQueryVectors(queryVectors)
-                  .withMapping(SearchResults.IDENTITY_MAPPING)
+          // Pin SINGLE_CTA; AUTO may pick MULTI_CTA, which drops neighbors on this tiny dataset.
+          CagraSearchParams searchParams =
+              new CagraSearchParams.Builder()
+                  .withAlgo(CagraSearchParams.SearchAlgo.SINGLE_CTA)
                   .build();
 
-          log.trace("Searching physically merged index...");
-          SearchResults physicalResults = physicalMergedIndex.search(query);
-          assertNotNull("Physical merge search results should not be null", physicalResults);
-          assertEquals(
-              "Physical merge search results should match expected",
-              expectedResults,
-              physicalResults.getResults());
+          try (var queryVectors = CuVSMatrix.ofArray(queries)) {
+            CagraQuery query =
+                new CagraQuery.Builder(resources)
+                    .withTopK(3)
+                    .withSearchParams(searchParams)
+                    .withQueryVectors(queryVectors)
+                    .withMapping(SearchResults.IDENTITY_MAPPING)
+                    .build();
 
-          // --- Serialization/deserialization check for both merged indexes ---
-          String physicalIndexFileName = UUID.randomUUID() + ".cag";
-          var physicalIndexFile = Path.of(physicalIndexFileName);
-
-          try (var out = Files.newOutputStream(physicalIndexFile)) {
-            physicalMergedIndex.serialize(out);
-          }
-
-          try (var physicalInputStream = Files.newInputStream(physicalIndexFile);
-              CagraIndex loadedPhysicalIndex =
-                  CagraIndex.newBuilder(resources).from(physicalInputStream).build()) {
-
-            SearchResults resultsFromLoadedPhysical = loadedPhysicalIndex.search(query);
+            log.trace("Searching physically merged index...");
+            SearchResults physicalResults = physicalMergedIndex.search(query);
+            assertNotNull("Physical merge search results should not be null", physicalResults);
             assertEquals(
-                "Loaded physical index search results should match expected",
+                "Physical merge search results should match expected",
                 expectedResults,
-                resultsFromLoadedPhysical.getResults());
-          } finally {
-            Files.deleteIfExists(physicalIndexFile);
+                physicalResults.getResults());
+
+            // --- Serialization/deserialization check for both merged indexes ---
+            String physicalIndexFileName = UUID.randomUUID() + ".cag";
+            var physicalIndexFile = Path.of(physicalIndexFileName);
+
+            try (var out = Files.newOutputStream(physicalIndexFile)) {
+              physicalMergedIndex.serialize(out);
+            }
+
+            try (var physicalInputStream = Files.newInputStream(physicalIndexFile);
+                CagraIndex loadedPhysicalIndex =
+                    CagraIndex.newBuilder(resources).from(physicalInputStream).build()) {
+
+              SearchResults resultsFromLoadedPhysical = loadedPhysicalIndex.search(query);
+              assertEquals(
+                  "Loaded physical index search results should match expected",
+                  expectedResults,
+                  resultsFromLoadedPhysical.getResults());
+            } finally {
+              Files.deleteIfExists(physicalIndexFile);
+            }
           }
+          index1.close();
+          index2.close();
         }
-        index1.close();
-        index2.close();
       }
     }
   }
