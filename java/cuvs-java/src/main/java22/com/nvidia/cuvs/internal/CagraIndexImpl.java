@@ -969,7 +969,7 @@ public class CagraIndexImpl implements CagraIndex {
               "cuvsCagraMerge");
           return new CagraIndexImpl(
               new IndexReference(mergedIndex, null, datasetOwner), resources);
-        } catch (RuntimeException | Error e) {
+        } catch (Throwable e) {
           try {
             datasetOwner.close();
           } catch (Exception closeError) {
