@@ -363,21 +363,8 @@ static void make_host_padded_dataset(raft::resources* res_ptr,
     owner             = cuvs::neighbors::make_host_padded_dataset(*res_ptr, mds);
   } else if (cuvs::core::is_dlpack_device_compatible(dataset)) {
     using mdspan_type = raft::device_matrix_view<T const, int64_t, raft::row_major>;
-    auto src           = cuvs::core::from_dlpack<mdspan_type>(dataset_tensor);
-    auto logical_dim   = static_cast<uint32_t>(src.extent(1));
-    auto target_stride = cuvs::neighbors::cagra_required_row_width<T>(logical_dim);
-    auto host_data     = raft::make_host_matrix<T, int64_t>(src.extent(0), target_stride);
-    std::memset(host_data.data_handle(), 0, host_data.size() * sizeof(T));
-    auto stream = raft::resource::get_cuda_stream(*res_ptr);
-    raft::copy_matrix(host_data.data_handle(),
-                      target_stride,
-                      src.data_handle(),
-                      src.stride(0),
-                      logical_dim,
-                      src.extent(0),
-                      stream);
-    raft::resource::sync_stream(*res_ptr);
-    owner = std::make_unique<owner_type>(std::move(host_data), logical_dim);
+    auto mds          = cuvs::core::from_dlpack<mdspan_type>(dataset_tensor);
+    owner             = cuvs::neighbors::make_host_padded_dataset(*res_ptr, mds);
   } else {
     RAFT_FAIL("cuvsDatasetMakePadded: unsupported source tensor memory type");
   }
