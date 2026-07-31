@@ -255,8 +255,11 @@ TEST(CagraC, DatasetContractFailures)
                             &distances_tensor,
                             filter),
             CUVS_ERROR);
+  // hnswlib search runs on the host, so a host index serializes straight from its own host
+  // vectors -- no device-padded dataset required.
   EXPECT_EQ(cuvsCagraSerializeToHnswlib(res, "/tmp/cagra_host_index.hnsw", host_index),
-            CUVS_ERROR);
+            CUVS_SUCCESS);
+  std::remove("/tmp/cagra_host_index.hnsw");
 
   // Device-standard indexes are mergeable but not extendable; extend needs device-padded.
   rmm::device_uvector<float> device_dataset(8, stream);
