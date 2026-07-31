@@ -40,7 +40,7 @@ struct MatrixTensor {
 
 TEST(DatasetC, CreateDestroy)
 {
-  cuvsDataset_t dataset = nullptr;
+  cuvsDataset_t dataset;
   ASSERT_EQ(cuvsDatasetCreate(&dataset), CUVS_SUCCESS);
   ASSERT_NE(dataset, nullptr);
   ASSERT_EQ(cuvsDatasetDestroy(dataset), CUVS_SUCCESS);
@@ -56,7 +56,7 @@ TEST(DatasetC, MakePaddedFromHost)
   std::vector<float> host(n_rows * n_cols, 1.0f);
   MatrixTensor matrix(host.data(), n_rows, n_cols, kDLCPU, 32);
 
-  cuvsDataset_t padded = nullptr;
+  cuvsDataset_t padded;
   ASSERT_EQ(
     cuvsDatasetMakePadded(res, &matrix.tensor, CUVS_DATASET_MEM_TYPE_DEVICE, &padded),
     CUVS_SUCCESS);
@@ -80,7 +80,7 @@ TEST(DatasetC, MakePaddedFromDeviceUnalignedOwnsCopy)
   raft::copy(device.data(), host.data(), host.size(), stream);
 
   MatrixTensor matrix(device.data(), n_rows, n_cols, kDLCUDA, 32);
-  cuvsDataset_t padded = nullptr;
+  cuvsDataset_t padded;
   ASSERT_EQ(
     cuvsDatasetMakePadded(res, &matrix.tensor, CUVS_DATASET_MEM_TYPE_DEVICE, &padded),
     CUVS_SUCCESS);
@@ -104,13 +104,13 @@ TEST(DatasetC, MakePaddedFromDeviceAlignedFailsUseView)
   raft::copy(device.data(), host.data(), host.size(), stream);
 
   MatrixTensor matrix(device.data(), n_rows, n_cols, kDLCUDA, 32);
-  cuvsDataset_t padded = nullptr;
+  cuvsDataset_t padded;
   EXPECT_EQ(
     cuvsDatasetMakePadded(res, &matrix.tensor, CUVS_DATASET_MEM_TYPE_DEVICE, &padded),
     CUVS_ERROR);
   EXPECT_EQ(padded, nullptr);
 
-  cuvsDataset_t view = nullptr;
+  cuvsDataset_t view;
   ASSERT_EQ(cuvsDatasetMakePaddedView(res, &matrix.tensor, &view), CUVS_SUCCESS);
   ASSERT_NE(view, nullptr);
 
@@ -130,7 +130,7 @@ TEST(DatasetC, MakeStandardViewHostAndDevice)
   std::vector<float> host(n_rows * n_cols, 4.0f);
   MatrixTensor host_matrix(host.data(), n_rows, n_cols, kDLCPU, 32);
 
-  cuvsDataset_t host_view = nullptr;
+  cuvsDataset_t host_view;
   ASSERT_EQ(cuvsDatasetMakeStandardView(res, &host_matrix.tensor, &host_view), CUVS_SUCCESS);
   ASSERT_NE(host_view, nullptr);
 
@@ -138,7 +138,7 @@ TEST(DatasetC, MakeStandardViewHostAndDevice)
   raft::copy(device.data(), host.data(), host.size(), stream);
   MatrixTensor device_matrix(device.data(), n_rows, n_cols, kDLCUDA, 32);
 
-  cuvsDataset_t device_view = nullptr;
+  cuvsDataset_t device_view;
   ASSERT_EQ(cuvsDatasetMakeStandardView(res, &device_matrix.tensor, &device_view), CUVS_SUCCESS);
   ASSERT_NE(device_view, nullptr);
 
@@ -157,7 +157,7 @@ TEST(DatasetC, MakeHostPadded)
   std::vector<float> host(n_rows * n_cols, 5.0f);
   MatrixTensor matrix(host.data(), n_rows, n_cols, kDLCPU, 32);
 
-  cuvsDataset_t padded = nullptr;
+  cuvsDataset_t padded;
   ASSERT_EQ(cuvsDatasetMakePadded(res, &matrix.tensor, CUVS_DATASET_MEM_TYPE_HOST, &padded),
             CUVS_SUCCESS);
   ASSERT_NE(padded, nullptr);

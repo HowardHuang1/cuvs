@@ -62,10 +62,6 @@ TEST(CagraHnswC, BuildSearch)
   ASSERT_EQ(cuvsCagraBuild(res, build_params, dataset_view, index), CUVS_SUCCESS);
   ASSERT_EQ(cuvsDatasetDestroy(dataset_view), CUVS_SUCCESS);
 
-  // Host-built indexes are not serializable to hnswlib until a device-padded dataset is attached.
-  EXPECT_EQ(cuvsCagraSerializeToHnswlib(res, "/tmp/cagra_hnswlib_host_only.index", index),
-            CUVS_ERROR);
-
   // A host build yields a graph-only host index. The hnswlib format stores the vectors alongside
   // the graph, so copy the host tensor into device-padded storage before serializing.
   cuvsDataset_t padded_dataset_owner;

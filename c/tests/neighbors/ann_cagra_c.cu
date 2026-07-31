@@ -179,6 +179,137 @@ TEST(CagraC, BuildSearch)
   cuvsResourcesDestroy(res);
 }
 
+// CAGRA operations that need a search-ready index must reject host / non-device-padded
+// datasets rather than succeeding and producing undefined behavior.
+TEST(CagraC, DatasetContractFailures)
+{
+  cuvsResources_t res;
+  ASSERT_EQ(cuvsResourcesCreate(&res), CUVS_SUCCESS);
+  cudaStream_t stream;
+  ASSERT_EQ(cuvsStreamGet(res, &stream), CUVS_SUCCESS);
+
+  DLManagedTensor host_tensor{};
+  host_tensor.dl_tensor.data               = dataset;
+  host_tensor.dl_tensor.device.device_type = kDLCPU;
+  host_tensor.dl_tensor.ndim               = 2;
+  host_tensor.dl_tensor.dtype              = {kDLFloat, 32, 1};
+  int64_t host_shape[2]                    = {4, 2};
+  host_tensor.dl_tensor.shape              = host_shape;
+
+  cuvsCagraIndexParams_t build_params;
+  ASSERT_EQ(cuvsCagraIndexParamsCreate(&build_params), CUVS_SUCCESS);
+  cuvsCagraIndex_t host_index;
+  ASSERT_EQ(cuvsCagraIndexCreate(&host_index), CUVS_SUCCESS);
+  cuvsDataset_t host_standard_view;
+  ASSERT_EQ(cuvsDatasetMakeStandardView(res, &host_tensor, &host_standard_view), CUVS_SUCCESS);
+  ASSERT_EQ(cuvsCagraBuild(res, build_params, host_standard_view, host_index), CUVS_SUCCESS);
+
+  // UpdateDataset requires a device-padded dataset.
+  EXPECT_EQ(cuvsCagraUpdateDataset(res, host_standard_view, host_index), CUVS_ERROR);
+
+  cuvsDataset_t host_padded_owner;
+  ASSERT_EQ(cuvsDatasetMakePadded(
+              res, &host_tensor, CUVS_DATASET_MEM_TYPE_HOST, &host_padded_owner),
+            CUVS_SUCCESS);
+  EXPECT_EQ(cuvsCagraUpdateDataset(res, host_padded_owner, host_index), CUVS_ERROR);
+
+  rmm::device_uvector<float> queries_d(8, stream);
+  raft::copy(queries_d.data(), reinterpret_cast<float*>(queries), 8, stream);
+  DLManagedTensor queries_tensor{};
+  queries_tensor.dl_tensor.data               = queries_d.data();
+  queries_tensor.dl_tensor.device.device_type = kDLCUDA;
+  queries_tensor.dl_tensor.ndim               = 2;
+  queries_tensor.dl_tensor.dtype              = {kDLFloat, 32, 1};
+  int64_t queries_shape[2]                    = {4, 2};
+  queries_tensor.dl_tensor.shape              = queries_shape;
+
+  rmm::device_uvector<uint32_t> neighbors_d(4, stream);
+  DLManagedTensor neighbors_tensor{};
+  neighbors_tensor.dl_tensor.data               = neighbors_d.data();
+  neighbors_tensor.dl_tensor.device.device_type = kDLCUDA;
+  neighbors_tensor.dl_tensor.ndim               = 2;
+  neighbors_tensor.dl_tensor.dtype              = {kDLUInt, 32, 1};
+  int64_t neighbors_shape[2]                    = {4, 1};
+  neighbors_tensor.dl_tensor.shape              = neighbors_shape;
+
+  rmm::device_uvector<float> distances_d(4, stream);
+  DLManagedTensor distances_tensor{};
+  distances_tensor.dl_tensor.data               = distances_d.data();
+  distances_tensor.dl_tensor.device.device_type = kDLCUDA;
+  distances_tensor.dl_tensor.ndim               = 2;
+  distances_tensor.dl_tensor.dtype              = {kDLFloat, 32, 1};
+  int64_t distances_shape[2]                    = {4, 1};
+  distances_tensor.dl_tensor.shape              = distances_shape;
+
+  cuvsFilter filter;
+  filter.type = NO_FILTER;
+  filter.addr = 0;
+  cuvsCagraSearchParams_t search_params;
+  ASSERT_EQ(cuvsCagraSearchParamsCreate(&search_params), CUVS_SUCCESS);
+
+  EXPECT_EQ(cuvsCagraSearch(res,
+                            search_params,
+                            host_index,
+                            &queries_tensor,
+                            &neighbors_tensor,
+                            &distances_tensor,
+                            filter),
+            CUVS_ERROR);
+  EXPECT_EQ(cuvsCagraSerializeToHnswlib(res, "/tmp/cagra_host_index.hnsw", host_index),
+            CUVS_ERROR);
+
+  // Device-standard indexes are mergeable but not extendable; extend needs device-padded.
+  rmm::device_uvector<float> device_dataset(8, stream);
+  raft::copy(device_dataset.data(), reinterpret_cast<float*>(dataset), 8, stream);
+  DLManagedTensor device_tensor       = host_tensor;
+  device_tensor.dl_tensor.data        = device_dataset.data();
+  device_tensor.dl_tensor.device.device_type = kDLCUDA;
+
+  cuvsCagraIndex_t device_standard_index;
+  ASSERT_EQ(cuvsCagraIndexCreate(&device_standard_index), CUVS_SUCCESS);
+  cuvsDataset_t device_standard_view;
+  ASSERT_EQ(cuvsDatasetMakeStandardView(res, &device_tensor, &device_standard_view), CUVS_SUCCESS);
+  ASSERT_EQ(cuvsCagraBuild(res, build_params, device_standard_view, device_standard_index),
+            CUVS_SUCCESS);
+
+  cuvsDataset_t device_padded_owner;
+  ASSERT_EQ(cuvsDatasetMakePadded(
+              res, &device_tensor, CUVS_DATASET_MEM_TYPE_DEVICE, &device_padded_owner),
+            CUVS_SUCCESS);
+  cuvsCagraExtendParams_t extend_params;
+  ASSERT_EQ(cuvsCagraExtendParamsCreate(&extend_params), CUVS_SUCCESS);
+  EXPECT_EQ(
+    cuvsCagraExtend(res, extend_params, device_padded_owner, 4, device_standard_index),
+    CUVS_ERROR);
+
+  // Host indexes are not mergeable.
+  cuvsCagraIndex_t host_index_2;
+  ASSERT_EQ(cuvsCagraIndexCreate(&host_index_2), CUVS_SUCCESS);
+  ASSERT_EQ(cuvsCagraBuild(res, build_params, host_standard_view, host_index_2), CUVS_SUCCESS);
+  cuvsCagraIndex_t merge_out;
+  ASSERT_EQ(cuvsCagraIndexCreate(&merge_out), CUVS_SUCCESS);
+  cuvsDataset_t merged_dataset;
+  ASSERT_EQ(cuvsDatasetCreate(&merged_dataset), CUVS_SUCCESS);
+  cuvsCagraIndex_t host_indices[2] = {host_index, host_index_2};
+  EXPECT_EQ(
+    cuvsCagraMerge(res, build_params, host_indices, 2, filter, merged_dataset, merge_out),
+    CUVS_ERROR);
+
+  ASSERT_EQ(cuvsCagraExtendParamsDestroy(extend_params), CUVS_SUCCESS);
+  ASSERT_EQ(cuvsCagraSearchParamsDestroy(search_params), CUVS_SUCCESS);
+  ASSERT_EQ(cuvsDatasetDestroy(host_standard_view), CUVS_SUCCESS);
+  ASSERT_EQ(cuvsDatasetDestroy(host_padded_owner), CUVS_SUCCESS);
+  ASSERT_EQ(cuvsDatasetDestroy(device_standard_view), CUVS_SUCCESS);
+  ASSERT_EQ(cuvsDatasetDestroy(device_padded_owner), CUVS_SUCCESS);
+  ASSERT_EQ(cuvsDatasetDestroy(merged_dataset), CUVS_SUCCESS);
+  ASSERT_EQ(cuvsCagraIndexParamsDestroy(build_params), CUVS_SUCCESS);
+  ASSERT_EQ(cuvsCagraIndexDestroy(host_index), CUVS_SUCCESS);
+  ASSERT_EQ(cuvsCagraIndexDestroy(host_index_2), CUVS_SUCCESS);
+  ASSERT_EQ(cuvsCagraIndexDestroy(device_standard_index), CUVS_SUCCESS);
+  ASSERT_EQ(cuvsCagraIndexDestroy(merge_out), CUVS_SUCCESS);
+  ASSERT_EQ(cuvsResourcesDestroy(res), CUVS_SUCCESS);
+}
+
 TEST(CagraC, UpdateHostPadded)
 {
   cuvsResources_t res;
@@ -368,6 +499,18 @@ TEST(CagraC, BuildExtendSearch)
   ASSERT_EQ(cuvsCagraBuild(res, build_params, dataset_view, index), CUVS_SUCCESS);
 
   cuvsStreamSync(res);
+
+  // Extend requires a device-padded extended dataset; a standard view must fail.
+  {
+    cuvsDataset_t standard_extended;
+    ASSERT_EQ(cuvsDatasetMakeStandardView(res, &dataset_tensor, &standard_extended), CUVS_SUCCESS);
+    cuvsCagraExtendParams_t bad_extend_params;
+    ASSERT_EQ(cuvsCagraExtendParamsCreate(&bad_extend_params), CUVS_SUCCESS);
+    EXPECT_EQ(cuvsCagraExtend(res, bad_extend_params, standard_extended, main_data_size, index),
+              CUVS_ERROR);
+    ASSERT_EQ(cuvsCagraExtendParamsDestroy(bad_extend_params), CUVS_SUCCESS);
+    ASSERT_EQ(cuvsDatasetDestroy(standard_extended), CUVS_SUCCESS);
+  }
 
   // extend index — caller concatenates old || new into extended_dataset first
   cuvsCagraExtendParams_t extend_params;
