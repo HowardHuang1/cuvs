@@ -135,11 +135,20 @@ public class CagraBuildAndSearchIT extends CuVSTestCase {
     List<Map<Integer, Float>> expectedResults = getExpectedResults();
 
     int numTestsRuns = 5;
-    try (CuVSResources resources = CheckedCuVSResources.create()) {
+    try (CuVSResources resources = CheckedCuVSResources.create();
+        var hostVectors = CuVSMatrix.ofArray(dataset);
+        var deviceVectors = hostVectors.toDevice(resources)) {
       for (int j = 0; j < numTestsRuns; j++) {
         try (var index = indexOnce(CuVSMatrix.ofArray(dataset), resources)) {
+          // Serialize the host index first, so the file keeps its host layout.
           var indexPath = serializeOnce(index);
-          try (var loadedIndex = deserializeOnce(indexPath, resources)) {
+          // A host build and a graph-only deserialization both leave the index without the
+          // device-padded vectors CAGRA search needs, so give each index its own padded copy.
+          try (var indexDataset = index.makePaddedDataset(deviceVectors);
+              var loadedIndex = deserializeOnce(indexPath, resources);
+              var loadedDataset = loadedIndex.makePaddedDataset(deviceVectors)) {
+            index.updateDataset(indexDataset);
+            loadedIndex.updateDataset(loadedDataset);
             queryAndCompare(
                 index,
                 loadedIndex,
@@ -161,13 +170,22 @@ public class CagraBuildAndSearchIT extends CuVSTestCase {
     List<Map<Integer, Float>> expectedResults = getExpectedResults();
 
     try (CuVSResources resources = CheckedCuVSResources.create();
+        var hostVectors = CuVSMatrix.ofArray(dataset);
+        var deviceVectors = hostVectors.toDevice(resources);
         var index = indexOnce(CuVSMatrix.ofArray(dataset), resources)) {
+      // Serialize the host index first, so the file keeps the host standard layout this test
+      // deserializes into.
       var indexPath = serializeOnce(index);
-      try (var outDataset = new CagraIndex.StandardDataset();
+      try (var indexDataset = index.makePaddedDataset(deviceVectors);
+          var outDataset = new CagraIndex.StandardDataset();
           var inputStream = Files.newInputStream(indexPath);
           var loadedIndex =
-              CagraIndex.newBuilder(resources).from(inputStream, outDataset).build()) {
+              CagraIndex.newBuilder(resources).from(inputStream, outDataset).build();
+          // The deserialized standard dataset is caller-owned but not searchable as-is.
+          var loadedDataset = loadedIndex.makePaddedDataset(deviceVectors)) {
         assertTrue(outDataset.isPresent());
+        index.updateDataset(indexDataset);
+        loadedIndex.updateDataset(loadedDataset);
         queryAndCompare(
             index,
             loadedIndex,
@@ -195,9 +213,17 @@ public class CagraBuildAndSearchIT extends CuVSTestCase {
       for (int j = 0; j < numTestsRuns; j++) {
         runInAnotherThread(
             () -> {
-              try (var index = indexOnce(CuVSMatrix.ofArray(dataset), resources)) {
+              try (var index = indexOnce(CuVSMatrix.ofArray(dataset), resources);
+                  var hostVectors = CuVSMatrix.ofArray(dataset);
+                  var deviceVectors = hostVectors.toDevice(resources)) {
                 var indexPath = serializeOnce(index);
-                try (var loadedIndex = deserializeOnce(indexPath, resources)) {
+                // Neither the host build nor the graph-only deserialization leaves device-padded
+                // vectors behind, so give each index its own padded copy.
+                try (var indexDataset = index.makePaddedDataset(deviceVectors);
+                    var loadedIndex = deserializeOnce(indexPath, resources);
+                    var loadedDataset = loadedIndex.makePaddedDataset(deviceVectors)) {
+                  index.updateDataset(indexDataset);
+                  loadedIndex.updateDataset(loadedDataset);
                   queryAndCompare(
                       index,
                       loadedIndex,
@@ -244,9 +270,17 @@ public class CagraBuildAndSearchIT extends CuVSTestCase {
               log.debug("Indexing threadIdx:{}-{}", threadIdx, Thread.currentThread().getName());
               try (CuVSResources resources = CheckedCuVSResources.create();
                   var matrix = CuVSMatrix.ofArray(dataset);
-                  var index = indexOnce(matrix, resources)) {
+                  var index = indexOnce(matrix, resources);
+                  var hostVectors = CuVSMatrix.ofArray(dataset);
+                  var deviceVectors = hostVectors.toDevice(resources)) {
                 var indexPath = serializeOnce(index);
-                try (var loadedIndex = deserializeOnce(indexPath, resources)) {
+                // Neither the host build nor the graph-only deserialization leaves device-padded
+                // vectors behind, so give each index its own padded copy.
+                try (var indexDataset = index.makePaddedDataset(deviceVectors);
+                    var loadedIndex = deserializeOnce(indexPath, resources);
+                    var loadedDataset = loadedIndex.makePaddedDataset(deviceVectors)) {
+                  index.updateDataset(indexDataset);
+                  loadedIndex.updateDataset(loadedDataset);
                   log.debug(
                       "Querying threadIdx:{}-{}", threadIdx, Thread.currentThread().getName());
                   queryAndCompare(
@@ -466,21 +500,35 @@ public class CagraBuildAndSearchIT extends CuVSTestCase {
 
   @Test
   public void testReconstructIndexFromGraph() throws Throwable {
-    try (var dataset = CuVSMatrix.ofArray(createSampleData())) {
+    float[][] sampleData = createSampleData();
+    try (var dataset = CuVSMatrix.ofArray(sampleData)) {
       var queries = createSampleQueries();
       List<Map<Integer, Float>> expectedResults = getExpectedResults();
 
       try (CuVSResources resources = CuVSResources.create();
-          var index = indexOnce(dataset, resources)) {
-        var graph = index.getGraph();
+          var hostVectors = CuVSMatrix.ofArray(sampleData);
+          // Reconstructing from a graph needs the vectors on device.
+          var deviceVectors = hostVectors.toDevice(resources);
+          var index = indexOnce(dataset, resources);
+          // getGraph() returns a view of the index's own graph, and a device graph is kept as a
+          // view rather than copied. Hand over a host copy so the reconstruction owns its graph
+          // and survives updates to the index it came from.
+          var graph = index.getGraph().toHost()) {
 
         try (var reconstructedIndex =
-            CagraIndex.newBuilder(resources)
-                .from(graph)
-                .withDataset(dataset)
-                .withIndexParams(
-                    new CagraIndexParams.Builder().withMetric(CuvsDistanceType.L2Expanded).build())
-                .build()) {
+                CagraIndex.newBuilder(resources)
+                    .from(graph)
+                    .withDataset(deviceVectors)
+                    .withIndexParams(
+                        new CagraIndexParams.Builder()
+                            .withMetric(CuvsDistanceType.L2Expanded)
+                            .build())
+                    .build();
+            var indexDataset = index.makePaddedDataset(deviceVectors);
+            var reconstructedDataset = reconstructedIndex.makePaddedDataset(deviceVectors)) {
+          index.updateDataset(indexDataset);
+          reconstructedIndex.updateDataset(reconstructedDataset);
+
           queryAndCompare(
               index,
               reconstructedIndex,
@@ -506,7 +554,8 @@ public class CagraBuildAndSearchIT extends CuVSTestCase {
 
   @Test
   public void testIndexingAndSearchingFlowWithCustomMappingFunction() throws Throwable {
-    var dataset = CuVSMatrix.ofArray(createSampleData());
+    float[][] sampleData = createSampleData();
+    var dataset = CuVSMatrix.ofArray(sampleData);
     float[][] queries = createSampleQueries();
     var expectedResults =
         List.of(
@@ -517,9 +566,15 @@ public class CagraBuildAndSearchIT extends CuVSTestCase {
 
     LongToIntFunction rotate = l -> (int) ((l + 1) % dataset.size());
     try (CuVSResources resources = CheckedCuVSResources.create();
-        var index = indexOnce(dataset, resources)) {
+        var index = indexOnce(dataset, resources);
+        var hostVectors = CuVSMatrix.ofArray(sampleData);
+        var deviceVectors = hostVectors.toDevice(resources)) {
       var indexPath = serializeOnce(index);
-      try (var loadedIndex = deserializeOnce(indexPath, resources)) {
+      try (var indexDataset = index.makePaddedDataset(deviceVectors);
+          var loadedIndex = deserializeOnce(indexPath, resources);
+          var loadedDataset = loadedIndex.makePaddedDataset(deviceVectors)) {
+        index.updateDataset(indexDataset);
+        loadedIndex.updateDataset(loadedDataset);
         queryAndCompare(index, loadedIndex, rotate, queries, expectedResults, resources);
       } finally {
         Files.deleteIfExists(indexPath);
@@ -529,7 +584,8 @@ public class CagraBuildAndSearchIT extends CuVSTestCase {
 
   @Test
   public void testIndexingAndSearchingFlowWithCustomMappingList() throws Throwable {
-    var dataset = CuVSMatrix.ofArray(createSampleData());
+    float[][] sampleData = createSampleData();
+    var dataset = CuVSMatrix.ofArray(sampleData);
     float[][] queries = createSampleQueries();
     var mappings = List.of(4, 3, 2, 1);
     var expectedResults =
@@ -541,9 +597,15 @@ public class CagraBuildAndSearchIT extends CuVSTestCase {
 
     LongToIntFunction rotate = SearchResults.mappingsFromList(mappings);
     try (CuVSResources resources = CheckedCuVSResources.create();
-        var index = indexOnce(dataset, resources)) {
+        var index = indexOnce(dataset, resources);
+        var hostVectors = CuVSMatrix.ofArray(sampleData);
+        var deviceVectors = hostVectors.toDevice(resources)) {
       var indexPath = serializeOnce(index);
-      try (var loadedIndex = deserializeOnce(indexPath, resources)) {
+      try (var indexDataset = index.makePaddedDataset(deviceVectors);
+          var loadedIndex = deserializeOnce(indexPath, resources);
+          var loadedDataset = loadedIndex.makePaddedDataset(deviceVectors)) {
+        index.updateDataset(indexDataset);
+        loadedIndex.updateDataset(loadedDataset);
         queryAndCompare(index, loadedIndex, rotate, queries, expectedResults, resources);
       } finally {
         Files.deleteIfExists(indexPath);
@@ -582,7 +644,12 @@ public class CagraBuildAndSearchIT extends CuVSTestCase {
             CagraIndex.newBuilder(resources)
                 .withDataset(dataset)
                 .withIndexParams(indexParams)
-                .build()) {
+                .build();
+        var hostVectors = CuVSMatrix.ofArray(dataset);
+        var deviceVectors = hostVectors.toDevice(resources);
+        var indexDataset = index.makePaddedDataset(deviceVectors)) {
+
+      index.updateDataset(indexDataset);
 
       // No prefilter (all points allowed)
       // Pin SINGLE_CTA; AUTO may pick MULTI_CTA, which drops neighbors on this tiny dataset.
@@ -653,7 +720,12 @@ public class CagraBuildAndSearchIT extends CuVSTestCase {
 
     try (CuVSResources resources = CheckedCuVSResources.create();
         var index = indexOnce(CuVSMatrix.ofArray(dataset), resources);
+        var hostVectors = CuVSMatrix.ofArray(dataset);
+        var deviceVectors = hostVectors.toDevice(resources);
+        var indexDataset = index.makePaddedDataset(deviceVectors);
         var queryVectors = CuVSMatrix.ofArray(queries)) {
+      index.updateDataset(indexDataset);
+
       CagraQuery query =
           new CagraQuery.Builder(resources)
               .withTopK(1)
@@ -778,7 +850,12 @@ public class CagraBuildAndSearchIT extends CuVSTestCase {
                   dataMemorySegment, rows, cols, CuVSMatrix.DataType.FLOAT);
           // Indexing with an on-heap and native datasets produce the same results
           var javaIndex = indexOnce(javaDataset, resources);
-          var nativeIndex = indexOnce(nativeDataset, resources)) {
+          var nativeIndex = indexOnce(nativeDataset, resources);
+          var deviceVectors = CuVSMatrix.ofArray(sampleData).toDevice(resources);
+          var javaIndexDataset = javaIndex.makePaddedDataset(deviceVectors);
+          var nativeIndexDataset = nativeIndex.makePaddedDataset(deviceVectors)) {
+        javaIndex.updateDataset(javaIndexDataset);
+        nativeIndex.updateDataset(nativeIndexDataset);
         queryAndCompare(
             javaIndex,
             nativeIndex,
