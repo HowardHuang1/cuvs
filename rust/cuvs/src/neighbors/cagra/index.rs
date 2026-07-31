@@ -7,7 +7,8 @@ use std::marker::PhantomData;
 use std::path::Path;
 
 use super::{CagraError, IndexParams, SearchParams};
-use crate::dataset::{Dataset, DatasetKind, DatasetView};
+use crate::dataset::private::Sealed as _;
+use crate::dataset::{CuvsDataset, Dataset, DatasetKind, DatasetView};
 use crate::dlpack::{AsDlTensor, AsDlTensorMut, DLTensorView, DLTensorViewMut};
 use crate::error::check_cuvs;
 use crate::ffi_utils::{init_handle, path_to_cstring, report_drop_failure};
@@ -71,36 +72,53 @@ impl<'d> Index<'d> {
         T: AsDlTensor + ?Sized,
     {
         let view = DatasetView::new(res, dataset)?;
-        Self::build_from_view(res, params, &view)
-    }
-
-    /// Build from an explicitly prepared non-owning dataset view.
-    pub fn build_from_view<'a>(
-        res: &Resources,
-        params: &IndexParams,
-        dataset: &DatasetView<'a>,
-    ) -> Result<Index<'a>> {
-        let handle = IndexHandle::new()?;
-        check_cuvs(unsafe {
-            ffi::cuvsCagraBuild(res.handle(), params.handle(), dataset.raw(), handle.raw())
-        })?;
+        let handle = Self::build_handle(res, params, view.raw_dataset_handle())?;
         Ok(Index { handle, _dataset: PhantomData })
     }
 
-    /// Attach a device-padded dataset and return a search-ready index borrowing it.
-    pub fn update_dataset<'a>(
-        self,
+    /// Build from an owning dataset or non-owning dataset view.
+    pub fn build_from_dataset<'a, D>(
         res: &Resources,
-        dataset: &DatasetView<'a>,
-    ) -> Result<Index<'a>> {
-        if dataset.kind() != DatasetKind::DevicePadded {
+        params: &IndexParams,
+        dataset: &'a D,
+    ) -> Result<Index<'a>>
+    where
+        D: CuvsDataset + ?Sized,
+    {
+        let handle = Self::build_handle(res, params, dataset.raw_dataset_handle())?;
+        Ok(Index { handle, _dataset: PhantomData })
+    }
+
+    fn build_handle(
+        res: &Resources,
+        params: &IndexParams,
+        dataset: ffi::cuvsDataset_t,
+    ) -> Result<IndexHandle> {
+        let handle = IndexHandle::new()?;
+        check_cuvs(unsafe {
+            ffi::cuvsCagraBuild(res.handle(), params.handle(), dataset, handle.raw())
+        })?;
+        Ok(handle)
+    }
+
+    /// Attach a device-padded dataset and return a search-ready index borrowing it.
+    pub fn update_dataset<'a, D>(self, res: &Resources, dataset: &'a D) -> Result<Index<'a>>
+    where
+        D: CuvsDataset + ?Sized,
+    {
+        let kind = dataset.dataset_kind()?;
+        if kind != DatasetKind::DevicePadded {
             return Err(CagraError::Validation(format!(
                 "CAGRA dataset update requires a device-padded view, got {:?}",
-                dataset.kind()
+                kind
             )));
         }
         check_cuvs(unsafe {
-            ffi::cuvsCagraUpdateDataset(res.handle(), dataset.raw(), self.handle.raw())
+            ffi::cuvsCagraUpdateDataset(
+                res.handle(),
+                dataset.raw_dataset_handle(),
+                self.handle.raw(),
+            )
         })?;
         let Self { handle, _dataset: _ } = self;
         Ok(Index { handle, _dataset: PhantomData })
@@ -227,7 +245,7 @@ impl<'d> Index<'d> {
                 &mut out,
             )
         })?;
-        Ok(DeserializedIndex { handle, dataset: Some(Dataset::from_raw(out)) })
+        Ok(DeserializedIndex { handle, dataset: Some(Dataset::from_raw(out)?) })
     }
 }
 
@@ -258,19 +276,23 @@ impl<D> DeserializedIndex<D> {
     }
 
     /// Replace the deserialized storage with a caller-owned device-padded view.
-    pub fn update_dataset<'a>(
-        self,
-        res: &Resources,
-        dataset: &DatasetView<'a>,
-    ) -> Result<Index<'a>> {
-        if dataset.kind() != DatasetKind::DevicePadded {
+    pub fn update_dataset<'a, T>(self, res: &Resources, dataset: &'a T) -> Result<Index<'a>>
+    where
+        T: CuvsDataset + ?Sized,
+    {
+        let kind = dataset.dataset_kind()?;
+        if kind != DatasetKind::DevicePadded {
             return Err(CagraError::Validation(format!(
                 "CAGRA dataset update requires a device-padded view, got {:?}",
-                dataset.kind()
+                kind
             )));
         }
         check_cuvs(unsafe {
-            ffi::cuvsCagraUpdateDataset(res.handle(), dataset.raw(), self.handle.raw())
+            ffi::cuvsCagraUpdateDataset(
+                res.handle(),
+                dataset.raw_dataset_handle(),
+                self.handle.raw(),
+            )
         })?;
         let Self { handle, .. } = self;
         Ok(Index { handle, _dataset: PhantomData })
@@ -330,14 +352,16 @@ impl DeserializedIndex<Dataset> {
     }
 
     fn require_dataset(&self) -> Result<()> {
-        match self.dataset.as_ref().map(Dataset::kind) {
-            Some(DatasetKind::DevicePadded) => Ok(()),
-            Some(kind) => Err(CagraError::Validation(format!(
+        let Some(dataset) = self.dataset.as_ref() else {
+            return Err(CagraError::Validation(
+                "cannot search a graph-only index without an attached dataset".to_string(),
+            ));
+        };
+        match dataset.dataset_kind()? {
+            DatasetKind::DevicePadded => Ok(()),
+            kind => Err(CagraError::Validation(format!(
                 "cannot search a deserialized {kind:?} index; attach a device-padded dataset"
             ))),
-            None => Err(CagraError::Validation(
-                "cannot search a graph-only index without an attached dataset".to_string(),
-            )),
         }
     }
 }
@@ -467,7 +491,10 @@ mod tests {
             (N_DATAPOINTS, N_FEATURES),
             Uniform::new(0., 1.0).unwrap(),
         );
-        let host_standard = ndarray::Array::<f32, _>::zeros((N_DATAPOINTS, N_FEATURES - 1));
+        let host_standard = ndarray::Array::<f32, _>::random(
+            (N_DATAPOINTS, N_FEATURES - 1),
+            Uniform::new(0., 1.0).unwrap(),
+        );
         let device_padded = DeviceTensor::from_host(&res, &host_padded).unwrap();
         let device_standard = DeviceTensor::from_host(&res, &host_standard).unwrap();
 
@@ -479,13 +506,17 @@ mod tests {
         ];
 
         for (view, expected_kind) in &views {
-            assert_eq!(view.kind(), *expected_kind);
-            let index = Index::build_from_view(&res, &params, view)
+            assert_eq!(view.dataset_kind().unwrap(), *expected_kind);
+            let index = Index::build_from_dataset(&res, &params, view)
                 .expect("every supported dataset kind should build");
             if *expected_kind == DatasetKind::DevicePadded {
                 search_and_verify_self_neighbors(&res, &index, &host_padded, 4, 10);
             }
         }
+
+        let owner = PaddedDataset::new(&res, &device_standard).unwrap();
+        let index = Index::build_from_dataset(&res, &params, &owner).unwrap();
+        search_and_verify_self_neighbors(&res, &index, &host_standard, 4, 10);
     }
 
     #[test]
@@ -515,9 +546,8 @@ mod tests {
         let params = IndexParams::builder().build().unwrap();
         let index = Index::build(&res, &params, &dataset_device).unwrap();
         let owner = PaddedDataset::new(&res, &dataset_device).unwrap();
-        let padded_view = owner.as_view().unwrap();
 
-        let index = index.update_dataset(&res, &padded_view).unwrap();
+        let index = index.update_dataset(&res, &owner).unwrap();
         drop(dataset_device);
 
         search_and_verify_self_neighbors(&res, &index, &dataset, 4, 10);
@@ -630,7 +660,7 @@ mod tests {
 
         let loaded = Index::deserialize_graph_and_dataset(&res, &filepath)
             .expect("failed to deserialize cagra index");
-        assert_eq!(loaded.dataset().map(Dataset::kind), Some(DatasetKind::DevicePadded));
+        assert_eq!(loaded.dataset().unwrap().dataset_kind().unwrap(), DatasetKind::DevicePadded);
 
         let queries =
             DeviceTensor::from_host(&res, &dataset.slice(s![0..1, ..]).to_owned()).unwrap();
@@ -666,12 +696,11 @@ mod tests {
 
         let loaded = Index::deserialize_graph_and_dataset(&res, &filepath)
             .expect("failed to deserialize standard cagra index");
-        assert_eq!(loaded.dataset().map(Dataset::kind), Some(DatasetKind::DeviceStandard));
+        assert_eq!(loaded.dataset().unwrap().dataset_kind().unwrap(), DatasetKind::DeviceStandard);
 
         let dataset_device = DeviceTensor::from_host(&res, &dataset).unwrap();
         let owner = PaddedDataset::new(&res, &dataset_device).unwrap();
-        let padded_view = owner.as_view().unwrap();
-        let index = loaded.update_dataset(&res, &padded_view).unwrap();
+        let index = loaded.update_dataset(&res, &owner).unwrap();
         drop(dataset_device);
         search_and_verify_self_neighbors(&res, &index, &dataset, 4, 10);
 
@@ -692,6 +721,10 @@ mod tests {
         index.serialize(&res, &filepath, false).unwrap();
         drop(index);
 
+        let err = Index::deserialize_graph_and_dataset(&res, &filepath)
+            .expect_err("graph-only file must not deserialize a dataset");
+        assert!(err.to_string().contains("no dataset"), "unexpected error: {err:?}");
+
         let loaded = Index::deserialize_graph(&res, &filepath).unwrap();
         assert!(!loaded.has_dataset());
 
@@ -706,7 +739,7 @@ mod tests {
         assert!(matches!(err, CagraError::Validation(_)), "unexpected error: {err:?}");
 
         let view = DatasetView::new(&res, &dataset_device).unwrap();
-        assert_eq!(view.kind(), DatasetKind::DevicePadded);
+        assert_eq!(view.dataset_kind().unwrap(), DatasetKind::DevicePadded);
         let index = loaded.update_dataset(&res, &view).unwrap();
         search_and_verify_self_neighbors(&res, &index, &dataset, 4, 10);
 
