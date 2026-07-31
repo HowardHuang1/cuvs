@@ -1053,7 +1053,7 @@ public class CagraIndexImpl implements CagraIndex {
       } else if (dataset != null) {
         return new CagraIndexImpl(cagraIndexParams, dataset, cuvsResources);
       } else {
-        return new CagraIndexImpl(cagraIndexParams, dataset, cuvsResources);
+         throw new IllegalArgumentException("dataset must be provided");
       }
     }
   }
