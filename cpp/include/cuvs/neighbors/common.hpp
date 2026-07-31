@@ -1184,19 +1184,16 @@ auto make_host_dense_row_major_dataset_from_src(raft::resources const& res,
                                                 SrcT const& src,
                                                 uint32_t logical_dim,
                                                 uint32_t target_stride,
-                                                char const* device_factory_name,
                                                 char const* view_factory_name)
   -> std::unique_ptr<DatasetT>
 {
   uint32_t const src_stride = mdspan_row_stride_elements(src);
-  RAFT_EXPECTS(raft::get_device_for_address(src.data_handle()) == -1,
-               "source must be host-accessible. Use %s() for device sources.",
-               device_factory_name);
+  constexpr bool device_src = SrcT::accessor_type::is_device_accessible;
   RAFT_EXPECTS(logical_dim <= target_stride,
                "logical dim (%u) must not exceed row stride (%u).",
                static_cast<unsigned>(logical_dim),
                static_cast<unsigned>(target_stride));
-  if (src_stride == target_stride) {
+  if (!device_src && src_stride == target_stride) {
     RAFT_EXPECTS(false,
                  "source stride is already correct. Use %s() to get a view instead.",
                  view_factory_name);
@@ -1212,6 +1209,7 @@ auto make_host_dense_row_major_dataset_from_src(raft::resources const& res,
                     logical_dim,
                     src.extent(0),
                     raft::resource::get_cuda_stream(res));
+  if (device_src) { raft::resource::sync_stream(res); }
   return std::make_unique<DatasetT>(std::move(out_array), logical_dim);
 }
 
@@ -1284,12 +1282,7 @@ auto make_host_padded_dataset(const raft::resources& res,
   return detail::make_host_dense_row_major_dataset_from_src<
     host_padded_dataset<value_type, index_type>,
     value_type,
-    index_type>(res,
-                src,
-                logical_dim,
-                required_stride,
-                "make_device_padded_dataset",
-                "make_host_padded_dataset_view");
+    index_type>(res, src, logical_dim, required_stride, "make_host_padded_dataset_view");
 }
 
 template <typename SrcT>
