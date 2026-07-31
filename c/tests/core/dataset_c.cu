@@ -165,3 +165,41 @@ TEST(DatasetC, MakeHostPadded)
   ASSERT_EQ(cuvsDatasetDestroy(padded), CUVS_SUCCESS);
   ASSERT_EQ(cuvsResourcesDestroy(res), CUVS_SUCCESS);
 }
+
+TEST(DatasetC, MakeHostPaddedFromDevice)
+{
+  cuvsResources_t res;
+  ASSERT_EQ(cuvsResourcesCreate(&res), CUVS_SUCCESS);
+  cudaStream_t stream;
+  ASSERT_EQ(cuvsStreamGet(res, &stream), CUVS_SUCCESS);
+
+  constexpr int64_t n_rows = 64;
+  constexpr int64_t n_cols = 50;
+  std::vector<float> host(n_rows * n_cols, 6.0f);
+  rmm::device_uvector<float> device(host.size(), stream);
+  raft::copy(device.data(), host.data(), host.size(), stream);
+
+  MatrixTensor matrix(device.data(), n_rows, n_cols, kDLCUDA, 32);
+  cuvsDataset_t padded = nullptr;
+  ASSERT_EQ(cuvsDatasetMakePadded(res, &matrix.tensor, CUVS_DATASET_MEM_TYPE_HOST, &padded),
+            CUVS_SUCCESS);
+  ASSERT_NE(padded, nullptr);
+
+  cuvsDatasetMemType_t mem_type;
+  cuvsDatasetLayout_t layout;
+  bool is_owning;
+  DLDataType dtype;
+  ASSERT_EQ(cuvsDatasetGetMemType(padded, &mem_type), CUVS_SUCCESS);
+  ASSERT_EQ(cuvsDatasetGetLayout(padded, &layout), CUVS_SUCCESS);
+  ASSERT_EQ(cuvsDatasetGetIsOwning(padded, &is_owning), CUVS_SUCCESS);
+  ASSERT_EQ(cuvsDatasetGetDtype(padded, &dtype), CUVS_SUCCESS);
+  EXPECT_EQ(mem_type, CUVS_DATASET_MEM_TYPE_HOST);
+  EXPECT_EQ(layout, CUVS_DATASET_LAYOUT_PADDED);
+  EXPECT_TRUE(is_owning);
+  EXPECT_EQ(dtype.code, kDLFloat);
+  EXPECT_EQ(dtype.bits, 32);
+  EXPECT_EQ(dtype.lanes, 1);
+
+  ASSERT_EQ(cuvsDatasetDestroy(padded), CUVS_SUCCESS);
+  ASSERT_EQ(cuvsResourcesDestroy(res), CUVS_SUCCESS);
+}
