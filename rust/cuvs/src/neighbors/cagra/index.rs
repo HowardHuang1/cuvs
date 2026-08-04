@@ -101,15 +101,15 @@ impl<'d> Index<'d> {
         Ok(handle)
     }
 
-    /// Attach a device-padded dataset and return a search-ready index borrowing it.
+    /// Attach a device-padded or device VPQ dataset and return a search-ready index borrowing it.
     pub fn update_dataset<'a, D>(self, res: &Resources, dataset: &'a D) -> Result<Index<'a>>
     where
         D: CuvsDataset + ?Sized,
     {
         let kind = dataset.dataset_kind()?;
-        if kind != DatasetKind::DevicePadded {
+        if kind != DatasetKind::DevicePadded && kind != DatasetKind::DeviceVpqF16 {
             return Err(CagraError::Validation(format!(
-                "CAGRA dataset update requires a device-padded view, got {:?}",
+                "CAGRA dataset update requires a device-padded or device VPQ_F16 view, got {:?}",
                 kind
             )));
         }
@@ -275,15 +275,15 @@ impl<D> DeserializedIndex<D> {
         serialize_to_hnswlib_impl(&self.handle, res, filename.as_ref())
     }
 
-    /// Replace the deserialized storage with a caller-owned device-padded view.
+    /// Replace the deserialized storage with a caller-owned device-padded or VPQ view.
     pub fn update_dataset<'a, T>(self, res: &Resources, dataset: &'a T) -> Result<Index<'a>>
     where
         T: CuvsDataset + ?Sized,
     {
         let kind = dataset.dataset_kind()?;
-        if kind != DatasetKind::DevicePadded {
+        if kind != DatasetKind::DevicePadded && kind != DatasetKind::DeviceVpqF16 {
             return Err(CagraError::Validation(format!(
-                "CAGRA dataset update requires a device-padded view, got {:?}",
+                "CAGRA dataset update requires a device-padded or device VPQ_F16 view, got {:?}",
                 kind
             )));
         }
