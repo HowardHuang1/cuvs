@@ -483,6 +483,35 @@ mod tests {
         test_cagra(build_params);
     }
 
+    /// CAGRA-Q smoke: dense build → make_vpq_dataset → update_dataset → search.
+    #[test]
+    fn test_cagra_vpq_build_update_search() {
+        use crate::neighbors::cagra::{CompressionParams, make_vpq_dataset};
+
+        const N_ROWS: usize = 256;
+        const N_COLS: usize = 32;
+        const N_QUERIES: usize = 4;
+        const K: usize = 1;
+
+        let res = Resources::new().unwrap();
+        let dataset =
+            ndarray::Array::<f32, _>::random((N_ROWS, N_COLS), Uniform::new(0., 1.0).unwrap());
+        let dataset_device = DeviceTensor::from_host(&res, &dataset).unwrap();
+        let index = Index::build(&res, &IndexParams::builder().build().unwrap(), &dataset_device)
+            .expect("failed to build dense cagra index");
+
+        // dim=32 float already matches CAGRA padded row width → padded view.
+        let padded = DatasetView::new(&res, &dataset_device).unwrap();
+        assert_eq!(padded.dataset_kind().unwrap(), DatasetKind::DevicePadded);
+
+        let compression = CompressionParams::new().unwrap().set_pq_bits(8).set_pq_dim(8);
+        let vpq = make_vpq_dataset(&res, &padded, Some(&compression)).expect("make_vpq_dataset");
+        assert_eq!(vpq.dataset_kind().unwrap(), DatasetKind::DeviceVpqF16);
+
+        let index = index.update_dataset(&res, &vpq).expect("update_dataset with VPQ");
+        search_and_verify_self_neighbors(&res, &index, &dataset, N_QUERIES, K);
+    }
+
     #[test]
     fn explicit_views_classify_and_build_all_supported_kinds() {
         let res = Resources::new().unwrap();
