@@ -246,7 +246,7 @@ void inverse_transform(
 
 namespace detail {
 
-// Must be CUVS_EXPORT: libcuvs_c (and header-inline make_device_vpq_dataset) resolve this
+// Must be CUVS_EXPORT: libcuvs_c (and header-inline make_device_pq_dataset) resolve this
 // across the shared-library boundary. Without default visibility, -fvisibility=hidden
 // + --gc-sections drop the pq.cu instantiations from libcuvs.so.
 template <typename T>
@@ -280,23 +280,23 @@ vpq_train_from_device_rows(raft::resources const& res,
  * // `idx` is a dense CAGRA index with graph built on padded rows.
  * // `padded` is a `device_padded_dataset_view<float, int64_t>` view of those same rows.
  * cuvs::neighbors::vpq_params vpq_params{};
- * auto vpq = cuvs::preprocessing::quantize::pq::make_device_vpq_dataset(res, vpq_params,
+ * auto vpq = cuvs::preprocessing::quantize::pq::make_device_pq_dataset(res, vpq_params,
  * padded.view()); auto vpq_idx = cuvs::neighbors::cagra::attach_dataset(res, idx,
  * vpq.as_dataset_view());
  * @endcode
  */
 template <typename SrcT>
-[[nodiscard]] auto make_device_vpq_dataset(raft::resources const& res,
-                                           cuvs::neighbors::vpq_params const& params,
-                                           SrcT const& src)
+[[nodiscard]] auto make_device_pq_dataset(raft::resources const& res,
+                                          cuvs::neighbors::vpq_params const& params,
+                                          SrcT const& src)
   -> cuvs::neighbors::device_vpq_dataset<half, int64_t>
 {
   using T = typename SrcT::value_type;
-  RAFT_EXPECTS(src.extent(0) > 0, "make_device_vpq_dataset: dataset is empty");
+  RAFT_EXPECTS(src.extent(0) > 0, "make_device_pq_dataset: dataset is empty");
   cudaPointerAttributes ptr_attrs;
   RAFT_CUDA_TRY(cudaPointerGetAttributes(&ptr_attrs, src.data_handle()));
   auto const* device_ptr = reinterpret_cast<T const*>(ptr_attrs.devicePointer);
-  RAFT_EXPECTS(device_ptr != nullptr, "make_device_vpq_dataset: source must be device-accessible.");
+  RAFT_EXPECTS(device_ptr != nullptr, "make_device_pq_dataset: source must be device-accessible.");
   const int64_t n_rows = src.extent(0);
   const int64_t dim    = src.extent(1);
   const int64_t stride = src.stride(0) > 0 ? src.stride(0) : dim;

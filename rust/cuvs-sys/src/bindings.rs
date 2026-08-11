@@ -1363,11 +1363,11 @@ unsafe extern "C" {
 }
 unsafe extern "C" {
     #[must_use]
-    pub fn cuvsDatasetMakeVpq(
+    pub fn cuvsDatasetMakePq(
         res: cuvsResources_t,
         source_dataset: cuvsDataset_t,
         params: cuvsCagraCompressionParams_t,
-        vpq_dataset: *mut cuvsDataset_t,
+        pq_dataset: *mut cuvsDataset_t,
     ) -> cuvsError_t;
 }
 unsafe extern "C" {

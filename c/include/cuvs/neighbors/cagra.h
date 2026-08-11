@@ -265,13 +265,13 @@ CUVS_EXPORT cuvsError_t cuvsCagraCompressionParamsDestroy(cuvsCagraCompressionPa
  * @param[in] res cuvs resources
  * @param[in] source_dataset device-padded dataset (owning or view)
  * @param[in] params VPQ compression params; NULL selects defaults
- * @param[out] vpq_dataset newly allocated owning VPQ dataset handle
+ * @param[out] pq_dataset newly allocated owning VPQ dataset handle
  * @return cuvsError_t
  */
-CUVS_EXPORT cuvsError_t cuvsDatasetMakeVpq(cuvsResources_t res,
-                                           cuvsDataset_t source_dataset,
-                                           cuvsCagraCompressionParams_t params,
-                                           cuvsDataset_t* vpq_dataset);
+CUVS_EXPORT cuvsError_t cuvsDatasetMakePq(cuvsResources_t res,
+                                          cuvsDataset_t source_dataset,
+                                          cuvsCagraCompressionParams_t params,
+                                          cuvsDataset_t* pq_dataset);
 
 /**
  * @brief Allocate ACE params, and populate with default values
@@ -604,7 +604,7 @@ CUVS_EXPORT cuvsError_t cuvsCagraIndexGetGraph(cuvsCagraIndex_t index, DLManaged
  *
  * - Device-padded dataset: if \p index is already device-padded, its dataset view is replaced in
  *   place (same index object); otherwise the index is converted via attach and rebound.
- * - Device VPQ_F16 dataset (from `cuvsDatasetMakeVpq`): if \p index is already VPQ-typed, its
+ * - Device VPQ_F16 dataset (from `cuvsDatasetMakePq`): if \p index is already VPQ-typed, its
  *   dataset view is replaced in place; otherwise the graph is copied into a new VPQ-typed index
  *   (CAGRA-Q). Search requires metric `L2Expanded`. The VPQ handle must be owning.
  *

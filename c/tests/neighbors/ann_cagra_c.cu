@@ -2012,7 +2012,7 @@ TEST(CagraC, SearchMultiPartitionMultiKernelRejected)
 
 TEST(CagraC, BuildAttachVpqSearch)
 {
-  // CAGRA-Q smoke test: dense build → MakeVpq → UpdateDataset(VPQ) → Search.
+  // CAGRA-Q smoke test: dense build → MakePq → UpdateDataset(VPQ) → Search.
   constexpr int64_t n_rows    = 256;
   constexpr int64_t dim       = 32;
   constexpr int64_t n_queries = 4;
@@ -2058,7 +2058,7 @@ TEST(CagraC, BuildAttachVpqSearch)
   compression->pq_dim  = 8;
 
   cuvsDataset_t vpq = nullptr;
-  ASSERT_EQ(cuvsDatasetMakeVpq(res, padded, compression, &vpq), CUVS_SUCCESS);
+  ASSERT_EQ(cuvsDatasetMakePq(res, padded, compression, &vpq), CUVS_SUCCESS);
   {
     cuvsDatasetLayout_t layout;
     ASSERT_EQ(cuvsDatasetGetLayout(vpq, &layout), CUVS_SUCCESS);

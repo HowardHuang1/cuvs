@@ -226,7 +226,7 @@ func MakeVpqDataset(Resources cuvs.Resource, source PaddedDatasetHandle, params 
 		cParams = params.params
 	}
 	var vpqDataset C.cuvsDataset_t
-	err := cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsDatasetMakeVpq(
+	err := cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsDatasetMakePq(
 		C.cuvsResources_t(Resources.Resource),
 		source.datasetHandle(),
 		cParams,
