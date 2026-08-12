@@ -176,7 +176,7 @@ TEST(AnnCagraVpq, BuildAttachVpqSearch)
 
   cuvs::neighbors::vpq_params vpq_params{.pq_bits = 8, .pq_dim = 8};
   auto vpq =
-    cuvs::preprocessing::quantize::pq::make_device_pq_dataset(handle, vpq_params, padded.view);
+    cuvs::preprocessing::quantize::pq::make_device_vpq_dataset(handle, vpq_params, padded.view);
   raft::resource::sync_stream(handle);
 
   EXPECT_EQ(vpq.n_rows(), n_rows);

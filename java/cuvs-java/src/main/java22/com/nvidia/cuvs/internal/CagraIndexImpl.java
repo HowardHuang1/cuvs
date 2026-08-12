@@ -556,12 +556,12 @@ public class CagraIndexImpl implements CagraIndex {
         }
         MemorySegment vpqDatasetPtr = localArena.allocate(cuvsDataset_t);
         var returnValue =
-            cuvsDatasetMakePq(
+            cuvsDatasetMakeVpq(
                 cuvsRes,
                 MemorySegment.ofAddress(paddedDataset.nativeHandleAddress()),
                 paramsSeg,
                 vpqDatasetPtr);
-        checkCuVSError(returnValue, "cuvsDatasetMakePq");
+        checkCuVSError(returnValue, "cuvsDatasetMakeVpq");
         MemorySegment vpqDataset = vpqDatasetPtr.get(cuvsDataset_t, 0);
 
         var out = new CagraIndex.VpqDataset();

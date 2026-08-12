@@ -251,7 +251,7 @@ impl VpqDataset {
         }
         unsafe {
             let handle = init_handle(|out| {
-                ffi::cuvsDatasetMakePq(res.handle(), source.raw_dataset_handle(), params, out)
+                ffi::cuvsDatasetMakeVpq(res.handle(), source.raw_dataset_handle(), params, out)
             })?;
             Ok(Self { handle })
         }

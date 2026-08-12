@@ -729,7 +729,7 @@ def make_vpq_dataset(padded_dataset, compression_params=None, resources=None):
     cdef cuvsResources_t res = <cuvsResources_t>resources.get_c_obj()
     cdef cuvsDataset_t source_handle = _cagra_dataset_handle(dataset_obj)
     with cuda_interruptible():
-        check_cuvs(cuvsDatasetMakePq(
+        check_cuvs(cuvsDatasetMakeVpq(
             res,
             source_handle,
             params_ptr,
