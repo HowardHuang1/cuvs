@@ -236,9 +236,10 @@ def test_cagra_vpq_build_update_search():
         cagra.IndexParams(metric="sqeuclidean"),
         dataset_device,
     )
-    padded = make_device_padded_dataset(dataset_device)
     compression = cagra.CompressionParams(pq_bits=8, pq_dim=8)
-    vpq = cagra.make_vpq_dataset(padded, compression_params=compression)
+    vpq = cagra.make_vpq_dataset(
+        dataset_device, compression_params=compression
+    )
     assert vpq.layout == "vpq_f16"
     assert vpq.is_owning is True
 
