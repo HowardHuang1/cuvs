@@ -166,14 +166,14 @@ public class CagraBuildAndSearchIT extends CuVSTestCase {
   /**
    * CAGRA-Q smoke: dense build → makeVpqDataset → updateDataset → search.
    *
-   * Uses dim=30 so {@link CagraIndex#makePaddedDataset} creates an owning padded
-   * copy (dim=32 is already CAGRA-aligned and MakePadded refuses a no-op device copy).
-   * {@link CagraIndex#makeVpqDataset} requires an owning {@link CagraIndex.PaddedDataset}.
+   * VPQ search requires a CAGRA-aligned dim, so dim=32 is used here and wrapped with
+   * {@link CagraIndex#makePaddedDatasetView}; an unaligned dim would leave the attached index
+   * reporting the padded row stride as its dimensionality.
    */
   @Test
   public void testVpqBuildUpdateSearch() throws Throwable {
     final int nRows = 256;
-    final int nCols = 30;
+    final int nCols = 32;
     final int nQueries = 4;
     final int topK = 1;
 
@@ -202,7 +202,7 @@ public class CagraBuildAndSearchIT extends CuVSTestCase {
                 .withDataset(hostVectors)
                 .withIndexParams(indexParams)
                 .build();
-        var padded = index.makePaddedDataset(deviceVectors);
+        var padded = index.makePaddedDatasetView(deviceVectors);
         var vpq = index.makeVpqDataset(padded, compressionParams);
         var queryVectors = CuVSMatrix.ofArray(queries)) {
       assertTrue(padded.isPresent());

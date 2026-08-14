@@ -81,7 +81,7 @@ public class CagraIndexImpl implements CagraIndex {
   }
 
   private CagraIndexImpl(
-      InputStream inputStream, CuVSResources resources, CagraIndex.DeserializeDataset outDataset)
+      InputStream inputStream, CuVSResources resources, CagraIndex.DenseOwningDataset outDataset)
       throws Throwable {
     this.resources = resources;
     this.cagraIndexReference = deserialize(inputStream, outDataset);
@@ -485,17 +485,7 @@ public class CagraIndexImpl implements CagraIndex {
   }
 
   @Override
-  public void updateDataset(CagraIndex.PaddedDatasetView datasetView) throws Throwable {
-    checkNotDestroyed();
-    Objects.requireNonNull(datasetView);
-    if (!datasetView.isPresent()) {
-      throw new IllegalArgumentException("datasetView is uninitialized");
-    }
-    updateDataset(datasetView.nativeHandleAddress());
-  }
-
-  @Override
-  public void updateDataset(CagraIndex.PaddedDataset dataset) throws Throwable {
+  public void updateDataset(CagraIndex.PaddedDatasetHandle dataset) throws Throwable {
     checkNotDestroyed();
     Objects.requireNonNull(dataset);
     if (!dataset.isPresent()) {
@@ -528,7 +518,7 @@ public class CagraIndexImpl implements CagraIndex {
 
   @Override
   public CagraIndex.VpqDataset makeVpqDataset(
-      CagraIndex.PaddedDataset paddedDataset, CagraCompressionParams compressionParams)
+      CagraIndex.PaddedDatasetHandle paddedDataset, CagraCompressionParams compressionParams)
       throws Throwable {
     checkNotDestroyed();
     Objects.requireNonNull(paddedDataset);
@@ -720,15 +710,9 @@ public class CagraIndexImpl implements CagraIndex {
    * @return an instance of {@link IndexReference}
    */
   private IndexReference deserialize(
-      InputStream inputStream, CagraIndex.DeserializeDataset outDataset) throws Throwable {
+      InputStream inputStream, CagraIndex.DenseOwningDataset outDataset) throws Throwable {
     if (outDataset != null && outDataset.isPresent()) {
       throw new IllegalArgumentException("outDataset must be empty before deserialization");
-    }
-    if (outDataset != null
-        && !(outDataset instanceof CagraIndex.PaddedDataset)
-        && !(outDataset instanceof CagraIndex.StandardDataset)) {
-      throw new IllegalArgumentException(
-          "outDataset must be CagraIndex.PaddedDataset or CagraIndex.StandardDataset");
     }
 
     Path tmpIndexFile =
@@ -1042,7 +1026,7 @@ public class CagraIndexImpl implements CagraIndex {
 
     private CuVSMatrix dataset;
     private InputStream inputStream;
-    private CagraIndex.DeserializeDataset outDataset;
+    private CagraIndex.DenseOwningDataset outDataset;
     private CagraIndexParams cagraIndexParams;
     private final CuVSResources cuvsResources;
     private CuVSMatrix graph;
@@ -1059,7 +1043,7 @@ public class CagraIndexImpl implements CagraIndex {
     }
 
     @Override
-    public Builder from(InputStream inputStream, CagraIndex.DeserializeDataset outDataset) {
+    public Builder from(InputStream inputStream, CagraIndex.DenseOwningDataset outDataset) {
       this.inputStream = inputStream;
       this.outDataset = Objects.requireNonNull(outDataset);
       return this;
