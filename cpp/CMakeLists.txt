@@ -1187,6 +1187,13 @@ if(NOT BUILD_CPU_ONLY)
       "${CMAKE_CURRENT_BINARY_DIR}/src/neighbors/cagra_extend_inst_data_@data_abbrev@_index_@index_abbrev@.cu"
   )
   generate_inst_matrix(
+    cagra_update_dataset_inst_files
+    MATRIX_JSON_FILE "${CMAKE_CURRENT_SOURCE_DIR}/src/neighbors/cagra_update_dataset_matrix.json"
+    INPUT_FILE "${CMAKE_CURRENT_SOURCE_DIR}/src/neighbors/cagra_update_dataset_inst.cu.in"
+    OUTPUT_FILE_FORMAT
+      "${CMAKE_CURRENT_BINARY_DIR}/src/neighbors/cagra_update_dataset_inst_data_@data_abbrev@_index_@index_abbrev@.cu"
+  )
+  generate_inst_matrix(
     cagra_serialize_inst_files
     MATRIX_JSON_FILE "${CMAKE_CURRENT_SOURCE_DIR}/src/neighbors/cagra_serialize_matrix.json"
     INPUT_FILE "${CMAKE_CURRENT_SOURCE_DIR}/src/neighbors/cagra_serialize_inst.cu.in"
@@ -1387,6 +1394,7 @@ if(NOT BUILD_CPU_ONLY)
     src/neighbors/cagra.cpp
     ${cagra_build_inst_files}
     ${cagra_extend_inst_files}
+    ${cagra_update_dataset_inst_files}
     src/neighbors/cagra_optimize.cu
     src/neighbors/detail/cagra/graph_shared.cu
     ${cagra_serialize_inst_files}

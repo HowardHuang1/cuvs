@@ -152,9 +152,9 @@ TEST(AnnCagraMultiPartition, MixedGraphDegreeRejected)
                                        cagra::search_params{});
 }
 
-// CAGRA-Q smoke test mirroring the C / Python / Rust wrappers: build the graph on dense rows, train
-// VPQ storage from the same padded rows, attach it, then search.
-TEST(AnnCagraVpq, BuildAttachVpqSearch)
+// CAGRA-Q smoke test: build the graph on dense rows, train VPQ storage from the same padded rows,
+// update the index to VPQ storage, then search.
+TEST(AnnCagraVpq, BuildUpdateVpqSearch)
 {
   raft::resources handle;
   auto stream = raft::resource::get_cuda_stream(handle);
@@ -182,7 +182,7 @@ TEST(AnnCagraVpq, BuildAttachVpqSearch)
   EXPECT_EQ(vpq.n_rows(), n_rows);
   EXPECT_EQ(vpq.dim(), dim);
 
-  auto vpq_index = cagra::attach_dataset(handle, dense_index, vpq.as_dataset_view());
+  auto vpq_index = cagra::update_dataset(handle, dense_index, vpq.as_dataset_view());
 
   auto queries = raft::make_device_matrix<float, int64_t>(handle, n_queries, dim);
   raft::copy(queries.data_handle(), dataset.data_handle(), queries.size(), stream);
