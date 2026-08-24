@@ -94,7 +94,7 @@ auto train_from_rows(raft::resources const& res,
   if (device_ptr == nullptr) {
     // A host mdspan makes training subsample the rows and encoding stream them in bounded batches,
     // so the dense dataset is never staged on the device.
-    RAFT_EXPECTS(stride == dim, "make_device_vpq_dataset: host input must be tightly packed");
+    RAFT_EXPECTS(stride == dim, "make_device_pq_dataset: host input must be tightly packed");
     auto row_view = raft::make_host_matrix_view<const T, int64_t>(src_ptr, n_rows, dim);
     return detail::vpq_build_half(res, params, row_view);
   }
@@ -134,7 +134,7 @@ auto vpq_train_from_rows(raft::resources const& res,
       return train_from_rows(
         res, params, static_cast<uint8_t const*>(src_ptr), n_rows, dim, stride);
     default:
-      RAFT_FAIL("make_device_vpq_dataset: unsupported dataset element type %d",
+      RAFT_FAIL("make_device_pq_dataset: unsupported dataset element type %d",
                 static_cast<int>(dtype));
   }
 }

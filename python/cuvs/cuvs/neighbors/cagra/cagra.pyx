@@ -58,9 +58,9 @@ from cuvs.neighbors.filters import no_filter
 
 cdef class CompressionParams:
     """
-    Parameters for VPQ compression (CAGRA-Q).
+    Parameters for PQ compression (CAGRA-Q).
 
-    Train a VPQ dataset with :func:`make_vpq_dataset`, then attach it with
+    Train a PQ dataset with :func:`make_pq_dataset`, then attach it with
     :func:`update_dataset`. Metric must remain ``sqeuclidean`` / L2Expanded.
 
     Parameters
@@ -658,9 +658,9 @@ def build(IndexParams index_params, dataset, resources=None):
 @auto_sync_resources
 def update_dataset(Index index, dataset, resources=None):
     """
-    Update/attach a CAGRA index with a device-padded or device VPQ dataset.
+    Update/attach a CAGRA index with a device-padded or device PQ dataset.
 
-    Accepts a ``Dataset`` (padded or ``vpq_f16``) or array (promoted to padded).
+    Accepts a ``Dataset`` (padded or ``pq_f16``) or array (promoted to padded).
     The index becomes search-ready in the matching layout.
     """
     if not index.trained:
@@ -674,8 +674,8 @@ def update_dataset(Index index, dataset, resources=None):
         source_array = dataset
         dataset_obj = make_device_padded_dataset(dataset, resources=resources)
 
-    if dataset_obj.layout not in ("padded", "vpq_f16"):
-        raise TypeError("dataset must have padded or vpq_f16 layout")
+    if dataset_obj.layout not in ("padded", "pq_f16"):
+        raise TypeError("dataset must have padded or pq_f16 layout")
 
     cdef cuvsDataset_t dataset_handle = _cagra_dataset_handle(dataset_obj)
     cdef cuvsResources_t res = <cuvsResources_t>resources.get_c_obj()
@@ -690,23 +690,23 @@ def update_dataset(Index index, dataset, resources=None):
 
 
 @auto_sync_resources
-def make_vpq_dataset(padded_dataset, compression_params=None, resources=None):
+def make_pq_dataset(padded_dataset, compression_params=None, resources=None):
     """
-    Train an owning device VPQ dataset (CAGRA-Q) from a device-padded dataset.
+    Train an owning device PQ dataset (CAGRA-Q) from a device-padded dataset.
 
     Parameters
     ----------
     padded_dataset : Dataset or array
-        Device-padded source used to train VPQ. Arrays are converted via
+        Device-padded source used to train PQ. Arrays are converted via
         :func:`cuvs.common.dataset.make_device_padded_dataset`.
     compression_params : CompressionParams, optional
-        VPQ training parameters. Defaults are used when omitted.
+        PQ training parameters. Defaults are used when omitted.
     {resources_docstring}
 
     Returns
     -------
     Dataset
-        Owning VPQ dataset handle. Keep it alive while any index uses it.
+        Owning PQ dataset handle. Keep it alive while any index uses it.
     """
     cdef Dataset dataset_obj
     if isinstance(padded_dataset, Dataset):
@@ -725,17 +725,17 @@ def make_vpq_dataset(padded_dataset, compression_params=None, resources=None):
         params_obj = compression_params
         params_ptr = params_obj.params
 
-    cdef Dataset vpq = Dataset()
+    cdef Dataset pq = Dataset()
     cdef cuvsResources_t res = <cuvsResources_t>resources.get_c_obj()
     cdef cuvsDataset_t source_handle = _cagra_dataset_handle(dataset_obj)
     with cuda_interruptible():
-        check_cuvs(cuvsDatasetMakeVpq(
+        check_cuvs(cuvsDatasetMakePq(
             res,
             source_handle,
             params_ptr,
-            &vpq.dataset
+            &pq.dataset
         ))
-    return vpq
+    return pq
 
 
 def build_index(IndexParams index_params, dataset, resources=None):

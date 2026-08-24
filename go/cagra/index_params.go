@@ -13,7 +13,7 @@ type IndexParams struct {
 	params C.cuvsCagraIndexParams_t
 }
 
-// CompressionParams holds VPQ training parameters for CAGRA-Q.
+// CompressionParams holds PQ training parameters for CAGRA-Q.
 type CompressionParams struct {
 	params C.cuvsCagraCompressionParams_t
 }
@@ -32,7 +32,7 @@ var cBuildAlgos = map[BuildAlgo]int{
 	AutoSelect: C.AUTO_SELECT,
 }
 
-// CreateCompressionParams creates VPQ compression params with library defaults.
+// CreateCompressionParams creates PQ compression params with library defaults.
 func CreateCompressionParams() (*CompressionParams, error) {
 	var params C.cuvsCagraCompressionParams_t
 

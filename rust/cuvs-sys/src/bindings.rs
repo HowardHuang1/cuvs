@@ -264,7 +264,7 @@ unsafe extern "C" {
 pub enum cuvsDatasetLayout_t {
     CUVS_DATASET_LAYOUT_STANDARD = 0,
     CUVS_DATASET_LAYOUT_PADDED = 1,
-    CUVS_DATASET_LAYOUT_VPQ_F16 = 2,
+    CUVS_DATASET_LAYOUT_PQ_F16 = 2,
 }
 #[repr(u32)]
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
@@ -1363,11 +1363,11 @@ unsafe extern "C" {
 }
 unsafe extern "C" {
     #[must_use]
-    pub fn cuvsDatasetMakeVpq(
+    pub fn cuvsDatasetMakePq(
         res: cuvsResources_t,
         source_dataset: cuvsDataset_t,
         params: cuvsCagraCompressionParams_t,
-        vpq_dataset: *mut cuvsDataset_t,
+        pq_dataset: *mut cuvsDataset_t,
     ) -> cuvsError_t;
 }
 unsafe extern "C" {

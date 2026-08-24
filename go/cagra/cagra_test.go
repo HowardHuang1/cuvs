@@ -128,8 +128,8 @@ func TestCagra(t *testing.T) {
 	}
 }
 
-func TestCagraVpqBuildUpdateSearch(t *testing.T) {
-	// CAGRA-Q smoke: dense build → MakeVpqDataset → UpdateDataset → Search.
+func TestCagraPqBuildUpdateSearch(t *testing.T) {
+	// CAGRA-Q smoke: dense build → MakePqDataset → UpdateDataset → Search.
 	const (
 		nDataPoints = 256
 		nFeatures   = 32
@@ -197,14 +197,14 @@ func TestCagraVpqBuildUpdateSearch(t *testing.T) {
 		t.Fatalf("error setting pq_dim: %v", err)
 	}
 
-	vpq, err := MakeVpqDataset(resource, padded, compression)
+	pq, err := MakePqDataset(resource, padded, compression)
 	if err != nil {
-		t.Fatalf("error creating VPQ dataset: %v", err)
+		t.Fatalf("error creating PQ dataset: %v", err)
 	}
-	defer vpq.Close()
+	defer pq.Close()
 
-	if err := UpdateDataset(resource, vpq, index); err != nil {
-		t.Fatalf("error updating index with VPQ dataset: %v", err)
+	if err := UpdateDataset(resource, pq, index); err != nil {
+		t.Fatalf("error updating index with PQ dataset: %v", err)
 	}
 
 	queries, err := cuvs.NewTensor(testDataset[:nQueries])
@@ -235,7 +235,7 @@ func TestCagraVpqBuildUpdateSearch(t *testing.T) {
 	defer searchParams.Close()
 
 	if err := SearchIndex(resource, searchParams, index, &queries, &neighbors, &distances, nil); err != nil {
-		t.Fatalf("error searching VPQ index: %v", err)
+		t.Fatalf("error searching PQ index: %v", err)
 	}
 
 	if _, err := neighbors.ToHost(&resource); err != nil {

@@ -101,15 +101,15 @@ impl<'d> Index<'d> {
         Ok(handle)
     }
 
-    /// Attach a device-padded or device VPQ dataset and return a search-ready index borrowing it.
+    /// Attach a device-padded or device PQ dataset and return a search-ready index borrowing it.
     pub fn update_dataset<'a, D>(self, res: &Resources, dataset: &'a D) -> Result<Index<'a>>
     where
         D: CuvsDataset + ?Sized,
     {
         let kind = dataset.dataset_kind()?;
-        if kind != DatasetKind::DevicePadded && kind != DatasetKind::DeviceVpqF16 {
+        if kind != DatasetKind::DevicePadded && kind != DatasetKind::DevicePqF16 {
             return Err(CagraError::Validation(format!(
-                "CAGRA dataset update requires a device-padded or device VPQ_F16 view, got {:?}",
+                "CAGRA dataset update requires a device-padded or device PQ_F16 view, got {:?}",
                 kind
             )));
         }
@@ -275,15 +275,15 @@ impl<D> DeserializedIndex<D> {
         serialize_to_hnswlib_impl(&self.handle, res, filename.as_ref())
     }
 
-    /// Replace the deserialized storage with a caller-owned device-padded or VPQ view.
+    /// Replace the deserialized storage with a caller-owned device-padded or PQ view.
     pub fn update_dataset<'a, T>(self, res: &Resources, dataset: &'a T) -> Result<Index<'a>>
     where
         T: CuvsDataset + ?Sized,
     {
         let kind = dataset.dataset_kind()?;
-        if kind != DatasetKind::DevicePadded && kind != DatasetKind::DeviceVpqF16 {
+        if kind != DatasetKind::DevicePadded && kind != DatasetKind::DevicePqF16 {
             return Err(CagraError::Validation(format!(
-                "CAGRA dataset update requires a device-padded or device VPQ_F16 view, got {:?}",
+                "CAGRA dataset update requires a device-padded or device PQ_F16 view, got {:?}",
                 kind
             )));
         }
@@ -483,10 +483,10 @@ mod tests {
         test_cagra(build_params);
     }
 
-    /// CAGRA-Q smoke: dense build → make_vpq_dataset → update_dataset → search.
+    /// CAGRA-Q smoke: dense build → make_pq_dataset → update_dataset → search.
     #[test]
-    fn test_cagra_vpq_build_update_search() {
-        use crate::neighbors::cagra::{CompressionParams, make_vpq_dataset};
+    fn test_cagra_pq_build_update_search() {
+        use crate::neighbors::cagra::{CompressionParams, make_pq_dataset};
 
         const N_ROWS: usize = 256;
         const N_COLS: usize = 32;
@@ -505,10 +505,10 @@ mod tests {
         assert_eq!(padded.dataset_kind().unwrap(), DatasetKind::DevicePadded);
 
         let compression = CompressionParams::new().unwrap().set_pq_bits(8).set_pq_dim(8);
-        let vpq = make_vpq_dataset(&res, &padded, Some(&compression)).expect("make_vpq_dataset");
-        assert_eq!(vpq.dataset_kind().unwrap(), DatasetKind::DeviceVpqF16);
+        let pq = make_pq_dataset(&res, &padded, Some(&compression)).expect("make_pq_dataset");
+        assert_eq!(pq.dataset_kind().unwrap(), DatasetKind::DevicePqF16);
 
-        let index = index.update_dataset(&res, &vpq).expect("update_dataset with VPQ");
+        let index = index.update_dataset(&res, &pq).expect("update_dataset with PQ");
         search_and_verify_self_neighbors(&res, &index, &dataset, N_QUERIES, K);
     }
 

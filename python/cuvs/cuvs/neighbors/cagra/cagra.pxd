@@ -163,11 +163,11 @@ cdef extern from "cuvs/neighbors/cagra.h" nogil:
     cuvsError_t cuvsCagraCompressionParamsDestroy(
         cuvsCagraCompressionParams_t params)
 
-    cuvsError_t cuvsDatasetMakeVpq(
+    cuvsError_t cuvsDatasetMakePq(
         cuvsResources_t res,
         cuvsDataset_t source_dataset,
         cuvsCagraCompressionParams_t params,
-        cuvsDataset_t* vpq_dataset)
+        cuvsDataset_t* pq_dataset)
 
     cuvsError_t cuvsCagraSerializeGraph(cuvsResources_t res,
                                         const char * filename,

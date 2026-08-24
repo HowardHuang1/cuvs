@@ -2016,9 +2016,9 @@ TEST(CagraC, SearchMultiPartitionMultiKernelRejected)
   cuvsResourcesDestroy(res);
 }
 
-TEST(CagraC, BuildAttachVpqSearch)
+TEST(CagraC, BuildAttachPqSearch)
 {
-  // CAGRA-Q smoke test: dense build → MakeVpq → UpdateDataset(VPQ) → Search.
+  // CAGRA-Q smoke test: dense build → MakePq → UpdateDataset(PQ) → Search.
   constexpr int64_t n_rows    = 256;
   constexpr int64_t dim       = 32;
   constexpr int64_t n_queries = 4;
@@ -2063,18 +2063,18 @@ TEST(CagraC, BuildAttachVpqSearch)
   compression->pq_bits = 8;
   compression->pq_dim  = 8;
 
-  cuvsDataset_t vpq = nullptr;
-  ASSERT_EQ(cuvsDatasetMakeVpq(res, padded, compression, &vpq), CUVS_SUCCESS);
+  cuvsDataset_t pq = nullptr;
+  ASSERT_EQ(cuvsDatasetMakePq(res, padded, compression, &pq), CUVS_SUCCESS);
   {
     cuvsDatasetLayout_t layout;
-    ASSERT_EQ(cuvsDatasetGetLayout(vpq, &layout), CUVS_SUCCESS);
-    EXPECT_EQ(layout, CUVS_DATASET_LAYOUT_VPQ_F16);
+    ASSERT_EQ(cuvsDatasetGetLayout(pq, &layout), CUVS_SUCCESS);
+    EXPECT_EQ(layout, CUVS_DATASET_LAYOUT_PQ_F16);
     bool owning = false;
-    ASSERT_EQ(cuvsDatasetGetIsOwning(vpq, &owning), CUVS_SUCCESS);
+    ASSERT_EQ(cuvsDatasetGetIsOwning(pq, &owning), CUVS_SUCCESS);
     EXPECT_TRUE(owning);
   }
 
-  ASSERT_EQ(cuvsCagraUpdateDataset(res, vpq, index), CUVS_SUCCESS);
+  ASSERT_EQ(cuvsCagraUpdateDataset(res, pq, index), CUVS_SUCCESS);
 
   rmm::device_uvector<float> queries_d(n_queries * dim, stream);
   raft::copy(queries_d.data(), dataset_d.data(), n_queries * dim, stream);
@@ -2115,7 +2115,7 @@ TEST(CagraC, BuildAttachVpqSearch)
 
   cuvsCagraSearchParamsDestroy(search_params);
   cuvsCagraCompressionParamsDestroy(compression);
-  cuvsDatasetDestroy(vpq);
+  cuvsDatasetDestroy(pq);
   cuvsCagraIndexDestroy(index);
   cuvsCagraIndexParamsDestroy(build_params);
   cuvsDatasetDestroy(padded);

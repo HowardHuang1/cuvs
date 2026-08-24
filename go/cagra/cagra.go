@@ -21,8 +21,8 @@ type PaddedDataset struct {
 	dataset C.cuvsDataset_t
 }
 
-// Owning VPQ dataset handle for CAGRA-Q search.
-type VpqDataset struct {
+// Owning PQ dataset handle for CAGRA-Q search.
+type PqDataset struct {
 	dataset C.cuvsDataset_t
 }
 
@@ -32,7 +32,7 @@ type PaddedDatasetHandle interface {
 }
 
 // DatasetHandle is any CAGRA dataset handle accepted by UpdateDataset
-// (device-padded or device VPQ).
+// (device-padded or device PQ).
 type DatasetHandle interface {
 	datasetHandle() C.cuvsDataset_t
 }
@@ -196,7 +196,7 @@ func (view *StandardDatasetView) Close() error {
 }
 
 // UpdateDataset updates any CAGRA index layout with a caller-provided device
-// padded or VPQ dataset/view and leaves the same handle search-ready.
+// padded or PQ dataset/view and leaves the same handle search-ready.
 func UpdateDataset(Resources cuvs.Resource, dataset DatasetHandle, index *CagraIndex) error {
 	if !index.trained {
 		return errors.New("index needs to be built before attaching dataset")
@@ -215,9 +215,9 @@ func UpdateDataset(Resources cuvs.Resource, dataset DatasetHandle, index *CagraI
 	return nil
 }
 
-// MakeVpqDataset trains an owning device VPQ dataset (CAGRA-Q) from a device-padded source.
+// MakePqDataset trains an owning device PQ dataset (CAGRA-Q) from a device-padded source.
 // params may be nil to use library defaults. Keep the returned dataset alive while any index uses it.
-func MakeVpqDataset(Resources cuvs.Resource, source PaddedDatasetHandle, params *CompressionParams) (*VpqDataset, error) {
+func MakePqDataset(Resources cuvs.Resource, source PaddedDatasetHandle, params *CompressionParams) (*PqDataset, error) {
 	if source == nil || source.datasetHandle() == nil {
 		return nil, errors.New("source padded dataset is nil")
 	}
@@ -225,28 +225,28 @@ func MakeVpqDataset(Resources cuvs.Resource, source PaddedDatasetHandle, params 
 	if params != nil {
 		cParams = params.params
 	}
-	var vpqDataset C.cuvsDataset_t
-	err := cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsDatasetMakeVpq(
+	var pqDataset C.cuvsDataset_t
+	err := cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsDatasetMakePq(
 		C.cuvsResources_t(Resources.Resource),
 		source.datasetHandle(),
 		cParams,
-		&vpqDataset,
+		&pqDataset,
 	)))
 	if err != nil {
 		return nil, err
 	}
-	return &VpqDataset{dataset: vpqDataset}, nil
+	return &PqDataset{dataset: pqDataset}, nil
 }
 
-func (dataset *VpqDataset) datasetHandle() C.cuvsDataset_t {
+func (dataset *PqDataset) datasetHandle() C.cuvsDataset_t {
 	if dataset == nil {
 		return nil
 	}
 	return dataset.dataset
 }
 
-// Close destroys an owning VPQ dataset handle.
-func (dataset *VpqDataset) Close() error {
+// Close destroys an owning PQ dataset handle.
+func (dataset *PqDataset) Close() error {
 	if dataset == nil || dataset.dataset == nil {
 		return nil
 	}

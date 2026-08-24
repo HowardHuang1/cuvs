@@ -508,13 +508,13 @@ public class CagraIndexImpl implements CagraIndex {
   }
 
   @Override
-  public void updateDataset(CagraIndex.VpqDataset vpqDataset) throws Throwable {
+  public void updateDataset(CagraIndex.PqDataset pqDataset) throws Throwable {
     checkNotDestroyed();
-    Objects.requireNonNull(vpqDataset);
-    if (!vpqDataset.isPresent()) {
-      throw new IllegalArgumentException("vpqDataset is uninitialized");
+    Objects.requireNonNull(pqDataset);
+    if (!pqDataset.isPresent()) {
+      throw new IllegalArgumentException("pqDataset is uninitialized");
     }
-    updateDataset(vpqDataset.nativeHandleAddress());
+    updateDataset(pqDataset.nativeHandleAddress());
   }
 
   private void updateDataset(long datasetHandleAddress) {
@@ -530,7 +530,7 @@ public class CagraIndexImpl implements CagraIndex {
   }
 
   @Override
-  public CagraIndex.VpqDataset makeVpqDataset(
+  public CagraIndex.PqDataset makePqDataset(
       CagraIndex.PaddedDatasetHandle paddedDataset, CagraCompressionParams compressionParams)
       throws Throwable {
     checkNotDestroyed();
@@ -557,18 +557,18 @@ public class CagraIndexImpl implements CagraIndex {
           cuvsCagraCompressionParams.pq_kmeans_trainset_fraction(
               paramsSeg, compressionParams.getPqKmeansTrainsetFraction());
         }
-        MemorySegment vpqDatasetPtr = localArena.allocate(cuvsDataset_t);
+        MemorySegment pqDatasetPtr = localArena.allocate(cuvsDataset_t);
         var returnValue =
-            cuvsDatasetMakeVpq(
+            cuvsDatasetMakePq(
                 cuvsRes,
                 MemorySegment.ofAddress(paddedDataset.nativeHandleAddress()),
                 paramsSeg,
-                vpqDatasetPtr);
-        checkCuVSError(returnValue, "cuvsDatasetMakeVpq");
-        MemorySegment vpqDataset = vpqDatasetPtr.get(cuvsDataset_t, 0);
+                pqDatasetPtr);
+        checkCuVSError(returnValue, "cuvsDatasetMakePq");
+        MemorySegment pqDataset = pqDatasetPtr.get(cuvsDataset_t, 0);
 
-        var out = new CagraIndex.VpqDataset();
-        out.setDelegate(new DatasetCloseDelegate(vpqDataset), vpqDataset.address());
+        var out = new CagraIndex.PqDataset();
+        out.setDelegate(new DatasetCloseDelegate(pqDataset), pqDataset.address());
         return out;
       } finally {
         if (compressionHandle != null) {

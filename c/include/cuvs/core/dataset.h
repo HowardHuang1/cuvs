@@ -21,8 +21,8 @@ extern "C" {
 typedef enum {
   CUVS_DATASET_LAYOUT_STANDARD = 0,
   CUVS_DATASET_LAYOUT_PADDED   = 1,
-  /** Device VPQ storage with f16 codebooks (CAGRA-Q search dataset). */
-  CUVS_DATASET_LAYOUT_VPQ_F16  = 2
+  /** Device PQ storage with f16 codebooks (CAGRA-Q search dataset). */
+  CUVS_DATASET_LAYOUT_PQ_F16 = 2
 } cuvsDatasetLayout_t;
 
 /**
