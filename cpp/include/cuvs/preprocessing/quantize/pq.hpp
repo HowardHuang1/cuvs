@@ -281,8 +281,8 @@ namespace detail {
  *
  * Typical **CAGRA** usage: build the graph on dense vectors, then attach VPQ for search (metric
  * must remain `L2Expanded` for this path). Train VPQ from the same CAGRA-padded device layout you
- * used for graph build, keep the `device_vpq_dataset` alive, and attach it with
- * `cagra::update_dataset` (returns a `vpq_f16_index`).
+ * used for graph build, keep the `device_vpq_dataset` alive, and call
+ * `cagra::update_dataset` with a non-owning view.
  *
  * @code{.cpp}
  * #include <cuvs/neighbors/cagra.hpp>
@@ -291,9 +291,9 @@ namespace detail {
  * // `idx` is a dense CAGRA index with graph built on padded rows.
  * // `padded` is a `device_padded_dataset_view<float, int64_t>` view of those same rows.
  * cuvs::neighbors::vpq_params vpq_params{};
- * auto vpq = cuvs::preprocessing::quantize::pq::make_device_vpq_dataset(
- *   res, vpq_params, padded);
- * auto vpq_idx = cagra::update_dataset(res, idx, vpq.as_dataset_view());
+ * auto vpq = cuvs::preprocessing::quantize::pq::make_vpq_dataset(res, vpq_params, padded);
+ * auto vpq_idx =
+ *   cuvs::neighbors::cagra::update_dataset(res, std::move(idx), vpq.as_dataset_view());
  * @endcode
  */
 template <typename SrcT>

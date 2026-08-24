@@ -63,7 +63,7 @@ CUVS_HIDDEN auto convert_standard_to_padded_index(
   if (standard_idx.source_indices().has_value()) {
     out.update_source_indices(res, standard_idx.source_indices().value());
   }
-  out.update_device_dataset_same_layout(res, padded_dataset);
+  update_dataset(res, out, padded_dataset);
   return out;
 }
 
@@ -93,7 +93,7 @@ CUVS_HIDDEN auto convert_dense_to_vpq_f16_index(
   if (src.source_indices().has_value()) {
     out.update_source_indices(res, src.source_indices().value());
   }
-  out.update_device_dataset_same_layout(res, vpq_dataset);
+  update_dataset(res, out, vpq_dataset);
   return out;
 }
 
@@ -113,19 +113,20 @@ CUVS_HIDDEN auto attach_dataset(
     return convert_standard_to_padded_index(res, dev_std, device_padded_dataset);
   } else if constexpr (cuvs::neighbors::is_host_padded_dataset_view_v<IndexViewT>) {
     auto dev_pad = convert_host_to_device_index(res, idx);
-    dev_pad.update_device_dataset_same_layout(res, device_padded_dataset);
+    update_dataset(res, dev_pad, device_padded_dataset);
     return dev_pad;
   } else if constexpr (cuvs::neighbors::is_device_standard_dataset_view_v<IndexViewT>) {
     return convert_standard_to_padded_index(res, idx, device_padded_dataset);
   } else if constexpr (cuvs::neighbors::is_device_padded_dataset_view_v<IndexViewT>) {
     RAFT_LOG_WARN(
       "cagra::attach_dataset called with an already device-padded index. "
-      "To avoid an unnecessary index copy, call "
-      "index.update_device_dataset_same_layout(res, device_padded_dataset) "
-      "directly on the original index.");
+      "To avoid an unnecessary index copy, call the same-layout "
+      "cagra::update_dataset(res, index&, device_padded_dataset_view) overload directly on the "
+      "original index.");
     RAFT_FAIL(
       "cagra::attach_dataset: device_padded_index input is not supported in this overload. "
-      "Call index.update_device_dataset_same_layout(res, device_padded_dataset) directly.");
+      "Call the same-layout cagra::update_dataset(res, index&, device_padded_dataset_view) "
+      "overload directly.");
   } else {
     static_assert(!sizeof(IndexViewT), "Unsupported CAGRA index dataset view type");
   }
@@ -142,12 +143,13 @@ CUVS_HIDDEN auto attach_dataset(
   if constexpr (cuvs::neighbors::is_device_vpq_f16_dataset_view_v<IndexViewT>) {
     RAFT_LOG_WARN(
       "cagra::attach_dataset called with an already vpq_f16 index. "
-      "To avoid an unnecessary index copy, call "
-      "index.update_device_dataset_same_layout(res, vpq_dataset) "
-      "directly on the original index.");
+      "To avoid an unnecessary index copy, call the same-layout "
+      "cagra::update_dataset(res, index&, device_vpq_dataset_view) overload directly on the "
+      "original index.");
     RAFT_FAIL(
       "cagra::attach_dataset: vpq_f16_index input is not supported in this overload. "
-      "Call index.update_device_dataset_same_layout(res, vpq_dataset) directly.");
+      "Call the same-layout cagra::update_dataset(res, index&, device_vpq_dataset_view) overload "
+      "directly.");
   } else {
     return convert_dense_to_vpq_f16_index(res, idx, vpq_dataset);
   }

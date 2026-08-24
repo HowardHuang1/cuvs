@@ -27,72 +27,23 @@ extern template void index<data_t, index_t, inst_device_vpq_view_t>::compute_dat
   raft::resources const&);
 
 #define CUVS_CAGRA_DEFINE_UPDATE_DATASET_OVERLOADS(T)                                           \
-  auto update_dataset(raft::resources const& res,                                               \
-                      host_standard_index<T, index_t> const& idx,                               \
-                      cuvs::neighbors::device_padded_dataset_view<T, int64_t> const& dataset)   \
-    -> device_padded_index<T, index_t>                                                          \
-  {                                                                                             \
-    return detail::attach_dataset(res, idx, dataset);                                           \
-  }                                                                                             \
-  auto update_dataset(raft::resources const& res,                                               \
-                      host_padded_index<T, index_t> const& idx,                                 \
-                      cuvs::neighbors::device_padded_dataset_view<T, int64_t> const& dataset)   \
-    -> device_padded_index<T, index_t>                                                          \
-  {                                                                                             \
-    return detail::attach_dataset(res, idx, dataset);                                           \
-  }                                                                                             \
-  auto update_dataset(raft::resources const& res,                                               \
-                      device_standard_index<T, index_t> const& idx,                             \
-                      cuvs::neighbors::device_padded_dataset_view<T, int64_t> const& dataset)   \
-    -> device_padded_index<T, index_t>                                                          \
-  {                                                                                             \
-    return detail::attach_dataset(res, idx, dataset);                                           \
-  }                                                                                             \
-  auto update_dataset(raft::resources const& res,                                               \
-                      host_standard_index<T, index_t> const& idx,                               \
-                      cuvs::neighbors::device_vpq_dataset_view<half, int64_t> const& dataset)   \
-    -> vpq_f16_index<T, index_t>                                                                \
-  {                                                                                             \
-    return detail::attach_dataset(res, idx, dataset);                                           \
-  }                                                                                             \
-  auto update_dataset(raft::resources const& res,                                               \
-                      host_padded_index<T, index_t> const& idx,                                 \
-                      cuvs::neighbors::device_vpq_dataset_view<half, int64_t> const& dataset)   \
-    -> vpq_f16_index<T, index_t>                                                                \
-  {                                                                                             \
-    return detail::attach_dataset(res, idx, dataset);                                           \
-  }                                                                                             \
-  auto update_dataset(raft::resources const& res,                                               \
-                      device_standard_index<T, index_t> const& idx,                             \
-                      cuvs::neighbors::device_vpq_dataset_view<half, int64_t> const& dataset)   \
-    -> vpq_f16_index<T, index_t>                                                                \
-  {                                                                                             \
-    return detail::attach_dataset(res, idx, dataset);                                           \
-  }                                                                                             \
-  auto update_dataset(raft::resources const& res,                                               \
-                      device_padded_index<T, index_t> const& idx,                               \
-                      cuvs::neighbors::device_vpq_dataset_view<half, int64_t> const& dataset)   \
-    -> vpq_f16_index<T, index_t>                                                                \
-  {                                                                                             \
-    return detail::attach_dataset(res, idx, dataset);                                           \
-  }                                                                                             \
   void update_dataset(raft::resources const& res,                                               \
                       device_standard_index<T, index_t>& idx,                                   \
                       cuvs::neighbors::device_standard_dataset_view<T, int64_t> const& dataset) \
   {                                                                                             \
-    idx.update_device_dataset_same_layout(res, dataset);                                        \
+    idx = device_standard_index<T, index_t>(res, std::move(idx), dataset);                      \
   }                                                                                             \
   void update_dataset(raft::resources const& res,                                               \
                       device_padded_index<T, index_t>& idx,                                     \
                       cuvs::neighbors::device_padded_dataset_view<T, int64_t> const& dataset)   \
   {                                                                                             \
-    idx.update_device_dataset_same_layout(res, dataset);                                        \
+    idx = device_padded_index<T, index_t>(res, std::move(idx), dataset);                        \
   }                                                                                             \
   void update_dataset(raft::resources const& res,                                               \
                       vpq_f16_index<T, index_t>& idx,                                           \
                       cuvs::neighbors::device_vpq_dataset_view<half, int64_t> const& dataset)   \
   {                                                                                             \
-    idx.update_device_dataset_same_layout(res, dataset);                                        \
+    idx = vpq_f16_index<T, index_t>(res, std::move(idx), dataset);                              \
   }
 
 CUVS_CAGRA_DEFINE_UPDATE_DATASET_OVERLOADS(data_t)
