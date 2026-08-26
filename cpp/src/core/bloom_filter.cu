@@ -7,6 +7,7 @@
 #include <cuvs/core/bloom_filter.hpp>
 
 #include <cuco/bloom_filter.cuh>
+#include <cuco/bloom_filter_policy.cuh>
 
 #include <raft/core/error.hpp>
 #include <raft/core/resource/cuda_stream.hpp>
