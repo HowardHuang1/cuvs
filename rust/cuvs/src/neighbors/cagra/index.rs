@@ -602,7 +602,7 @@ fn serialize_to_hnswlib_impl(handle: &IndexHandle, res: &Resources, filename: &P
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dataset::PaddedDataset;
+    use crate::dataset::{DatasetView, PaddedDataset};
     use crate::neighbors::filters::{Bitset, Filter};
     use crate::test_utils::DeviceTensor;
     use ndarray::s;
@@ -1003,12 +1003,12 @@ mod tests {
         let merged_host =
             ndarray::concatenate(ndarray::Axis(0), &[dataset_a.view(), dataset_b.view()]).unwrap();
         let merged_device = DeviceTensor::from_host(&res, &merged_host).unwrap();
-        let merged_owner = PaddedDataset::new(&res, &merged_device).unwrap();
+        let merged_view = DatasetView::new(&res, &merged_device).unwrap();
 
         let offsets: Vec<i64> = vec![0, n1 as i64, (n1 + n2) as i64];
 
         let merged_index =
-            Index::merge(&res, &build_params, &[&index_a, &index_b], &merged_owner, &offsets)
+            Index::merge(&res, &build_params, &[&index_a, &index_b], &merged_view, &offsets)
                 .expect("merge failed");
 
         search_and_verify_self_neighbors(&res, &merged_index, &merged_host, 4, 10);
@@ -1040,7 +1040,7 @@ mod tests {
         let merged_host =
             ndarray::concatenate(ndarray::Axis(0), &[dataset_a.view(), dataset_b.view()]).unwrap();
         let merged_device = DeviceTensor::from_host(&res, &merged_host).unwrap();
-        let merged_owner = PaddedDataset::new(&res, &merged_device).unwrap();
+        let merged_view = DatasetView::new(&res, &merged_device).unwrap();
 
         let offsets: Vec<i64> = vec![0, n1 as i64, (n1 + n2) as i64];
 
@@ -1049,7 +1049,7 @@ mod tests {
             &build_params,
             &merge_params,
             &[&index_a, &index_b],
-            &merged_owner,
+            &merged_view,
             &offsets,
         )
         .expect("merge_with_params failed");
@@ -1067,10 +1067,10 @@ mod tests {
         );
         let device = DeviceTensor::from_host(&res, &dataset).unwrap();
         let index = Index::build(&res, &build_params, &device).unwrap();
-        let owner = PaddedDataset::new(&res, &device).unwrap();
+        let view = DatasetView::new(&res, &device).unwrap();
 
         // Only one index but two offsets entries provided instead of the required two.
-        let err = Index::merge(&res, &build_params, &[&index], &owner, &[0])
+        let err = Index::merge(&res, &build_params, &[&index], &view, &[0])
             .expect_err("offsets.len() must equal indices.len() + 1");
         assert!(matches!(err, CagraError::Validation(_)), "unexpected error: {err:?}");
     }

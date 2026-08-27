@@ -98,7 +98,7 @@ func TestCagraMerge(t *testing.T) {
 		t.Fatalf("error moving merged dataset to device: %v", err)
 	}
 
-	mergedDataset, err := MakePaddedDataset(resource, &mergedTensor)
+	mergedDataset, err := MakePaddedDatasetAuto(resource, &mergedTensor)
 	if err != nil {
 		t.Fatalf("error making padded merged dataset: %v", err)
 	}

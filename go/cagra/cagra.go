@@ -128,6 +128,28 @@ func (view *PaddedDatasetView) datasetHandle() C.cuvsDataset_t {
 	return view.view
 }
 
+// PaddedDatasetCloser is a PaddedDatasetHandle that owns resources needing Close.
+type PaddedDatasetCloser interface {
+	PaddedDatasetHandle
+	Close() error
+}
+
+// MakePaddedDatasetAuto builds a PaddedDatasetCloser from a tensor, choosing the
+// non-owning MakePaddedDatasetView when the tensor's row stride is already
+// CAGRA-padded (MakePaddedDataset rejects already-aligned sources), and the
+// owning MakePaddedDataset otherwise. Mirrors the branch BuildIndex uses.
+func MakePaddedDatasetAuto[T any](Resources cuvs.Resource, dataset *cuvs.Tensor[T]) (PaddedDatasetCloser, error) {
+	if dataset == nil || dataset.C_tensor == nil {
+		return nil, errors.New("dataset is nil")
+	}
+	datasetTensor := (*C.DLManagedTensor)(unsafe.Pointer(dataset.C_tensor))
+	var zero T
+	if isCagraPaddedTensor(datasetTensor, int(unsafe.Sizeof(zero))) {
+		return MakePaddedDatasetView(Resources, dataset)
+	}
+	return MakePaddedDataset(Resources, dataset)
+}
+
 // Destroys an owning padded dataset handle.
 func (dataset *PaddedDataset) Close() error {
 	if dataset == nil || dataset.dataset == nil {
