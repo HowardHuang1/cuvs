@@ -189,26 +189,36 @@ using dataset_owning_accessor_for_view = std::conditional_t<Accessor::is_device_
                                                             device_owning_accessor<DataT>,
                                                             host_owning_accessor<DataT>>;
 
+// Accessor here is already device_owning_accessor<DataT> / host_owning_accessor<DataT> at every
+// call site -- exactly the container policy raft::device_mdarray/host_mdarray default to for
+// element type DataT -- so pass it straight through instead of re-deriving a
+// raft::device_matrix/host_matrix from scratch.
 template <typename DataT, typename IdxT, typename Accessor>
-using dense_owning_matrix = std::conditional_t<Accessor::is_device_accessible,
-                                               raft::device_matrix<DataT, IdxT, raft::row_major>,
-                                               raft::host_matrix<DataT, IdxT, raft::row_major>>;
+using dense_owning_matrix =
+  raft::mdarray<DataT, raft::matrix_extent<IdxT>, raft::row_major, Accessor>;
 
 template <typename DataT, typename IdxT, typename Accessor>
-using dense_view_matrix =
-  std::conditional_t<Accessor::is_device_accessible,
-                     raft::device_matrix_view<const DataT, IdxT, raft::row_major>,
-                     raft::host_matrix_view<const DataT, IdxT, raft::row_major>>;
+using dense_view_matrix = raft::mdspan<const DataT,
+                                       raft::matrix_extent<IdxT>,
+                                       raft::row_major,
+                                       dataset_view_accessor_for_owning<DataT, Accessor>>;
 
 template <typename MathT, typename IdxT, typename Accessor>
-using vpq_vq_book_matrix = std::conditional_t<Accessor::is_device_accessible,
-                                              raft::device_matrix<MathT, uint32_t, raft::row_major>,
-                                              raft::host_matrix<MathT, uint32_t, raft::row_major>>;
+using vpq_vq_book_matrix =
+  raft::mdarray<MathT, raft::matrix_extent<uint32_t>, raft::row_major, Accessor>;
+
+// VPQ codes are always uint8_t regardless of MathT, so retarget the owning accessor's element
+// type instead of re-deriving a device/host matrix; residency is still driven by Accessor.
+template <typename NewT, typename Accessor>
+using owning_accessor_with_value_type = std::conditional_t<Accessor::is_device_accessible,
+                                                           device_owning_accessor<NewT>,
+                                                           host_owning_accessor<NewT>>;
 
 template <typename IdxT, typename Accessor>
-using vpq_data_matrix = std::conditional_t<Accessor::is_device_accessible,
-                                           raft::device_matrix<uint8_t, IdxT, raft::row_major>,
-                                           raft::host_matrix<uint8_t, IdxT, raft::row_major>>;
+using vpq_data_matrix = raft::mdarray<uint8_t,
+                                      raft::matrix_extent<IdxT>,
+                                      raft::row_major,
+                                      owning_accessor_with_value_type<uint8_t, Accessor>>;
 
 // -----------------------------------------------------------------------------
 // empty
@@ -234,7 +244,9 @@ using empty_dataset_view_storage = empty_dataset_storage<IdxT>;
 // -----------------------------------------------------------------------------
 
 /**
- * Dense row-major owning storage shared by padded and standard dataset containers.
+ * Dense row-major owning storage shared by padded and standard dataset containers. Publicly
+ * inherits from MatrixT (an `raft::mdarray`) so `view()`/`data_handle()`/`extent()` etc. are
+ * reused as-is rather than hand-forwarded; `logical_dim_` is the only state this struct adds.
  *
  * Template parameters:
  * - MatrixT: owning matrix type that stores the payload (host/device matrix).
@@ -243,55 +255,58 @@ using empty_dataset_view_storage = empty_dataset_storage<IdxT>;
  * - IdxT: index type used for row counts (`n_rows()` return type).
  */
 template <typename MatrixT, typename ViewT, typename DataT, typename IdxT>
-struct dense_row_major_dataset_owning_storage {
-  MatrixT data_;
+struct dense_row_major_dataset_owning_storage : public MatrixT {
   uint32_t logical_dim_;
 
+  // MatrixT (mdarray) also has its own stride(size_t); pull it back into scope since declaring
+  // our own no-arg stride() below would otherwise hide it entirely (C++ name hiding).
+  using MatrixT::stride;
+
   dense_row_major_dataset_owning_storage(MatrixT&& data, uint32_t logical_dim) noexcept
-    : data_{std::move(data)}, logical_dim_{logical_dim}
+    : MatrixT{std::move(data)}, logical_dim_{logical_dim}
   {
   }
 
-  [[nodiscard]] auto n_rows() const noexcept -> IdxT { return data_.extent(0); }
+  [[nodiscard]] auto n_rows() const noexcept -> IdxT { return this->extent(0); }
   [[nodiscard]] auto dim() const noexcept -> uint32_t { return logical_dim_; }
   [[nodiscard]] auto stride() const noexcept -> uint32_t
   {
-    return static_cast<uint32_t>(data_.extent(1));
+    return static_cast<uint32_t>(this->extent(1));
   }
-  [[nodiscard]] auto view() const noexcept -> ViewT { return data_.view(); }
-  [[nodiscard]] auto data_handle() noexcept -> DataT* { return data_.data_handle(); }
-  [[nodiscard]] auto data_handle() const noexcept -> const DataT* { return data_.data_handle(); }
+  // view() and data_handle() are inherited directly from MatrixT (raft::mdarray); no hand-written
+  // forwarding needed since MatrixT::view() const already returns exactly ViewT.
 };
 
 template <typename ViewT, typename DataT, typename IdxT>
-struct dense_row_major_dataset_view_storage {
-  ViewT data_;
+struct dense_row_major_dataset_view_storage : public ViewT {
   uint32_t logical_dim_;
+
+  // ViewT (mdspan) also has its own stride(size_t); pull it back into scope since declaring our
+  // own no-arg stride() below would otherwise hide it entirely (C++ name hiding), and the body of
+  // that stride() itself needs to call the inherited one.
+  using ViewT::stride;
 
   dense_row_major_dataset_view_storage() noexcept = default;
 
   explicit dense_row_major_dataset_view_storage(ViewT v) noexcept
-    : data_(v), logical_dim_(static_cast<uint32_t>(v.extent(1)))
+    : ViewT(v), logical_dim_(static_cast<uint32_t>(v.extent(1)))
   {
   }
 
   dense_row_major_dataset_view_storage(ViewT v, uint32_t logical_dim) noexcept
-    : data_(v), logical_dim_(logical_dim)
+    : ViewT(v), logical_dim_(logical_dim)
   {
   }
 
-  dense_row_major_dataset_view_storage(dense_row_major_dataset_view_storage const& other) noexcept
-    : data_(other.data_), logical_dim_(other.logical_dim_)
-  {
-  }
-
-  [[nodiscard]] auto n_rows() const noexcept -> IdxT { return data_.extent(0); }
+  [[nodiscard]] auto n_rows() const noexcept -> IdxT { return this->extent(0); }
   [[nodiscard]] auto dim() const noexcept -> uint32_t { return logical_dim_; }
   [[nodiscard]] auto stride() const noexcept -> uint32_t
   {
-    return static_cast<uint32_t>(data_.stride(0) > 0 ? data_.stride(0) : data_.extent(1));
+    return static_cast<uint32_t>(ViewT::stride(0) > 0 ? ViewT::stride(0) : this->extent(1));
   }
-  [[nodiscard]] auto view() const noexcept -> ViewT { return data_; }
+  // ViewT (mdspan) has no view() of its own -- it already *is* the view -- so this shrinks to a
+  // plain upcast instead of reaching into a wrapped field.
+  [[nodiscard]] auto view() const noexcept -> ViewT { return *this; }
 };
 
 template <typename MatrixT, typename ViewT, typename DataT, typename IdxT>
