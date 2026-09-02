@@ -36,6 +36,7 @@
 #include <string>
 #include <type_traits>
 #include <utility>
+#include <variant>
 #ifdef __cpp_lib_bitops
 #include <bit>
 #endif
@@ -1353,6 +1354,242 @@ auto make_host_standard_dataset_view(SrcT const& src)
     index_type,
     host_standard_dataset_view<value_type, index_type>>(src, static_cast<uint32_t>(src.extent(1)));
 }
+
+// =====================================================================================
+// Experimental: Spec-based dataset/dataset_view prototype (#2395 follow-up).
+//
+// Not wired up to any public alias, trait, or downstream call site yet -- exists to validate the
+// design in isolation. `dataset<T,IdxT,SpecT>` and `dataset_view<T,IdxT,SpecT>` are single generic
+// templates with zero per-kind dispatch inside them: every member is a one-line forward to
+// `spec_type::get_*(...)`, and all kind-specific logic lives in the per-kind Spec structs below
+// (`empty_spec`, `mdarray_spec`, `vpq_spec`), which dataset/dataset_view never name or branch on.
+// `dataset` and `dataset_view` are deliberately two independent, non-inheriting types (no
+// shared_ptr, no "sometimes owning" object): `dataset` holds owning storage (mdarray-shaped),
+// `dataset_view` holds the corresponding view storage (mdspan-shaped); the same
+// `get_n_rows`/`get_dim` spec functions serve both, since `raft::mdarray`/`raft::mdspan` both
+// expose `.extent(r)`.
+// =====================================================================================
+namespace experimental {
+
+/**
+ * A spec defines a dictionary iff it needs a second storage slot to interpret the data (e.g. PQ
+ * codebooks). Non-compressed specs declare `dictionary_type = std::monostate` -- the same
+ * vocabulary type for "no dictionary," not just an omitted member -- so `dataset`/`dataset_view`
+ * never need to branch on whether the slot exists; they just always have one, sometimes empty.
+ */
+template <typename SpecT>
+concept compressed_dataset_spec = requires {
+  typename SpecT::dictionary_type;
+  typename SpecT::dictionary_view_type;
+} && !std::is_same_v<typename SpecT::dictionary_type, std::monostate>;
+
+// -----------------------------------------------------------------------------
+// empty
+// -----------------------------------------------------------------------------
+
+struct empty_spec {
+  struct rep {
+    uint32_t dim;
+  };
+
+  template <typename T, typename IdxT>
+  struct apply {
+    using value_type           = std::remove_cv_t<T>;
+    using index_type           = std::remove_cv_t<IdxT>;
+    using data_type            = rep;
+    using view_type            = rep;
+    using dictionary_type      = std::monostate;
+    using dictionary_view_type = std::monostate;
+
+    [[nodiscard]] static auto get_data_view(data_type const& data) noexcept -> view_type
+    {
+      return data;
+    }
+    [[nodiscard]] static auto get_n_rows(rep const&) noexcept -> index_type { return 0; }
+    [[nodiscard]] static auto get_dim(rep const& data, dictionary_type const&) noexcept -> uint32_t
+    {
+      return data.dim;
+    }
+    [[nodiscard]] static auto get_dictionary_view(dictionary_type const&) noexcept
+      -> dictionary_view_type
+    {
+      return {};
+    }
+  };
+};
+
+// -----------------------------------------------------------------------------
+// dense (plain or padded), implemented via raft::mdarray
+// -----------------------------------------------------------------------------
+
+template <typename LayoutPolicy, typename ContainerPolicy>
+struct mdarray_spec {
+  template <typename T, typename IdxT>
+  struct apply {
+    using value_type = std::remove_cv_t<T>;
+    using index_type = std::remove_cv_t<IdxT>;
+    using data_type = raft::mdarray<T, raft::matrix_extent<int64_t>, LayoutPolicy, ContainerPolicy>;
+    // `get_data_view` takes `data_type const&`, so `.view()` resolves to the const overload,
+    // returning `const_view_type` (const element type) -- match that here, not the mutable
+    // `view_type`.
+    using view_type            = typename data_type::const_view_type;
+    using dictionary_type      = std::monostate;
+    using dictionary_view_type = std::monostate;
+
+    [[nodiscard]] static auto get_data_view(data_type const& data) noexcept -> view_type
+    {
+      return data.view();
+    }
+    template <typename AnyExtentShaped>
+    [[nodiscard]] static auto get_n_rows(AnyExtentShaped const& data) noexcept -> index_type
+    {
+      return static_cast<index_type>(data.extent(0));
+    }
+    template <typename AnyExtentShaped>
+    [[nodiscard]] static auto get_dim(AnyExtentShaped const& data, dictionary_type const&) noexcept
+      -> uint32_t
+    {
+      return static_cast<uint32_t>(data.extent(1));
+    }
+    [[nodiscard]] static auto get_dictionary_view(dictionary_type const&) noexcept
+      -> dictionary_view_type
+    {
+      return {};
+    }
+  };
+};
+
+// -----------------------------------------------------------------------------
+// VPQ compressed: data = encoded rows (uint8_t codes); dictionary = {vq_code_book, pq_code_book}
+// -----------------------------------------------------------------------------
+
+template <typename MathT, typename BookPolicy, typename CodePolicy>
+struct vpq_spec {
+  template <typename IdxT>
+  using storage_spec =
+    typename mdarray_spec<raft::row_major, CodePolicy>::template apply<uint8_t, IdxT>;
+
+  template <typename T, typename IdxT>
+  struct apply : storage_spec<IdxT> {
+    using value_type = std::remove_cv_t<T>;
+    /* Members of a dependent base aren't visible to unqualified lookup, so pull these in. */
+    using typename storage_spec<IdxT>::data_type;
+    using typename storage_spec<IdxT>::view_type;
+    using math_type = MathT;
+
+    using vq_book_type =
+      raft::mdarray<math_type, raft::matrix_extent<int64_t>, raft::row_major, BookPolicy>;
+    using pq_book_type =
+      raft::mdarray<math_type, raft::matrix_extent<int64_t>, raft::row_major, BookPolicy>;
+
+    struct dictionary_type {
+      vq_book_type vq_code_book;
+      pq_book_type pq_code_book;
+    };
+    struct dictionary_view_type {
+      typename vq_book_type::const_view_type vq_code_book;
+      typename pq_book_type::const_view_type pq_code_book;
+    };
+
+    /* get_data_view/get_n_rows are inherited from storage_spec unchanged; only get_dim and
+    get_dictionary_view differ from a plain dense dataset, since the dimension comes from the VQ
+    codebook, not the encoded rows. */
+    template <typename AnyData, typename AnyDict>
+    [[nodiscard]] static auto get_dim(AnyData const&, AnyDict const& dict) noexcept -> uint32_t
+    {
+      return static_cast<uint32_t>(dict.vq_code_book.extent(1));
+    }
+    [[nodiscard]] static auto get_dictionary_view(dictionary_type const& dict) noexcept
+      -> dictionary_view_type
+    {
+      return {dict.vq_code_book.view(), dict.pq_code_book.view()};
+    }
+  };
+};
+
+// -----------------------------------------------------------------------------
+// dataset / dataset_view
+// -----------------------------------------------------------------------------
+
+template <typename T, typename IdxT, typename SpecT>
+struct dataset_view;
+
+/** Owning dataset: value-held storage (no shared_ptr -- exclusive ownership, like today's
+ * `dataset<Container,...>`). Every member is a one-line forward to `spec_type::get_*`; all
+ * per-kind logic lives in `SpecT`, never inside this struct. */
+template <typename T, typename IdxT, typename SpecT>
+struct dataset {
+  using spec_type       = typename SpecT::template apply<T, IdxT>;
+  using value_type      = typename spec_type::value_type;
+  using index_type      = typename spec_type::index_type;
+  using data_type       = typename spec_type::data_type;
+  using dictionary_type = typename spec_type::dictionary_type;
+
+  explicit dataset(data_type&& data, dictionary_type&& dictionary = dictionary_type{})
+    : data_{std::move(data)}, dictionary_{std::move(dictionary)}
+  {
+  }
+
+  [[nodiscard]] auto n_rows() const noexcept -> index_type { return spec_type::get_n_rows(data_); }
+  [[nodiscard]] auto dim() const noexcept -> uint32_t
+  {
+    return spec_type::get_dim(data_, dictionary_);
+  }
+  [[nodiscard]] auto data_view() const noexcept { return spec_type::get_data_view(data_); }
+  [[nodiscard]] auto dictionary_view() const noexcept
+  {
+    return spec_type::get_dictionary_view(dictionary_);
+  }
+
+  [[nodiscard]] auto as_dataset_view() const noexcept -> dataset_view<T, IdxT, SpecT>
+  {
+    return dataset_view<T, IdxT, SpecT>(data_view(), dictionary_view());
+  }
+
+ private:
+  data_type data_;
+  [[no_unique_address]] dictionary_type dictionary_;
+};
+
+/** Non-owning dataset view: holds only view-shaped storage (mdspan, not mdarray). Deliberately not
+ * derived from `dataset` -- a view type should hold "all view state" with no inheritance and no
+ * shared ownership tying it to the owning type. Reuses the same `get_n_rows`/`get_dim` spec
+ * functions as `dataset`, fed view-shaped arguments instead of owning ones, since `raft::mdspan`
+ * exposes the same `.extent(r)` shape as `raft::mdarray`. */
+template <typename T, typename IdxT, typename SpecT>
+struct dataset_view {
+  using spec_type            = typename SpecT::template apply<T, IdxT>;
+  using value_type           = typename spec_type::value_type;
+  using index_type           = typename spec_type::index_type;
+  using view_type            = typename spec_type::view_type;
+  using dictionary_view_type = typename spec_type::dictionary_view_type;
+
+  explicit dataset_view(view_type data_view,
+                        dictionary_view_type dictionary_view = dictionary_view_type{}) noexcept
+    : data_view_{data_view}, dictionary_view_{dictionary_view}
+  {
+  }
+
+  [[nodiscard]] auto n_rows() const noexcept -> index_type
+  {
+    return spec_type::get_n_rows(data_view_);
+  }
+  [[nodiscard]] auto dim() const noexcept -> uint32_t
+  {
+    return spec_type::get_dim(data_view_, dictionary_view_);
+  }
+  [[nodiscard]] auto data_view() const noexcept -> view_type { return data_view_; }
+  [[nodiscard]] auto dictionary_view() const noexcept -> dictionary_view_type
+  {
+    return dictionary_view_;
+  }
+
+ private:
+  view_type data_view_;
+  [[no_unique_address]] dictionary_view_type dictionary_view_;
+};
+
+}  // namespace experimental
 
 namespace filtering {
 
