@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -339,7 +339,7 @@ struct KmeansBatchedInputs {
   int n_clusters;
   T tol;
   bool weighted;
-  int streaming_batch_size;
+  int device_buffer_samples;
 };
 
 template <typename T>
@@ -416,7 +416,7 @@ class KmeansFitBatchedTest : public ::testing::TestWithParam<KmeansBatchedInputs
                                raft::make_host_scalar_view<int>(&ref_n_iter));
 
     cuvs::cluster::kmeans::params batched_params = params;
-    batched_params.streaming_batch_size          = testparams.streaming_batch_size;
+    batched_params.device_buffer_samples         = testparams.device_buffer_samples;
 
     std::optional<raft::host_vector_view<const T, int64_t>> h_sw = std::nullopt;
     auto h_sample_weight = raft::make_host_vector<T, int64_t>(testparams.weighted ? n_samples : 0);
@@ -496,15 +496,15 @@ class KmeansFitBatchedTest : public ::testing::TestWithParam<KmeansBatchedInputs
     auto stream    = raft::resource::get_cuda_stream(handle);
 
     cuvs::cluster::kmeans::params p;
-    p.n_clusters           = n_clusters;
-    p.tol                  = testparams.tol;
-    p.n_init               = 1;
-    p.init                 = cuvs::cluster::kmeans::params::KMeansPlusPlus;
-    p.max_iter             = 20;
-    p.rng_state.seed       = 1;
-    p.oversampling_factor  = 0;
-    p.streaming_batch_size = testparams.streaming_batch_size;
-    p.init_size            = init_size_value;
+    p.n_clusters            = n_clusters;
+    p.tol                   = testparams.tol;
+    p.n_init                = 1;
+    p.init                  = cuvs::cluster::kmeans::params::KMeansPlusPlus;
+    p.max_iter              = 20;
+    p.rng_state.seed        = 1;
+    p.oversampling_factor   = 0;
+    p.device_buffer_samples = testparams.device_buffer_samples;
+    p.init_size             = init_size_value;
 
     auto d_centroids_buf = raft::make_device_matrix<T, int64_t>(handle, n_clusters, n_features);
     T inertia            = 0;
@@ -656,7 +656,7 @@ const std::vector<KmeansBatchedInputs<float>> batched_inputsf2 = {
   {1000, 64, 5, 0.0001f, false, 500},
   {1000, 100, 20, 0.0001f, true, 30},
   {1000, 10, 20, 0.0001f, false, 30},
-  {10000, 16, 10, 0.0001f, true, 1000},
+  {10000, 16, 10, 0.00001f, true, 1000},
   {10000, 96, 10, 0.0001f, false, 10000},
 };
 
