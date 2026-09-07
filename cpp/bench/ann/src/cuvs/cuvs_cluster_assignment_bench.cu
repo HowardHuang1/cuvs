@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Benchmark: brute force vs CAGRA-based cluster assignment for IVF training.
@@ -115,178 +115,62 @@ static void BM_ClusterAssignment_CAGRA(benchmark::State& state)
   state.SetItemsProcessed(state.iterations() * n_rows);
 }
 
-// N = vectors to assign, K = number of clusters, D = dimension
-// Small: 10K vectors, 1K clusters, 128 dim
-BENCHMARK(BM_ClusterAssignment_BruteForce)
-  ->Args({10000, 1000, 128})
-  ->Unit(benchmark::kMillisecond)
-  ->UseRealTime();
-BENCHMARK(BM_ClusterAssignment_CAGRA)
-  ->Args({10000, 1000, 128})
-  ->Unit(benchmark::kMillisecond)
-  ->UseRealTime();
+// Controlled sweep: hold points-per-cluster fixed at kPointsPerCluster (N = kPointsPerCluster * K)
+// so K is the only independent variable. This isolates the effect of K on the brute-force-vs-CAGRA
+// crossover; letting both N and K vary independently (as the old hand-picked Args list did)
+// confounds the two and makes the crossover point ill-defined.
+constexpr int64_t kPointsPerCluster = 5;
+constexpr int64_t kDim              = 128;
 
-// Medium: 100K vectors, 4K clusters
-BENCHMARK(BM_ClusterAssignment_BruteForce)
-  ->Args({100000, 4000, 128})
-  ->Unit(benchmark::kMillisecond)
-  ->UseRealTime();
-BENCHMARK(BM_ClusterAssignment_CAGRA)
-  ->Args({100000, 4000, 128})
-  ->Unit(benchmark::kMillisecond)
-  ->UseRealTime();
+// clang-format off
+constexpr int64_t kClusterCounts[] = {
+  1000, 2000, 4000, 8000, 16000, 32000, 65536, 131072, 262144, 500000, 1000000
+};
+// clang-format on
 
-// Large K: 100K vectors, 16K clusters (brute force starts to hurt)
-BENCHMARK(BM_ClusterAssignment_BruteForce)
-  ->Args({100000, 16000, 128})
-  ->Unit(benchmark::kMillisecond)
-  ->UseRealTime();
-BENCHMARK(BM_ClusterAssignment_CAGRA)
-  ->Args({100000, 16000, 128})
-  ->Unit(benchmark::kMillisecond)
-  ->UseRealTime();
+static void RegisterConstantRatioSweep()
+{
+  for (int64_t k : kClusterCounts) {
+    int64_t n = kPointsPerCluster * k;
+    benchmark::RegisterBenchmark("BM_ClusterAssignment_BruteForce", BM_ClusterAssignment_BruteForce)
+      ->Args({n, k, kDim})
+      ->Unit(benchmark::kMillisecond)
+      ->UseRealTime();
+    benchmark::RegisterBenchmark("BM_ClusterAssignment_CAGRA", BM_ClusterAssignment_CAGRA)
+      ->Args({n, k, kDim})
+      ->Unit(benchmark::kMillisecond)
+      ->UseRealTime();
+  }
+}
 
-// Very large K: 500K vectors, 64K clusters
-BENCHMARK(BM_ClusterAssignment_BruteForce)
-  ->Args({500000, 65536, 128})
-  ->Unit(benchmark::kMillisecond)
-  ->UseRealTime();
-BENCHMARK(BM_ClusterAssignment_CAGRA)
-  ->Args({500000, 65536, 128})
-  ->Unit(benchmark::kMillisecond)
-  ->UseRealTime();
+// Second controlled sweep: hold N fixed and vary K alone (same kClusterCounts list, so the two
+// sweeps are directly comparable). This isolates the effect of K on the crossover from the effect
+// of the N/K ratio tested above -- it answers "at a fixed dataset size, does ANN help more as the
+// number of clusters grows?" rather than "does ANN help more as both grow together?".
+// kFixedN is chosen to not collide with any kPointsPerCluster * K value from the sweep above.
+constexpr int64_t kFixedN = 2000000;
 
-// Larger N: amortize CAGRA build over more queries
-// 1M vectors, 4K clusters
-BENCHMARK(BM_ClusterAssignment_BruteForce)
-  ->Args({1000000, 4000, 128})
-  ->Unit(benchmark::kMillisecond)
-  ->UseRealTime();
-BENCHMARK(BM_ClusterAssignment_CAGRA)
-  ->Args({1000000, 4000, 128})
-  ->Unit(benchmark::kMillisecond)
-  ->UseRealTime();
+static void RegisterFixedNVaryKSweep()
+{
+  for (int64_t k : kClusterCounts) {
+    benchmark::RegisterBenchmark("BM_ClusterAssignment_BruteForce", BM_ClusterAssignment_BruteForce)
+      ->Args({kFixedN, k, kDim})
+      ->Unit(benchmark::kMillisecond)
+      ->UseRealTime();
+    benchmark::RegisterBenchmark("BM_ClusterAssignment_CAGRA", BM_ClusterAssignment_CAGRA)
+      ->Args({kFixedN, k, kDim})
+      ->Unit(benchmark::kMillisecond)
+      ->UseRealTime();
+  }
+}
 
-// 1M vectors, 16K clusters
-BENCHMARK(BM_ClusterAssignment_BruteForce)
-  ->Args({1000000, 16000, 128})
-  ->Unit(benchmark::kMillisecond)
-  ->UseRealTime();
-BENCHMARK(BM_ClusterAssignment_CAGRA)
-  ->Args({1000000, 16000, 128})
-  ->Unit(benchmark::kMillisecond)
-  ->UseRealTime();
-
-// 1M vectors, 64K clusters
-BENCHMARK(BM_ClusterAssignment_BruteForce)
-  ->Args({1000000, 65536, 128})
-  ->Unit(benchmark::kMillisecond)
-  ->UseRealTime();
-BENCHMARK(BM_ClusterAssignment_CAGRA)
-  ->Args({1000000, 65536, 128})
-  ->Unit(benchmark::kMillisecond)
-  ->UseRealTime();
-
-// 2M vectors, 16K clusters
-BENCHMARK(BM_ClusterAssignment_BruteForce)
-  ->Args({2000000, 16000, 128})
-  ->Unit(benchmark::kMillisecond)
-  ->UseRealTime();
-BENCHMARK(BM_ClusterAssignment_CAGRA)
-  ->Args({2000000, 16000, 128})
-  ->Unit(benchmark::kMillisecond)
-  ->UseRealTime();
-
-// 2M vectors, 64K clusters
-BENCHMARK(BM_ClusterAssignment_BruteForce)
-  ->Args({2000000, 65536, 128})
-  ->Unit(benchmark::kMillisecond)
-  ->UseRealTime();
-BENCHMARK(BM_ClusterAssignment_CAGRA)
-  ->Args({2000000, 65536, 128})
-  ->Unit(benchmark::kMillisecond)
-  ->UseRealTime();
-
-// 5M vectors, 16K clusters
-BENCHMARK(BM_ClusterAssignment_BruteForce)
-  ->Args({5000000, 16000, 128})
-  ->Unit(benchmark::kMillisecond)
-  ->UseRealTime();
-BENCHMARK(BM_ClusterAssignment_CAGRA)
-  ->Args({5000000, 16000, 128})
-  ->Unit(benchmark::kMillisecond)
-  ->UseRealTime();
-
-// 5M vectors, 64K clusters
-BENCHMARK(BM_ClusterAssignment_BruteForce)
-  ->Args({5000000, 65536, 128})
-  ->Unit(benchmark::kMillisecond)
-  ->UseRealTime();
-BENCHMARK(BM_ClusterAssignment_CAGRA)
-  ->Args({5000000, 65536, 128})
-  ->Unit(benchmark::kMillisecond)
-  ->UseRealTime();
-
-// Hundreds of thousands of centroids (K = 100K, 200K, 500K, 1M)
-// 1M vectors, 100K clusters
-BENCHMARK(BM_ClusterAssignment_BruteForce)
-  ->Args({1000000, 100000, 128})
-  ->Unit(benchmark::kMillisecond)
-  ->UseRealTime();
-BENCHMARK(BM_ClusterAssignment_CAGRA)
-  ->Args({1000000, 100000, 128})
-  ->Unit(benchmark::kMillisecond)
-  ->UseRealTime();
-
-// 2M vectors, 100K clusters
-BENCHMARK(BM_ClusterAssignment_BruteForce)
-  ->Args({2000000, 100000, 128})
-  ->Unit(benchmark::kMillisecond)
-  ->UseRealTime();
-BENCHMARK(BM_ClusterAssignment_CAGRA)
-  ->Args({2000000, 100000, 128})
-  ->Unit(benchmark::kMillisecond)
-  ->UseRealTime();
-
-// 1M vectors, 200K clusters
-BENCHMARK(BM_ClusterAssignment_BruteForce)
-  ->Args({1000000, 200000, 128})
-  ->Unit(benchmark::kMillisecond)
-  ->UseRealTime();
-BENCHMARK(BM_ClusterAssignment_CAGRA)
-  ->Args({1000000, 200000, 128})
-  ->Unit(benchmark::kMillisecond)
-  ->UseRealTime();
-
-// 1M vectors, 500K clusters (~2 vectors per cluster)
-BENCHMARK(BM_ClusterAssignment_BruteForce)
-  ->Args({1000000, 500000, 128})
-  ->Unit(benchmark::kMillisecond)
-  ->UseRealTime();
-BENCHMARK(BM_ClusterAssignment_CAGRA)
-  ->Args({1000000, 500000, 128})
-  ->Unit(benchmark::kMillisecond)
-  ->UseRealTime();
-
-// 1M clusters with N > K (realistic: many vectors per cluster)
-// 2M vectors, 1M clusters (~2 per cluster)
-BENCHMARK(BM_ClusterAssignment_BruteForce)
-  ->Args({2000000, 1000000, 128})
-  ->Unit(benchmark::kMillisecond)
-  ->UseRealTime();
-BENCHMARK(BM_ClusterAssignment_CAGRA)
-  ->Args({2000000, 1000000, 128})
-  ->Unit(benchmark::kMillisecond)
-  ->UseRealTime();
-
-// 5M vectors, 1M clusters (~5 per cluster)
-BENCHMARK(BM_ClusterAssignment_BruteForce)
-  ->Args({5000000, 1000000, 128})
-  ->Unit(benchmark::kMillisecond)
-  ->UseRealTime();
-BENCHMARK(BM_ClusterAssignment_CAGRA)
-  ->Args({5000000, 1000000, 128})
-  ->Unit(benchmark::kMillisecond)
-  ->UseRealTime();
-
-BENCHMARK_MAIN();
+int main(int argc, char** argv)
+{
+  RegisterConstantRatioSweep();
+  RegisterFixedNVaryKSweep();
+  benchmark::Initialize(&argc, argv);
+  if (benchmark::ReportUnrecognizedArguments(argc, argv)) { return 1; }
+  benchmark::RunSpecifiedBenchmarks();
+  benchmark::Shutdown();
+  return 0;
+}
