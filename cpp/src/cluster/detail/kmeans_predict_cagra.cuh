@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Cluster assignment via CAGRA: assign each data point to nearest centroid using an
@@ -54,7 +54,8 @@ inline cuvs::neighbors::cagra::index<float, uint32_t> build_cagra_index_for_cent
   build_params.graph_degree              = graph_degree;
   build_params.intermediate_graph_degree = inter_degree;
   build_params.attach_dataset_on_build   = true;
-  return build(handle, build_params, centroids);
+  auto padded = cuvs::neighbors::make_device_padded_dataset_view(handle, centroids);
+  return build(handle, build_params, padded);
 }
 
 /**
