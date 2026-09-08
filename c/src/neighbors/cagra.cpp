@@ -29,6 +29,7 @@
 #include <cuvs/neighbors/cagra.h>
 #include <cuvs/neighbors/cagra.hpp>
 #include <cuvs/neighbors/common.h>
+#include <cuvs/preprocessing/quantize/pq.h>
 #include <cuvs/preprocessing/quantize/pq.hpp>
 #include "../core/exceptions.hpp"
 #include "../core/interop.hpp"
@@ -57,7 +58,7 @@ struct sg_cagra_c_api_index_box {
     device_standard,
     host_padded,
     host_standard,
-    device_pq_f16
+    device_pq
   } layout;
   cuvs::neighbors::c_api::detail::owner_record owner_rec;
 };
@@ -72,7 +73,7 @@ constexpr auto sg_cagra_index_layout_from_view()
   } else if constexpr (cuvs::neighbors::is_host_standard_dataset_view_v<DatasetViewT>) {
     return sg_cagra_c_api_index_box::dataset_layout::host_standard;
   } else if constexpr (cuvs::neighbors::is_device_vpq_f16_dataset_view_v<DatasetViewT>) {
-    return sg_cagra_c_api_index_box::dataset_layout::device_pq_f16;
+    return sg_cagra_c_api_index_box::dataset_layout::device_pq;
   } else {
     return sg_cagra_c_api_index_box::dataset_layout::host_padded;
   }
@@ -118,9 +119,9 @@ static void with_index_by_layout(sg_cagra_c_api_index_box* box,
       }
       break;
     }
-    case sg_cagra_c_api_index_box::dataset_layout::device_pq_f16: {
+    case sg_cagra_c_api_index_box::dataset_layout::device_pq: {
       // Intentionally not dispatched here: most C API helpers (serialize/extend/merge/...) do not
-      // support PQ. Call sites that need PQ (search, attach) handle device_pq_f16 explicitly.
+      // support PQ. Call sites that need PQ (search, attach) handle device_pq explicitly.
       RAFT_FAIL(
         "%s: PQ (CAGRA-Q) index layout is not supported by this operation", null_handle_err);
     }
@@ -578,7 +579,7 @@ static void make_device_pq_dataset(raft::resources* res_ptr,
     // PQ codebooks use f16 math type; source element type lives on the index dtype.
     out->dtype     = DLDataType{.code = kDLFloat, .bits = 16, .lanes = 1};
     out->mem_type  = CUVS_DATASET_MEM_TYPE_DEVICE;
-    out->layout    = CUVS_DATASET_LAYOUT_PQ_F16;
+    out->layout    = CUVS_DATASET_LAYOUT_PQ;
     out->is_owning = true;
     *output_pq_dataset = out;
   });
@@ -806,7 +807,7 @@ void _search(cuvsResources_t res,
     }
   };
 
-  if (box->layout == sg_cagra_c_api_index_box::dataset_layout::device_pq_f16) {
+  if (box->layout == sg_cagra_c_api_index_box::dataset_layout::device_pq) {
     auto* idx =
       reinterpret_cast<cuvs::neighbors::cagra::vpq_f16_index<T, uint32_t>*>(box->index_ptr);
     RAFT_EXPECTS(idx != nullptr, "cuvsCagraSearch: null index handle");
@@ -1615,9 +1616,9 @@ extern "C" cuvsError_t cuvsCagraUpdateDataset(cuvsResources_t res,
     RAFT_EXPECTS(dataset->mem_type == CUVS_DATASET_MEM_TYPE_DEVICE,
                  "cuvsCagraUpdateDataset: dataset must be device-resident");
     RAFT_EXPECTS(dataset->layout == CUVS_DATASET_LAYOUT_PADDED ||
-                     dataset->layout == CUVS_DATASET_LAYOUT_PQ_F16,
+                     dataset->layout == CUVS_DATASET_LAYOUT_PQ,
                  "cuvsCagraUpdateDataset: dataset must be device-padded or "
-                 "device PQ_F16");
+                 "device PQ");
 
     auto *res_ptr = reinterpret_cast<raft::resources *>(res);
     auto *box = reinterpret_cast<sg_cagra_c_api_index_box *>(index->addr);
@@ -1666,13 +1667,13 @@ extern "C" cuvsError_t cuvsCagraUpdateDataset(cuvsResources_t res,
                 reinterpret_cast<cuvs::neighbors::cagra::host_padded_index<T, uint32_t>*>(
                   box->index_ptr));
               break;
-            case layout_t::device_pq_f16:
+            case layout_t::device_pq:
               RAFT_FAIL(
                 "cuvsCagraUpdateDataset: cannot attach a padded dataset to a PQ index; "
-                "pass a device PQ_F16 dataset from cuvsDatasetMakePq");
+                "pass a device PQ dataset from cuvsDatasetMakePq");
           }
         });
-      } else if (dataset->layout == CUVS_DATASET_LAYOUT_PQ_F16) {
+      } else if (dataset->layout == CUVS_DATASET_LAYOUT_PQ) {
         RAFT_EXPECTS(dataset->is_owning,
                      "cuvsCagraUpdateDataset: PQ dataset handle must be owning "
                      "(from cuvsDatasetMakePq)");
@@ -1691,7 +1692,7 @@ extern "C" cuvsError_t cuvsCagraUpdateDataset(cuvsResources_t res,
           };
 
           switch (box->layout) {
-            case layout_t::device_pq_f16: {
+            case layout_t::device_pq: {
               auto* idx =
                 reinterpret_cast<cuvs::neighbors::cagra::vpq_f16_index<T, uint32_t>*>(
                   box->index_ptr);
@@ -1921,9 +1922,9 @@ extern "C" cuvsError_t cuvsCagraSearch(cuvsResources_t res,
     auto* box  = reinterpret_cast<sg_cagra_c_api_index_box*>(index.addr);
     RAFT_EXPECTS(box != nullptr, "cuvsCagraSearch: null index handle");
     RAFT_EXPECTS(box->layout == sg_cagra_c_api_index_box::dataset_layout::device_padded ||
-                   box->layout == sg_cagra_c_api_index_box::dataset_layout::device_pq_f16,
+                   box->layout == sg_cagra_c_api_index_box::dataset_layout::device_pq,
                  "cuvsCagraSearch: index must be device-padded or device-PQ. Call "
-                 "cuvsCagraUpdateDataset with a device-padded or owning PQ_F16 dataset.");
+                 "cuvsCagraUpdateDataset with a device-padded or owning PQ dataset.");
     RAFT_EXPECTS(queries.dtype.code == index.dtype.code, "type mismatch between index and queries");
 
     if (queries.dtype.code == kDLFloat && queries.dtype.bits == 32) {

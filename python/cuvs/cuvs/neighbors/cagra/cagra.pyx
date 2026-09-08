@@ -54,6 +54,7 @@ from cuvs.common.dataset import make_device_padded_dataset
 from cuvs.common.exceptions import check_cuvs
 from cuvs.neighbors import ivf_pq
 from cuvs.neighbors.filters import no_filter
+from cuvs.preprocessing.quantize.pq.pq cimport cuvsDatasetMakePq
 
 
 cdef class CompressionParams:
@@ -663,7 +664,7 @@ def update_dataset(Index index, dataset, resources=None):
     """
     Update/attach a CAGRA index with a device-padded or device PQ dataset.
 
-    Accepts a ``Dataset`` (padded or ``pq_f16``) or array (promoted to padded).
+    Accepts a ``Dataset`` (padded or ``pq``) or array (promoted to padded).
     The index becomes search-ready in the matching layout.
     """
     if not index.trained:
@@ -677,8 +678,8 @@ def update_dataset(Index index, dataset, resources=None):
         source_array = dataset
         dataset_obj = make_device_padded_dataset(dataset, resources=resources)
 
-    if dataset_obj.layout not in ("padded", "pq_f16"):
-        raise TypeError("dataset must have padded or pq_f16 layout")
+    if dataset_obj.layout not in ("padded", "pq"):
+        raise TypeError("dataset must have padded or pq layout")
 
     cdef cuvsDataset_t dataset_handle = _cagra_dataset_handle(dataset_obj)
     cdef cuvsResources_t res = <cuvsResources_t>resources.get_c_obj()

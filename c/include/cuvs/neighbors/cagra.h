@@ -286,24 +286,6 @@ CUVS_EXPORT cuvsError_t cuvsCagraCompressionParamsCreate(cuvsCagraCompressionPar
 CUVS_EXPORT cuvsError_t cuvsCagraCompressionParamsDestroy(cuvsCagraCompressionParams_t params);
 
 /**
- * @brief Train an owning device PQ (f16 codebook) dataset from a device-padded source.
- *
- * Used for CAGRA-Q: build a dense CAGRA index, train PQ with this factory, then attach via
- * `cuvsCagraUpdateDataset`. Caller owns the returned dataset and must keep it alive while any
- * index uses it. Metric for subsequent search must remain `L2Expanded`.
- *
- * @param[in] res cuvs resources
- * @param[in] source_dataset device-padded dataset (owning or view)
- * @param[in] params PQ compression params; NULL selects defaults
- * @param[out] pq_dataset newly allocated owning PQ dataset handle
- * @return cuvsError_t
- */
-CUVS_EXPORT cuvsError_t cuvsDatasetMakePq(cuvsResources_t res,
-                                          cuvsDataset_t source_dataset,
-                                          cuvsCagraCompressionParams_t params,
-                                          cuvsDataset_t* pq_dataset);
-
-/**
  * @brief Allocate ACE params, and populate with default values
  *
  * @param[in] params cuvsAceParams_t to allocate
@@ -634,14 +616,14 @@ CUVS_EXPORT cuvsError_t cuvsCagraIndexGetGraph(cuvsCagraIndex_t index, DLManaged
  *
  * - Device-padded dataset: if \p index is already device-padded, its dataset view is replaced in
  *   place (same index object); otherwise the index is converted via attach and rebound.
- * - Device PQ_F16 dataset (from `cuvsDatasetMakePq`): if \p index is already PQ-typed, its
+ * - Device PQ dataset (from `cuvsDatasetMakePq`): if \p index is already PQ-typed, its
  *   dataset view is replaced in place; otherwise the graph is copied into a new PQ-typed index
  *   (CAGRA-Q). Search requires metric `L2Expanded`. The PQ handle must be owning.
  *
  * Caller retains ownership of \p dataset and must keep it alive while \p index uses it.
  *
  * @param[in] res      cuvsResources_t opaque C handle
- * @param[in] dataset  device-padded or owning device PQ_F16 dataset handle
+ * @param[in] dataset  device-padded or owning device PQ dataset handle
  * @param[inout] index CAGRA index handle
  * @return cuvsError_t
  */

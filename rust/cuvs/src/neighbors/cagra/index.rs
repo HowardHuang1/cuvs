@@ -107,9 +107,9 @@ impl<'d> Index<'d> {
         D: CuvsDataset + ?Sized,
     {
         let kind = dataset.dataset_kind()?;
-        if kind != DatasetKind::DevicePadded && kind != DatasetKind::DevicePqF16 {
+        if kind != DatasetKind::DevicePadded && kind != DatasetKind::DevicePq {
             return Err(CagraError::Validation(format!(
-                "CAGRA dataset update requires a device-padded or device PQ_F16 view, got {:?}",
+                "CAGRA dataset update requires a device-padded or device PQ view, got {:?}",
                 kind
             )));
         }
@@ -281,9 +281,9 @@ impl<D> DeserializedIndex<D> {
         T: CuvsDataset + ?Sized,
     {
         let kind = dataset.dataset_kind()?;
-        if kind != DatasetKind::DevicePadded && kind != DatasetKind::DevicePqF16 {
+        if kind != DatasetKind::DevicePadded && kind != DatasetKind::DevicePq {
             return Err(CagraError::Validation(format!(
-                "CAGRA dataset update requires a device-padded or device PQ_F16 view, got {:?}",
+                "CAGRA dataset update requires a device-padded or device PQ view, got {:?}",
                 kind
             )));
         }
@@ -506,7 +506,7 @@ mod tests {
 
         let compression = CompressionParams::new().unwrap().set_pq_bits(8).set_pq_dim(8);
         let pq = make_pq_dataset(&res, &padded, Some(&compression)).expect("make_pq_dataset");
-        assert_eq!(pq.dataset_kind().unwrap(), DatasetKind::DevicePqF16);
+        assert_eq!(pq.dataset_kind().unwrap(), DatasetKind::DevicePq);
 
         let index = index.update_dataset(&res, &pq).expect("update_dataset with PQ");
         search_and_verify_self_neighbors(&res, &index, &dataset, N_QUERIES, K);

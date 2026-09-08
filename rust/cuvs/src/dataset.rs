@@ -25,8 +25,8 @@ pub enum DatasetKind {
     HostPadded,
     /// Host-resident rows with a standard, unpadded width.
     HostStandard,
-    /// Device-resident PQ (f16 codebook) dataset for CAGRA-Q search.
-    DevicePqF16,
+    /// Device-resident PQ dataset for CAGRA-Q search.
+    DevicePq,
 }
 
 impl DatasetKind {
@@ -52,8 +52,8 @@ impl DatasetKind {
             ) => Self::HostStandard,
             (
                 ffi::cuvsDatasetMemType_t::CUVS_DATASET_MEM_TYPE_DEVICE,
-                ffi::cuvsDatasetLayout_t::CUVS_DATASET_LAYOUT_PQ_F16,
-            ) => Self::DevicePqF16,
+                ffi::cuvsDatasetLayout_t::CUVS_DATASET_LAYOUT_PQ,
+            ) => Self::DevicePq,
             (mem, layout) => {
                 return Err(CagraError::Validation(format!(
                     "unsupported dataset mem_type/layout pair: {:?}/{:?}",
@@ -223,7 +223,7 @@ impl private::Sealed for PaddedDataset {
 
 impl CuvsDataset for PaddedDataset {}
 
-/// Owning device PQ dataset (f16 codebooks) for CAGRA-Q search.
+/// Owning device PQ dataset for CAGRA-Q search.
 ///
 /// Prefer [`crate::neighbors::cagra::make_pq_dataset`] which accepts
 /// [`crate::neighbors::cagra::CompressionParams`]. Keep this owner alive while

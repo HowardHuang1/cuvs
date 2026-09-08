@@ -16,6 +16,7 @@
 #include <cstring>
 #include <cuvs/neighbors/cagra.h>
 #include <cuvs/neighbors/hnsw.h>
+#include <cuvs/preprocessing/quantize/pq.h>
 #include <string>
 #include <type_traits>
 #include <unistd.h>
@@ -2068,7 +2069,7 @@ TEST(CagraC, BuildAttachPqSearch)
   {
     cuvsDatasetLayout_t layout;
     ASSERT_EQ(cuvsDatasetGetLayout(pq, &layout), CUVS_SUCCESS);
-    EXPECT_EQ(layout, CUVS_DATASET_LAYOUT_PQ_F16);
+    EXPECT_EQ(layout, CUVS_DATASET_LAYOUT_PQ);
     bool owning = false;
     ASSERT_EQ(cuvsDatasetGetIsOwning(pq, &owning), CUVS_SUCCESS);
     EXPECT_TRUE(owning);

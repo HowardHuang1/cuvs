@@ -238,7 +238,7 @@ def test_cagra_pq_build_update_search():
     )
     compression = cagra.CompressionParams(pq_bits=8, pq_dim=8)
     pq = cagra.make_pq_dataset(dataset_device, compression_params=compression)
-    assert pq.layout == "pq_f16"
+    assert pq.layout == "pq"
     assert pq.is_owning is True
 
     index = cagra.update_dataset(index, pq)
