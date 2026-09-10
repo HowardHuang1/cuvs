@@ -89,7 +89,6 @@ final class UnsupportedProvider implements CuVSProvider {
     throw new UnsupportedOperationException(reasons);
   }
 
-  @Override
   public boolean isCagraPaddedDataset(CuVSMatrix dataset) {
     throw new UnsupportedOperationException(reasons);
   }

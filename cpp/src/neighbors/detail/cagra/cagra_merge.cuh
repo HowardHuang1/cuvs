@@ -6,7 +6,6 @@
 
 #include <cuvs/neighbors/cagra.hpp>
 
-#include "cagra_build.cuh"
 #include "cagra_merge_scaffold.cuh"
 #include "graph_core.cuh"
 

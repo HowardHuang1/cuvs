@@ -80,6 +80,10 @@ class FilterCuVSProvider implements CuVSProvider {
     return delegate.newHnswIndexBuilder(cuVSResources);
   }
 
+  /**
+   * Delegates rather than inheriting the default, which refuses what it cannot honour. The two
+   * narrower overloads route here, so this is the only one that has to be forwarded.
+   */
   @Override
   public CagraIndex mergeCagraIndexes(
       CagraIndex[] indexes,

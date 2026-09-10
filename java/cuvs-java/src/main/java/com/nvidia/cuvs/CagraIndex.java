@@ -193,6 +193,13 @@ public interface CagraIndex extends AutoCloseable {
   long getGraphDegree();
 
   /**
+   * Returns the number of vectors in this index.
+   *
+   * @return the number of rows of the indexed dataset
+   */
+  long size();
+
+  /**
    * A method to persist a CAGRA index using an instance of {@link OutputStream}
    * for writing index bytes.
    *

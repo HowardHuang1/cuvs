@@ -604,6 +604,18 @@ public class CagraIndexImpl implements CagraIndex {
     }
   }
 
+  @Override
+  public long size() {
+    checkNotDestroyed();
+    try (var localArena = Arena.ofConfined()) {
+      MemorySegment size = localArena.allocate(int64_t);
+      checkCuVSError(
+          cuvsCagraIndexGetSize(cagraIndexReference.getMemorySegment(), size),
+          "cuvsCagraIndexGetSize");
+      return size.get(int64_t, 0);
+    }
+  }
+
   private IndexReference fromGraph(
       CagraIndexParams.CuvsDistanceType metric,
       CuVSMatrixInternal graph,
@@ -947,7 +959,11 @@ public class CagraIndexImpl implements CagraIndex {
       long[] offsets,
       CagraIndexParams mergeParams) {
     CuVSResources resources = indexes[0].getCuVSResources();
-    var mergedIndex = createCagraIndex();
+    for (int i = 1; i < indexes.length; i++) {
+      if (!resources.equals(indexes[i].getCuVSResources())) {
+        throw new IllegalArgumentException("All indexes must use the same CuVSResources instance");
+      }
+    }
 
     try (var localArena = Arena.ofConfined()) {
       MemorySegment indexesSegment =
@@ -959,6 +975,7 @@ public class CagraIndexImpl implements CagraIndex {
             ValueLayout.ADDRESS, i, indexImpl.cagraIndexReference.getMemorySegment());
       }
 
+      var mergedIndex = createCagraIndex();
       try (var nativeMergeParams = segmentFromIndexParams(mergeParams);
           var resourcesAccessor = resources.access()) {
         var cuvsRes = resourcesAccessor.handle();
