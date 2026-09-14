@@ -632,7 +632,8 @@ public class CuVS2510GPUVectorsWriter extends KnnVectorsWriter {
         concatRow += values.size();
         offsets[++reader] = rows.size();
       }
-      CuVSMatrix mergedMatrix = Utils.createFloatMatrix(rows, fieldInfo.getVectorDimension());
+      CuVSMatrix mergedMatrix =
+          Utils.createFloatMatrix(rows, fieldInfo.getVectorDimension(), getCuVSResourcesInstance());
       CagraIndex[] indexesArray = indexes.toArray(new CagraIndex[indexes.size()]);
       try (var deviceVectors = mergedMatrix.toDevice(getCuVSResourcesInstance())) {
         // cuVS rejects makePaddedDataset for a device matrix whose rows already sit at the
