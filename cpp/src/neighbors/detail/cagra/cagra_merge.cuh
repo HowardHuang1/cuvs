@@ -169,9 +169,10 @@ cuvs::neighbors::cagra::index<T, IdxT, DatasetViewT> merge_rebuild(
                unsigned(merged_dataset.stride()),
                long(stride));
 
-  auto index = ::cuvs::neighbors::cagra::detail::build_from_device_matrix<T, IdxT, DatasetViewT>(
-    handle, params, merged_dataset);
-  index = ::cuvs::neighbors::cagra::update_dataset(handle, std::move(index), merged_dataset);
+  auto build_params                    = params;
+  build_params.attach_dataset_on_build = false;
+  auto index = ::cuvs::neighbors::cagra::build(handle, build_params, merged_dataset);
+  index      = ::cuvs::neighbors::cagra::update_dataset(handle, std::move(index), merged_dataset);
   return index;
 }
 
