@@ -1,6 +1,7 @@
 package cagra
 
 // #include <cuvs/neighbors/cagra.h>
+// #include <cuvs/preprocessing/quantize/pq.h>
 import "C"
 
 import (

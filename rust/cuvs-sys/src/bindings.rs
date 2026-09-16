@@ -264,7 +264,7 @@ unsafe extern "C" {
 pub enum cuvsDatasetLayout_t {
     CUVS_DATASET_LAYOUT_STANDARD = 0,
     CUVS_DATASET_LAYOUT_PADDED = 1,
-    CUVS_DATASET_LAYOUT_PQ_F16 = 2,
+    CUVS_DATASET_LAYOUT_PQ = 2,
 }
 #[repr(u32)]
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]

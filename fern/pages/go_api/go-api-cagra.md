@@ -67,7 +67,7 @@ type CagraIndex struct {
 
 Cagra ANN Index
 
-_Source: `go/cagra/cagra.go:14`_
+_Source: `go/cagra/cagra.go:15`_
 
 ### CompressionParams
 
@@ -92,7 +92,7 @@ type DatasetHandle interface {
 DatasetHandle is any CAGRA dataset handle accepted by UpdateDataset
 (device-padded or device PQ).
 
-_Source: `go/cagra/cagra.go:36`_
+_Source: `go/cagra/cagra.go:37`_
 
 ### ExtendParams
 
@@ -134,7 +134,7 @@ type PaddedDataset struct {
 
 Owning padded dataset handle for explicit CAGRA dataset management.
 
-_Source: `go/cagra/cagra.go:20`_
+_Source: `go/cagra/cagra.go:21`_
 
 ### PaddedDatasetHandle
 
@@ -146,7 +146,7 @@ type PaddedDatasetHandle interface {
 
 PaddedDatasetHandle is an owning padded dataset or non-owning padded dataset view.
 
-_Source: `go/cagra/cagra.go:30`_
+_Source: `go/cagra/cagra.go:31`_
 
 ### PaddedDatasetView
 
@@ -158,7 +158,7 @@ type PaddedDatasetView struct {
 
 Non-owning padded dataset view handle.
 
-_Source: `go/cagra/cagra.go:41`_
+_Source: `go/cagra/cagra.go:42`_
 
 ### PqDataset
 
@@ -170,7 +170,7 @@ type PqDataset struct {
 
 Owning PQ dataset handle for CAGRA-Q search.
 
-_Source: `go/cagra/cagra.go:25`_
+_Source: `go/cagra/cagra.go:26`_
 
 ### SearchAlgo
 
@@ -202,7 +202,7 @@ type StandardDatasetView struct {
 
 Non-owning standard dataset view handle.
 
-_Source: `go/cagra/cagra.go:46`_
+_Source: `go/cagra/cagra.go:47`_
 
 ## Functions
 
@@ -221,7 +221,7 @@ Builds a new Index from the dataset for efficient search.
 * `dataset` - A row-major Tensor on either the host or device to index
 * `index` - CagraIndex to build
 
-_Source: `go/cagra/cagra.go:280`_
+_Source: `go/cagra/cagra.go:281`_
 
 ### CreateCompressionParams
 
@@ -251,7 +251,7 @@ func CreateIndex() (*CagraIndex, error)
 
 Creates a new empty Cagra Index
 
-_Source: `go/cagra/cagra.go:262`_
+_Source: `go/cagra/cagra.go:263`_
 
 ### CreateIndexParams
 
@@ -289,7 +289,7 @@ Extends the index with a caller-owned pre-concatenated padded dataset.
 * `newStartRow` - Row index where the additional vectors begin (must equal current index size)
 * `index` - CagraIndex to extend
 
-_Source: `go/cagra/cagra.go:331`_
+_Source: `go/cagra/cagra.go:332`_
 
 ### MakePaddedDataset
 
@@ -300,7 +300,7 @@ func MakePaddedDataset[T any](Resources cuvs.Resource, dataset *cuvs.Tensor[T]) 
 MakePaddedDataset creates an owning padded dataset from a tensor.
 Memory residency is inferred from the tensor device type.
 
-_Source: `go/cagra/cagra.go:95`_
+_Source: `go/cagra/cagra.go:96`_
 
 ### MakePaddedDatasetView
 
@@ -311,7 +311,7 @@ func MakePaddedDatasetView[T any](Resources cuvs.Resource, dataset *cuvs.Tensor[
 MakePaddedDatasetView creates a non-owning padded dataset view from a tensor.
 Memory residency is inferred from the tensor.
 
-_Source: `go/cagra/cagra.go:120`_
+_Source: `go/cagra/cagra.go:121`_
 
 ### MakePqDataset
 
@@ -322,7 +322,7 @@ func MakePqDataset(Resources cuvs.Resource, source PaddedDatasetHandle, params *
 MakePqDataset trains an owning device PQ dataset (CAGRA-Q) from a device-padded source.
 params may be nil to use library defaults. Keep the returned dataset alive while any index uses it.
 
-_Source: `go/cagra/cagra.go:220`_
+_Source: `go/cagra/cagra.go:221`_
 
 ### MakeStandardDatasetView
 
@@ -333,7 +333,7 @@ func MakeStandardDatasetView[T any](Resources cuvs.Resource, dataset *cuvs.Tenso
 MakeStandardDatasetView creates a non-owning standard dataset view from a tensor.
 Memory residency is inferred from the tensor.
 
-_Source: `go/cagra/cagra.go:170`_
+_Source: `go/cagra/cagra.go:171`_
 
 ### SearchIndex
 
@@ -352,7 +352,7 @@ Perform a Approximate Nearest Neighbors search on the Index
 * `distances` - Tensor in device memory that receives the distances of the nearest neighbors
 * `allowList` - List of indices to allow in the search, if nil, no filtering is applied
 
-_Source: `go/cagra/cagra.go:371`_
+_Source: `go/cagra/cagra.go:372`_
 
 ### UpdateDataset
 
@@ -363,7 +363,7 @@ func UpdateDataset(Resources cuvs.Resource, dataset DatasetHandle, index *CagraI
 UpdateDataset updates any CAGRA index layout with a caller-provided device
 padded or PQ dataset/view and leaves the same handle search-ready.
 
-_Source: `go/cagra/cagra.go:200`_
+_Source: `go/cagra/cagra.go:201`_
 
 ## Methods
 
@@ -375,7 +375,7 @@ func (index *CagraIndex) Close() error
 
 Destroys the Cagra Index
 
-_Source: `go/cagra/cagra.go:353`_
+_Source: `go/cagra/cagra.go:354`_
 
 ### CompressionParams.Close
 
@@ -528,7 +528,7 @@ func (dataset *PaddedDataset) Close() error
 
 Destroys an owning padded dataset handle.
 
-_Source: `go/cagra/cagra.go:143`_
+_Source: `go/cagra/cagra.go:144`_
 
 ### PaddedDatasetView.Close
 
@@ -538,7 +538,7 @@ func (view *PaddedDatasetView) Close() error
 
 Destroys a padded dataset view handle.
 
-_Source: `go/cagra/cagra.go:156`_
+_Source: `go/cagra/cagra.go:157`_
 
 ### PqDataset.Close
 
@@ -548,7 +548,7 @@ func (dataset *PqDataset) Close() error
 
 Close destroys an owning PQ dataset handle.
 
-_Source: `go/cagra/cagra.go:249`_
+_Source: `go/cagra/cagra.go:250`_
 
 ### SearchParams.Close
 
@@ -700,4 +700,4 @@ func (view *StandardDatasetView) Close() error
 
 Destroys a standard dataset view handle.
 
-_Source: `go/cagra/cagra.go:186`_
+_Source: `go/cagra/cagra.go:187`_
