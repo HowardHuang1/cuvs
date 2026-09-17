@@ -185,19 +185,14 @@ func TestCagraPqBuildUpdateSearch(t *testing.T) {
 	}
 	defer padded.Close()
 
-	compression, err := CreateCompressionParams()
+	pqParams, err := CreateProductQuantizerParams()
 	if err != nil {
-		t.Fatalf("error creating compression params: %v", err)
+		t.Fatalf("error creating product quantizer params: %v", err)
 	}
-	defer compression.Close()
-	if _, err := compression.SetPQBits(8); err != nil {
-		t.Fatalf("error setting pq_bits: %v", err)
-	}
-	if _, err := compression.SetPQDim(8); err != nil {
-		t.Fatalf("error setting pq_dim: %v", err)
-	}
+	defer pqParams.Close()
+	pqParams.SetPQBits(8).SetPQDim(8).SetUseSubspaces(true).SetUseVQ(true)
 
-	pq, err := MakePqDataset(resource, padded, compression)
+	pq, err := MakePqDataset(resource, padded, pqParams)
 	if err != nil {
 		t.Fatalf("error creating PQ dataset: %v", err)
 	}

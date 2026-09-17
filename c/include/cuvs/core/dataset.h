@@ -50,6 +50,8 @@ typedef struct {
 } cuvsDataset;
 typedef cuvsDataset* cuvsDataset_t;
 
+typedef struct cuvsProductQuantizerParams* cuvsProductQuantizerParams_t;
+
 /**
  * @brief Create an empty owning dataset handle.
  *
@@ -91,6 +93,21 @@ CUVS_EXPORT cuvsError_t cuvsDatasetMakePaddedView(cuvsResources_t res,
 CUVS_EXPORT cuvsError_t cuvsDatasetMakeStandardView(cuvsResources_t res,
                                                     DLManagedTensor* dataset,
                                                     cuvsDataset_t* standard_dataset);
+
+/**
+ * @brief Train an owning device PQ dataset from a device-padded source.
+ *
+ * @param[in] res cuVS resources
+ * @param[in] source_dataset device-padded dataset (owning or view)
+ * @param[in] params product quantizer parameters; NULL selects defaults. CAGRA-Q requires
+ * subspace product quantization (`use_subspaces = true`).
+ * @param[out] pq_dataset newly allocated owning PQ dataset handle
+ * @return cuvsError_t
+ */
+CUVS_EXPORT cuvsError_t cuvsDatasetMakePq(cuvsResources_t res,
+                                          cuvsDataset_t source_dataset,
+                                          cuvsProductQuantizerParams_t params,
+                                          cuvsDataset_t* pq_dataset);
 
 /** @brief Destroy a dataset handle created by a `cuvsDatasetMake*` function. */
 CUVS_EXPORT cuvsError_t cuvsDatasetDestroy(cuvsDataset_t dataset);

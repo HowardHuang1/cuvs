@@ -13,6 +13,7 @@ from sklearn.preprocessing import normalize
 
 from cuvs.common import make_device_padded_dataset
 from cuvs.neighbors import cagra, ivf_pq
+from cuvs.preprocessing.quantize import pq
 from cuvs.tests.ann_utils import (
     calc_recall,
     generate_data,
@@ -236,12 +237,16 @@ def test_cagra_pq_build_update_search():
         cagra.IndexParams(metric="sqeuclidean"),
         dataset_device,
     )
-    compression = cagra.CompressionParams(pq_bits=8, pq_dim=8)
-    pq = cagra.make_pq_dataset(dataset_device, compression_params=compression)
-    assert pq.layout == "pq"
-    assert pq.is_owning is True
+    quantizer_params = pq.QuantizerParams(
+        pq_bits=8, pq_dim=8, use_subspaces=True, use_vq=True
+    )
+    pq_dataset = cagra.make_pq_dataset(
+        dataset_device, quantizer_params=quantizer_params
+    )
+    assert pq_dataset.layout == "pq"
+    assert pq_dataset.is_owning is True
 
-    index = cagra.update_dataset(index, pq)
+    index = cagra.update_dataset(index, pq_dataset)
 
     queries_device = device_ndarray(dataset[:n_queries])
     distances, neighbors = cagra.search(

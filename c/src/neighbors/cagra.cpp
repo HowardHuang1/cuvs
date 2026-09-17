@@ -546,7 +546,7 @@ static void make_host_standard_dataset_view(raft::resources*,
 template <typename T>
 static void make_device_pq_dataset(raft::resources* res_ptr,
                                     cuvsDataset_t source_dataset,
-                                    cuvsCagraCompressionParams_t params,
+                                    cuvsProductQuantizerParams_t params,
                                     cuvsDataset_t* output_pq_dataset)
 {
   RAFT_EXPECTS(source_dataset != nullptr, "cuvsDatasetMakePq: null source dataset");
@@ -558,12 +558,19 @@ static void make_device_pq_dataset(raft::resources* res_ptr,
 
   cuvs::neighbors::vpq_params ps{};
   if (params != nullptr) {
+    RAFT_EXPECTS(params->use_subspaces,
+                 "cuvsDatasetMakePq: CAGRA-Q requires subspace product quantization");
     ps.pq_bits                     = params->pq_bits;
     ps.pq_dim                      = params->pq_dim;
-    ps.vq_n_centers                = params->vq_n_centers;
+    ps.vq_n_centers                = params->use_vq ? params->vq_n_centers : 1;
     ps.kmeans_n_iters              = params->kmeans_n_iters;
-    ps.vq_kmeans_trainset_fraction = params->vq_kmeans_trainset_fraction;
-    ps.pq_kmeans_trainset_fraction = params->pq_kmeans_trainset_fraction;
+    // ProductQuantizerParams uses absolute training-point caps rather than the legacy fractions.
+    ps.vq_kmeans_trainset_fraction = 1.0;
+    ps.pq_kmeans_trainset_fraction = 1.0;
+    ps.pq_kmeans_type =
+      static_cast<cuvs::cluster::kmeans::kmeans_type>(params->pq_kmeans_type);
+    ps.max_train_points_per_pq_code    = params->max_train_points_per_pq_code;
+    ps.max_train_points_per_vq_cluster = params->max_train_points_per_vq_cluster;
   }
 
   using owner_t = cuvs::neighbors::device_padded_dataset<T, int64_t>;
@@ -1528,7 +1535,7 @@ extern "C" cuvsError_t cuvsDatasetMakeStandardView(cuvsResources_t res,
 
 extern "C" cuvsError_t cuvsDatasetMakePq(cuvsResources_t res,
                                           cuvsDataset_t source_dataset,
-                                          cuvsCagraCompressionParams_t params,
+                                          cuvsProductQuantizerParams_t params,
                                           cuvsDataset_t* pq_dataset)
 {
   return cuvs::core::translate_exceptions([=] {

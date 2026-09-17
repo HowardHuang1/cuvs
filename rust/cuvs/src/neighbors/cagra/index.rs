@@ -486,7 +486,7 @@ mod tests {
     /// CAGRA-Q smoke: dense build → make_pq_dataset → update_dataset → search.
     #[test]
     fn test_cagra_pq_build_update_search() {
-        use crate::neighbors::cagra::{CompressionParams, make_pq_dataset};
+        use crate::neighbors::cagra::{ProductQuantizerParams, make_pq_dataset};
 
         const N_ROWS: usize = 256;
         const N_COLS: usize = 32;
@@ -504,8 +504,13 @@ mod tests {
         let padded = DatasetView::new(&res, &dataset_device).unwrap();
         assert_eq!(padded.dataset_kind().unwrap(), DatasetKind::DevicePadded);
 
-        let compression = CompressionParams::new().unwrap().set_pq_bits(8).set_pq_dim(8);
-        let pq = make_pq_dataset(&res, &padded, Some(&compression)).expect("make_pq_dataset");
+        let pq_params = ProductQuantizerParams::new()
+            .unwrap()
+            .set_pq_bits(8)
+            .set_pq_dim(8)
+            .set_use_subspaces(true)
+            .set_use_vq(true);
+        let pq = make_pq_dataset(&res, &padded, Some(&pq_params)).expect("make_pq_dataset");
         assert_eq!(pq.dataset_kind().unwrap(), DatasetKind::DevicePq);
 
         let index = index.update_dataset(&res, &pq).expect("update_dataset with PQ");

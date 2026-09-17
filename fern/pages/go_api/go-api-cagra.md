@@ -20,7 +20,7 @@ AutoSelect
 )
 ```
 
-_Source: `go/cagra/index_params.go:23`_
+_Source: `go/cagra/index_params.go:29`_
 
 ### HashmapMode Constants
 
@@ -55,7 +55,7 @@ _Source: `go/cagra/search_params.go:19`_
 type BuildAlgo int
 ```
 
-_Source: `go/cagra/index_params.go:21`_
+_Source: `go/cagra/index_params.go:27`_
 
 ### CagraIndex
 
@@ -79,7 +79,7 @@ type CompressionParams struct {
 
 CompressionParams holds PQ training parameters for CAGRA-Q.
 
-_Source: `go/cagra/index_params.go:17`_
+_Source: `go/cagra/index_params.go:18`_
 
 ### DatasetHandle
 
@@ -122,7 +122,7 @@ type IndexParams struct {
 }
 ```
 
-_Source: `go/cagra/index_params.go:12`_
+_Source: `go/cagra/index_params.go:13`_
 
 ### PaddedDataset
 
@@ -171,6 +171,18 @@ type PqDataset struct {
 Owning PQ dataset handle for CAGRA-Q search.
 
 _Source: `go/cagra/cagra.go:26`_
+
+### ProductQuantizerParams
+
+```go
+type ProductQuantizerParams struct {
+	// contains filtered or unexported fields
+}
+```
+
+ProductQuantizerParams holds product quantizer training parameters.
+
+_Source: `go/cagra/index_params.go:23`_
 
 ### SearchAlgo
 
@@ -231,7 +243,7 @@ func CreateCompressionParams() (*CompressionParams, error)
 
 CreateCompressionParams creates PQ compression params with library defaults.
 
-_Source: `go/cagra/index_params.go:36`_
+_Source: `go/cagra/index_params.go:42`_
 
 ### CreateExtendParams
 
@@ -261,7 +273,17 @@ func CreateIndexParams() (*IndexParams, error)
 
 Creates a new IndexParams
 
-_Source: `go/cagra/index_params.go:101`_
+_Source: `go/cagra/index_params.go:173`_
+
+### CreateProductQuantizerParams
+
+```go
+func CreateProductQuantizerParams() (*ProductQuantizerParams, error)
+```
+
+CreateProductQuantizerParams creates product quantizer params with library defaults.
+
+_Source: `go/cagra/index_params.go:107`_
 
 ### CreateSearchParams
 
@@ -316,7 +338,7 @@ _Source: `go/cagra/cagra.go:121`_
 ### MakePqDataset
 
 ```go
-func MakePqDataset(Resources cuvs.Resource, source PaddedDatasetHandle, params *CompressionParams) (*PqDataset, error)
+func MakePqDataset(Resources cuvs.Resource, source PaddedDatasetHandle, params *ProductQuantizerParams) (*PqDataset, error)
 ```
 
 MakePqDataset trains an owning device PQ dataset (CAGRA-Q) from a device-padded source.
@@ -385,7 +407,7 @@ func (p *CompressionParams) Close() error
 
 Close destroys CompressionParams.
 
-_Source: `go/cagra/index_params.go:88`_
+_Source: `go/cagra/index_params.go:94`_
 
 ### CompressionParams.SetKMeansNIters
 
@@ -395,7 +417,7 @@ func (p *CompressionParams) SetKMeansNIters(kmeans_n_iters uint32) (*Compression
 
 SetKMeansNIters sets kmeans iterations for VQ and PQ phases.
 
-_Source: `go/cagra/index_params.go:70`_
+_Source: `go/cagra/index_params.go:76`_
 
 ### CompressionParams.SetPQBits
 
@@ -405,7 +427,7 @@ func (p *CompressionParams) SetPQBits(pq_bits uint32) (*CompressionParams, error
 
 SetPQBits sets the bit length of the vector element after PQ compression.
 
-_Source: `go/cagra/index_params.go:52`_
+_Source: `go/cagra/index_params.go:58`_
 
 ### CompressionParams.SetPQDim
 
@@ -415,7 +437,7 @@ func (p *CompressionParams) SetPQDim(pq_dim uint32) (*CompressionParams, error)
 
 SetPQDim sets the dimensionality after PQ compression (0 = heuristic).
 
-_Source: `go/cagra/index_params.go:58`_
+_Source: `go/cagra/index_params.go:64`_
 
 ### CompressionParams.SetPQKMeansTrainsetFraction
 
@@ -425,7 +447,7 @@ func (p *CompressionParams) SetPQKMeansTrainsetFraction(pq_kmeans_trainset_fract
 
 SetPQKMeansTrainsetFraction sets the PQ kmeans trainset fraction (0 = heuristic).
 
-_Source: `go/cagra/index_params.go:82`_
+_Source: `go/cagra/index_params.go:88`_
 
 ### CompressionParams.SetVQKMeansTrainsetFraction
 
@@ -435,7 +457,7 @@ func (p *CompressionParams) SetVQKMeansTrainsetFraction(vq_kmeans_trainset_fract
 
 SetVQKMeansTrainsetFraction sets the VQ kmeans trainset fraction (0 = heuristic).
 
-_Source: `go/cagra/index_params.go:76`_
+_Source: `go/cagra/index_params.go:82`_
 
 ### CompressionParams.SetVQNCenters
 
@@ -445,7 +467,7 @@ func (p *CompressionParams) SetVQNCenters(vq_n_centers uint32) (*CompressionPara
 
 SetVQNCenters sets the VQ codebook size (0 = heuristic).
 
-_Source: `go/cagra/index_params.go:64`_
+_Source: `go/cagra/index_params.go:70`_
 
 ### ExtendParams.Close
 
@@ -478,7 +500,7 @@ func (p *IndexParams) Close() error
 
 Destroys IndexParams
 
-_Source: `go/cagra/index_params.go:147`_
+_Source: `go/cagra/index_params.go:219`_
 
 ### IndexParams.SetBuildAlgo
 
@@ -488,7 +510,7 @@ func (p *IndexParams) SetBuildAlgo(build_algo BuildAlgo) (*IndexParams, error)
 
 ANN algorithm to build knn graph
 
-_Source: `go/cagra/index_params.go:128`_
+_Source: `go/cagra/index_params.go:200`_
 
 ### IndexParams.SetGraphDegree
 
@@ -498,7 +520,7 @@ func (p *IndexParams) SetGraphDegree(intermediate_graph_degree uintptr) (*IndexP
 
 Degree of output graph
 
-_Source: `go/cagra/index_params.go:121`_
+_Source: `go/cagra/index_params.go:193`_
 
 ### IndexParams.SetIntermediateGraphDegree
 
@@ -508,7 +530,7 @@ func (p *IndexParams) SetIntermediateGraphDegree(intermediate_graph_degree uintp
 
 Degree of input graph for pruning
 
-_Source: `go/cagra/index_params.go:115`_
+_Source: `go/cagra/index_params.go:187`_
 
 ### IndexParams.SetNNDescentNiter
 
@@ -518,7 +540,7 @@ func (p *IndexParams) SetNNDescentNiter(nn_descent_niter uint32) (*IndexParams, 
 
 Number of iterations to run if building with NN_DESCENT
 
-_Source: `go/cagra/index_params.go:140`_
+_Source: `go/cagra/index_params.go:212`_
 
 ### PaddedDataset.Close
 
@@ -549,6 +571,80 @@ func (dataset *PqDataset) Close() error
 Close destroys an owning PQ dataset handle.
 
 _Source: `go/cagra/cagra.go:250`_
+
+### ProductQuantizerParams.Close
+
+```go
+func (p *ProductQuantizerParams) Close() error
+```
+
+Close destroys ProductQuantizerParams.
+
+_Source: `go/cagra/index_params.go:160`_
+
+### ProductQuantizerParams.SetKMeansNIters
+
+```go
+func (p *ProductQuantizerParams) SetKMeansNIters(value uint32) *ProductQuantizerParams
+```
+
+_Source: `go/cagra/index_params.go:144`_
+
+### ProductQuantizerParams.SetMaxTrainPointsPerPQCode
+
+```go
+func (p *ProductQuantizerParams) SetMaxTrainPointsPerPQCode(value uint32) *ProductQuantizerParams
+```
+
+_Source: `go/cagra/index_params.go:149`_
+
+### ProductQuantizerParams.SetMaxTrainPointsPerVQCluster
+
+```go
+func (p *ProductQuantizerParams) SetMaxTrainPointsPerVQCluster(value uint32) *ProductQuantizerParams
+```
+
+_Source: `go/cagra/index_params.go:154`_
+
+### ProductQuantizerParams.SetPQBits
+
+```go
+func (p *ProductQuantizerParams) SetPQBits(value uint32) *ProductQuantizerParams
+```
+
+_Source: `go/cagra/index_params.go:119`_
+
+### ProductQuantizerParams.SetPQDim
+
+```go
+func (p *ProductQuantizerParams) SetPQDim(value uint32) *ProductQuantizerParams
+```
+
+_Source: `go/cagra/index_params.go:124`_
+
+### ProductQuantizerParams.SetUseSubspaces
+
+```go
+func (p *ProductQuantizerParams) SetUseSubspaces(value bool) *ProductQuantizerParams
+```
+
+_Source: `go/cagra/index_params.go:129`_
+
+### ProductQuantizerParams.SetUseVQ
+
+```go
+func (p *ProductQuantizerParams) SetUseVQ(value bool) *ProductQuantizerParams
+```
+
+_Source: `go/cagra/index_params.go:134`_
+
+### ProductQuantizerParams.SetVQNCenters
+
+```go
+func (p *ProductQuantizerParams) SetVQNCenters(value uint32) *ProductQuantizerParams
+```
+
+_Source: `go/cagra/index_params.go:139`_
 
 ### SearchParams.Close
 

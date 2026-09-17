@@ -2059,13 +2059,15 @@ TEST(CagraC, BuildAttachPqSearch)
   ASSERT_EQ(cuvsCagraIndexCreate(&index), CUVS_SUCCESS);
   ASSERT_EQ(cuvsCagraBuild(res, build_params, padded, index), CUVS_SUCCESS);
 
-  cuvsCagraCompressionParams_t compression;
-  ASSERT_EQ(cuvsCagraCompressionParamsCreate(&compression), CUVS_SUCCESS);
-  compression->pq_bits = 8;
-  compression->pq_dim  = 8;
+  cuvsProductQuantizerParams_t pq_params;
+  ASSERT_EQ(cuvsProductQuantizerParamsCreate(&pq_params), CUVS_SUCCESS);
+  pq_params->pq_bits = 8;
+  pq_params->pq_dim  = 8;
+  pq_params->use_subspaces = true;
+  pq_params->use_vq  = true;
 
   cuvsDataset_t pq = nullptr;
-  ASSERT_EQ(cuvsDatasetMakePq(res, padded, compression, &pq), CUVS_SUCCESS);
+  ASSERT_EQ(cuvsDatasetMakePq(res, padded, pq_params, &pq), CUVS_SUCCESS);
   {
     cuvsDatasetLayout_t layout;
     ASSERT_EQ(cuvsDatasetGetLayout(pq, &layout), CUVS_SUCCESS);
@@ -2115,7 +2117,7 @@ TEST(CagraC, BuildAttachPqSearch)
             CUVS_SUCCESS);
 
   cuvsCagraSearchParamsDestroy(search_params);
-  cuvsCagraCompressionParamsDestroy(compression);
+  cuvsProductQuantizerParamsDestroy(pq_params);
   cuvsDatasetDestroy(pq);
   cuvsCagraIndexDestroy(index);
   cuvsCagraIndexParamsDestroy(build_params);

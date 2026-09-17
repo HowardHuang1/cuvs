@@ -1366,7 +1366,7 @@ unsafe extern "C" {
     pub fn cuvsDatasetMakePq(
         res: cuvsResources_t,
         source_dataset: cuvsDataset_t,
-        params: cuvsCagraCompressionParams_t,
+        params: cuvsProductQuantizerParams_t,
         pq_dataset: *mut cuvsDataset_t,
     ) -> cuvsError_t;
 }

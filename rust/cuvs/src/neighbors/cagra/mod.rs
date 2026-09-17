@@ -25,7 +25,7 @@ pub use crate::dataset::{
 };
 pub use crate::neighbors::filters::{Bitset, Filter};
 pub use index::{DeserializedIndex, Index};
-pub use params::{CompressionParams, IndexParams, SearchParams};
+pub use params::{CompressionParams, IndexParams, ProductQuantizerParams, SearchParams};
 
 use crate::dlpack::DLPackError;
 use crate::error::LibraryError;
@@ -38,9 +38,9 @@ use crate::resources::Resources;
 pub fn make_pq_dataset(
     res: &Resources,
     source: &impl CuvsDataset,
-    params: Option<&CompressionParams>,
+    params: Option<&ProductQuantizerParams>,
 ) -> Result<PqDataset, CagraError> {
-    let params_ptr = params.map(CompressionParams::as_ptr).unwrap_or(std::ptr::null_mut());
+    let params_ptr = params.map(ProductQuantizerParams::as_ptr).unwrap_or(std::ptr::null_mut());
     PqDataset::train_raw(res, source, params_ptr)
 }
 

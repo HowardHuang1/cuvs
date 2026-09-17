@@ -5,8 +5,7 @@
 package com.nvidia.cuvs;
 
 /**
- * Supplemental compression parameters for CAGRA-Q PQ training via
- * {@link CagraIndex#makePqDataset(CagraIndex.PaddedDataset, CagraCompressionParams)}.
+ * Supplemental compression parameters retained for the CAGRA compression API.
  *
  * @since 25.02
  */

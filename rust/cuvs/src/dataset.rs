@@ -226,7 +226,7 @@ impl CuvsDataset for PaddedDataset {}
 /// Owning device PQ dataset for CAGRA-Q search.
 ///
 /// Prefer [`crate::neighbors::cagra::make_pq_dataset`] which accepts
-/// [`crate::neighbors::cagra::CompressionParams`]. Keep this owner alive while
+/// [`crate::neighbors::cagra::ProductQuantizerParams`]. Keep this owner alive while
 /// any index uses it.
 #[derive(Debug)]
 pub struct PqDataset {
@@ -240,7 +240,7 @@ impl PqDataset {
     pub(crate) fn train_raw(
         res: &Resources,
         source: &impl CuvsDataset,
-        params: ffi::cuvsCagraCompressionParams_t,
+        params: ffi::cuvsProductQuantizerParams_t,
     ) -> Result<Self> {
         let kind = source.dataset_kind()?;
         if kind != DatasetKind::DevicePadded {

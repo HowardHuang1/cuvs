@@ -179,10 +179,10 @@ public interface CagraIndex extends AutoCloseable {
    * Train an owning device PQ dataset (CAGRA-Q) from a device-padded source.
    *
    * @param paddedDataset device-padded source dataset, owned or viewed
-   * @param compressionParams PQ training parameters; may be {@code null} for defaults
+   * @param quantizerParams PQ training parameters; may be {@code null} for defaults
    */
-  PqDataset makePqDataset(
-      PaddedDatasetHandle paddedDataset, CagraCompressionParams compressionParams) throws Throwable;
+  PqDataset makePqDataset(PaddedDatasetHandle paddedDataset, ProductQuantizerParams quantizerParams)
+      throws Throwable;
 
   /** Returns the CAGRA graph
    *

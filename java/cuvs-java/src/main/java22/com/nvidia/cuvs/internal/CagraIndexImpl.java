@@ -531,7 +531,7 @@ public class CagraIndexImpl implements CagraIndex {
 
   @Override
   public CagraIndex.PqDataset makePqDataset(
-      CagraIndex.PaddedDatasetHandle paddedDataset, CagraCompressionParams compressionParams)
+      CagraIndex.PaddedDatasetHandle paddedDataset, ProductQuantizerParams quantizerParams)
       throws Throwable {
     checkNotDestroyed();
     Objects.requireNonNull(paddedDataset);
@@ -543,19 +543,21 @@ public class CagraIndexImpl implements CagraIndex {
         var resourcesAccessor = resources.access()) {
       var cuvsRes = resourcesAccessor.handle();
       MemorySegment paramsSeg = MemorySegment.NULL;
-      CloseableHandle compressionHandle = null;
+      CloseableHandle quantizerParamsHandle = null;
       try {
-        if (compressionParams != null) {
-          compressionHandle = createCagraCompressionParams();
-          paramsSeg = compressionHandle.handle();
-          cuvsCagraCompressionParams.pq_bits(paramsSeg, compressionParams.getPqBits());
-          cuvsCagraCompressionParams.pq_dim(paramsSeg, compressionParams.getPqDim());
-          cuvsCagraCompressionParams.vq_n_centers(paramsSeg, compressionParams.getVqNCenters());
-          cuvsCagraCompressionParams.kmeans_n_iters(paramsSeg, compressionParams.getKmeansNIters());
-          cuvsCagraCompressionParams.vq_kmeans_trainset_fraction(
-              paramsSeg, compressionParams.getVqKmeansTrainsetFraction());
-          cuvsCagraCompressionParams.pq_kmeans_trainset_fraction(
-              paramsSeg, compressionParams.getPqKmeansTrainsetFraction());
+        if (quantizerParams != null) {
+          quantizerParamsHandle = createProductQuantizerParams();
+          paramsSeg = quantizerParamsHandle.handle();
+          cuvsProductQuantizerParams.pq_bits(paramsSeg, quantizerParams.getPqBits());
+          cuvsProductQuantizerParams.pq_dim(paramsSeg, quantizerParams.getPqDim());
+          cuvsProductQuantizerParams.use_subspaces(paramsSeg, quantizerParams.getUseSubspaces());
+          cuvsProductQuantizerParams.use_vq(paramsSeg, quantizerParams.getUseVq());
+          cuvsProductQuantizerParams.vq_n_centers(paramsSeg, quantizerParams.getVqNCenters());
+          cuvsProductQuantizerParams.kmeans_n_iters(paramsSeg, quantizerParams.getKmeansNIters());
+          cuvsProductQuantizerParams.max_train_points_per_pq_code(
+              paramsSeg, quantizerParams.getMaxTrainPointsPerPqCode());
+          cuvsProductQuantizerParams.max_train_points_per_vq_cluster(
+              paramsSeg, quantizerParams.getMaxTrainPointsPerVqCluster());
         }
         MemorySegment pqDatasetPtr = localArena.allocate(cuvsDataset_t);
         var returnValue =
@@ -571,8 +573,8 @@ public class CagraIndexImpl implements CagraIndex {
         out.setDelegate(new DatasetCloseDelegate(pqDataset), pqDataset.address());
         return out;
       } finally {
-        if (compressionHandle != null) {
-          compressionHandle.close();
+        if (quantizerParamsHandle != null) {
+          quantizerParamsHandle.close();
         }
       }
     }

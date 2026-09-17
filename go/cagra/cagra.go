@@ -218,11 +218,11 @@ func UpdateDataset(Resources cuvs.Resource, dataset DatasetHandle, index *CagraI
 
 // MakePqDataset trains an owning device PQ dataset (CAGRA-Q) from a device-padded source.
 // params may be nil to use library defaults. Keep the returned dataset alive while any index uses it.
-func MakePqDataset(Resources cuvs.Resource, source PaddedDatasetHandle, params *CompressionParams) (*PqDataset, error) {
+func MakePqDataset(Resources cuvs.Resource, source PaddedDatasetHandle, params *ProductQuantizerParams) (*PqDataset, error) {
 	if source == nil || source.datasetHandle() == nil {
 		return nil, errors.New("source padded dataset is nil")
 	}
-	var cParams C.cuvsCagraCompressionParams_t
+	var cParams C.cuvsProductQuantizerParams_t
 	if params != nil {
 		cParams = params.params
 	}

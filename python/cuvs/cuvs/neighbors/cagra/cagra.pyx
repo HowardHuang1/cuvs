@@ -54,7 +54,11 @@ from cuvs.common.dataset import make_device_padded_dataset
 from cuvs.common.exceptions import check_cuvs
 from cuvs.neighbors import ivf_pq
 from cuvs.neighbors.filters import no_filter
-from cuvs.preprocessing.quantize.pq.pq cimport cuvsDatasetMakePq
+from cuvs.preprocessing.quantize.pq.pq cimport (
+    QuantizerParams,
+    cuvsDatasetMakePq,
+    cuvsProductQuantizerParams_t,
+)
 
 
 cdef class CompressionParams:
@@ -694,7 +698,7 @@ def update_dataset(Index index, dataset, resources=None):
 
 
 @auto_sync_resources
-def make_pq_dataset(padded_dataset, compression_params=None, resources=None):
+def make_pq_dataset(padded_dataset, quantizer_params=None, resources=None):
     """
     Train an owning device PQ dataset (CAGRA-Q) from a device-padded dataset.
 
@@ -703,7 +707,7 @@ def make_pq_dataset(padded_dataset, compression_params=None, resources=None):
     padded_dataset : Dataset or array
         Device-padded source used to train PQ. Arrays are converted via
         :func:`cuvs.common.dataset.make_device_padded_dataset`.
-    compression_params : CompressionParams, optional
+    quantizer_params : cuvs.preprocessing.quantize.pq.QuantizerParams, optional
         PQ training parameters. Defaults are used when omitted.
     {resources_docstring}
 
@@ -721,12 +725,12 @@ def make_pq_dataset(padded_dataset, compression_params=None, resources=None):
     if dataset_obj.layout != "padded" or dataset_obj.memory_type != "device":
         raise TypeError("padded_dataset must be a device-padded Dataset")
 
-    cdef CompressionParams params_obj = None
-    cdef cuvsCagraCompressionParams_t params_ptr = NULL
-    if compression_params is not None:
-        if not isinstance(compression_params, CompressionParams):
-            raise TypeError("compression_params must be a CompressionParams")
-        params_obj = compression_params
+    cdef QuantizerParams params_obj = None
+    cdef cuvsProductQuantizerParams_t params_ptr = NULL
+    if quantizer_params is not None:
+        if not isinstance(quantizer_params, QuantizerParams):
+            raise TypeError("quantizer_params must be a QuantizerParams")
+        params_obj = quantizer_params
         params_ptr = params_obj.params
 
     cdef Dataset pq = Dataset()

@@ -610,7 +610,7 @@ version of cuvs is not guaranteed to work.
 `@auto_sync_resources`
 
 ```python
-def make_pq_dataset(padded_dataset, compression_params=None, resources=None)
+def make_pq_dataset(padded_dataset, quantizer_params=None, resources=None)
 ```
 
 Train an owning device PQ dataset (CAGRA-Q) from a device-padded dataset.
@@ -620,7 +620,7 @@ Train an owning device PQ dataset (CAGRA-Q) from a device-padded dataset.
 | Name | Type | Description |
 | --- | --- | --- |
 | `padded_dataset` | `Dataset or array` | Device-padded source used to train PQ. Arrays are converted via cuvs.common.dataset.make_device_padded_dataset. |
-| `compression_params` | `CompressionParams, optional` | PQ training parameters. Defaults are used when omitted. |
+| `quantizer_params` | `cuvs.preprocessing.quantize.pq.QuantizerParams, optional` | PQ training parameters. Defaults are used when omitted. |
 | `resources` | `cuvs.common.Resources, optional` |  |
 
 **Returns**

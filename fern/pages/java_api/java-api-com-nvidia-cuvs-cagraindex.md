@@ -172,7 +172,7 @@ _Source: `java/cuvs-java/src/main/java/com/nvidia/cuvs/CagraIndex.java:175`_
 ### makePqDataset
 
 ```java
-PqDataset makePqDataset( PaddedDatasetHandle paddedDataset, CagraCompressionParams compressionParams) throws Throwable
+PqDataset makePqDataset(PaddedDatasetHandle paddedDataset, ProductQuantizerParams quantizerParams) throws Throwable
 ```
 
 Train an owning device PQ dataset (CAGRA-Q) from a device-padded source.
@@ -182,7 +182,7 @@ Train an owning device PQ dataset (CAGRA-Q) from a device-padded source.
 | Name | Description |
 | --- | --- |
 | `paddedDataset` | device-padded source dataset, owned or viewed |
-| `compressionParams` | PQ training parameters; may be `null` for defaults |
+| `quantizerParams` | PQ training parameters; may be `null` for defaults |
 
 _Source: `java/cuvs-java/src/main/java/com/nvidia/cuvs/CagraIndex.java:183`_
 

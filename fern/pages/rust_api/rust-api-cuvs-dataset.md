@@ -129,7 +129,7 @@ pub struct PqDataset {
 Owning device PQ dataset for CAGRA-Q search.
 
 Prefer [`crate::neighbors::cagra::make_pq_dataset`] which accepts
-[`crate::neighbors::cagra::CompressionParams`]. Keep this owner alive while
+[`crate::neighbors::cagra::ProductQuantizerParams`]. Keep this owner alive while
 any index uses it.
 
 _Source: `rust/cuvs/src/dataset.rs:232`_

@@ -48,10 +48,10 @@ pub use index::{DeserializedIndex, Index};
 
 _Source: `rust/cuvs/src/neighbors/cagra/mod.rs:27`_
 
-## params::\{CompressionParams, IndexParams, SearchParams\}
+## params::\{CompressionParams, IndexParams, ProductQuantizerParams, SearchParams\}
 
 ```rust
-pub use params::{CompressionParams, IndexParams, SearchParams};
+pub use params::{CompressionParams, IndexParams, ProductQuantizerParams, SearchParams};
 ```
 
 _Source: `rust/cuvs/src/neighbors/cagra/mod.rs:28`_
@@ -62,7 +62,7 @@ _Source: `rust/cuvs/src/neighbors/cagra/mod.rs:28`_
 pub fn make_pq_dataset(
 res: &Resources,
 source: &impl CuvsDataset,
-params: Option<&CompressionParams>,
+params: Option<&ProductQuantizerParams>,
 ) -> Result<PqDataset, CagraError>
 ```
 

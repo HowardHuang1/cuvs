@@ -189,8 +189,13 @@ public class CagraBuildAndSearchIT extends CuVSTestCase {
             .withMetric(CuvsDistanceType.L2Expanded)
             .build();
 
-    CagraCompressionParams compressionParams =
-        new CagraCompressionParams.Builder().withPqBits(8).withPqDim(8).build();
+    ProductQuantizerParams quantizerParams =
+        new ProductQuantizerParams.Builder()
+            .withPqBits(8)
+            .withPqDim(8)
+            .withUseSubspaces(true)
+            .withUseVq(true)
+            .build();
 
     CagraSearchParams searchParams =
         new CagraSearchParams.Builder().withAlgo(CagraSearchParams.SearchAlgo.SINGLE_CTA).build();
@@ -204,7 +209,7 @@ public class CagraBuildAndSearchIT extends CuVSTestCase {
                 .withIndexParams(indexParams)
                 .build();
         var padded = index.makePaddedDatasetView(deviceVectors);
-        var pq = index.makePqDataset(padded, compressionParams);
+        var pq = index.makePqDataset(padded, quantizerParams);
         var queryVectors = CuVSMatrix.ofArray(queries)) {
       assertTrue(padded.isPresent());
       assertTrue(pq.isPresent());
