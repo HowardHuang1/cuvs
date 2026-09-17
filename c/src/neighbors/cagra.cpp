@@ -577,7 +577,7 @@ static void make_device_pq_dataset(raft::resources* res_ptr,
   using view_t  = cuvs::neighbors::device_padded_dataset_view<T, int64_t>;
   with_dataset_view<owner_t, view_t>(source_dataset, [&](auto const& padded_view) {
     auto pq =
-      cuvs::preprocessing::quantize::pq::make_device_pq_dataset(*res_ptr, ps, padded_view.view());
+      cuvs::preprocessing::quantize::pq::make_device_pq_dataset(*res_ptr, ps, padded_view);
     using pq_owner_t = cuvs::neighbors::device_vpq_dataset<half, int64_t>;
     auto* owned       = new pq_owner_t{std::move(pq)};
     auto* out         = new cuvsDataset{};
