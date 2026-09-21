@@ -499,7 +499,7 @@ The following distance metrics are supported:
 | Name | Type | Description |
 | --- | --- | --- |
 | `index_params` | `IndexParams object` |  |
-| `dataset` | `CUDA array interface compliant matrix shape (n_samples, dim), or Dataset` | Supported dtype [float, half, int8, uint8] **Note:** For ACE build algorithm, the dataset MUST be in host memory. Use NumPy arrays or call .get() on CuPy arrays before passing. |
+| `dataset` | `CUDA array interface compliant matrix shape (n_samples, dim), or Dataset` | Supported dtype [float, half, int8, uint8] **Note:** For ACE build algorithm, the dataset MUST be in host memory. Use NumPy arrays or call .get() on CuPy arrays before passing. A ``Dataset`` with ``layout == "pq"`` builds an iterative CAGRA-Q index and requires ``metric="sqeuclidean"`` plus ``build_algo="iterative_cagra_search"``. |
 | `resources` | `cuvs.common.Resources, optional` |  |
 
 **Returns**
@@ -647,7 +647,7 @@ subject to change.
 | --- | --- | --- |
 | `filename` | `string` | Name of the file. |
 | `index` | `Index` | Trained CAGRA index. |
-| `include_dataset` | `bool` | Whether or not to write out the dataset along with the index. Including the dataset in the serialized index will use extra disk space, and might not be desired if you already have a copy of the dataset on disk. If this option is set to false, you will have to call `index.update_dataset(dataset)` after loading the index. |
+| `include_dataset` | `bool` | Whether or not to write out the dataset along with the index. Including the dataset in the serialized index will use extra disk space, and might not be desired if you already have a copy of the dataset on disk. If this option is set to false, you will have to call `cagra.update_dataset(index, dataset)` after loading the index. PQ indexes currently require this option to be false. |
 | `resources` | `cuvs.common.Resources, optional` |  |
 
 **Examples**
@@ -729,7 +729,7 @@ Find the k nearest neighbors for each query.
 def update_dataset(Index index, dataset, resources=None)
 ```
 
-Update/attach a CAGRA index with a device-padded or device PQ dataset.
+Update a CAGRA index with a device-padded or device-PQ dataset.
 
 Accepts a ``Dataset`` (padded or ``pq``) or array (promoted to padded).
 The index becomes search-ready in the matching layout.

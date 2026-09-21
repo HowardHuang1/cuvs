@@ -288,12 +288,14 @@ namespace detail {
  * #include <cuvs/neighbors/cagra.hpp>
  * #include <cuvs/preprocessing/quantize/pq.hpp>
  *
- * // `idx` is a dense CAGRA index with graph built on padded rows.
- * // `padded` is a `device_padded_dataset_view<float, int64_t>` view of those same rows.
- * cuvs::neighbors::vpq_params pq_params{};
+ * Typical CAGRA usage:
+ * - Build the graph on dense vectors, train PQ, then `cagra::update_dataset`.
+ * - Or compress first and `cagra::build` from the VPQ view (metric `L2Expanded`).
+ * Keep the `device_vpq_dataset` alive; the index holds a non-owning view.
+ *
  * auto pq = cuvs::preprocessing::quantize::pq::make_device_pq_dataset(res, pq_params, padded);
- * auto pq_idx =
- *   cuvs::neighbors::cagra::update_dataset(res, std::move(idx), pq.as_dataset_view());
+ * auto pq_idx = cuvs::neighbors::cagra::update_dataset(res, std::move(idx), pq.as_dataset_view());
+ * // or: auto idx = cuvs::neighbors::cagra::build(res, cagra_params, pq.as_dataset_view());
  * @endcode
  */
 template <typename SrcT>

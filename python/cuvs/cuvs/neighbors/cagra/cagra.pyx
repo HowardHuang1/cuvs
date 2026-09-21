@@ -559,6 +559,9 @@ def build(IndexParams index_params, dataset, resources=None):
         Supported dtype [float, half, int8, uint8]
         **Note:** For ACE build algorithm, the dataset MUST be in host memory.
         Use NumPy arrays or call .get() on CuPy arrays before passing.
+        A ``Dataset`` with ``layout == "pq"`` builds an iterative CAGRA-Q
+        index and requires ``metric="sqeuclidean"`` plus
+        ``build_algo="iterative_cagra_search"``.
     {resources_docstring}
 
     Returns
@@ -612,7 +615,10 @@ def build(IndexParams index_params, dataset, resources=None):
                 dl_data_type_to_numpy(idx.index.dtype)).name
             idx._dataset_source = dataset_obj
 
-            if not is_ace_build:
+            if dataset_obj.layout == "pq":
+                _keep_dataset_alive(idx, dataset_obj)
+                idx._dataset_source = None
+            elif not is_ace_build:
                 if (dataset_obj.layout == "padded" and
                         dataset_obj.memory_type == "device" and
                         dataset_obj.is_owning):
@@ -666,7 +672,7 @@ def build(IndexParams index_params, dataset, resources=None):
 @auto_sync_resources
 def update_dataset(Index index, dataset, resources=None):
     """
-    Update/attach a CAGRA index with a device-padded or device PQ dataset.
+    Update a CAGRA index with a device-padded or device-PQ dataset.
 
     Accepts a ``Dataset`` (padded or ``pq``) or array (promoted to padded).
     The index becomes search-ready in the matching layout.
@@ -682,8 +688,9 @@ def update_dataset(Index index, dataset, resources=None):
         source_array = dataset
         dataset_obj = make_device_padded_dataset(dataset, resources=resources)
 
+    cdef cuvsDataset_t dataset_handle = _cagra_dataset_handle(dataset_obj)
     if dataset_obj.layout not in ("padded", "pq"):
-        raise TypeError("dataset must have padded or pq layout")
+        raise TypeError("dataset must have padded or PQ layout")
 
     cdef cuvsDataset_t dataset_handle = _cagra_dataset_handle(dataset_obj)
     cdef cuvsResources_t res = <cuvsResources_t>resources.get_c_obj()
@@ -1079,7 +1086,8 @@ def save(filename, Index index, bool include_dataset=True, resources=None):
         the dataset in the serialized index will use extra disk space, and
         might not be desired if you already have a copy of the dataset on
         disk. If this option is set to false, you will have to call
-        `index.update_dataset(dataset)` after loading the index.
+        `cagra.update_dataset(index, dataset)` after loading the index. PQ
+        indexes currently require this option to be false.
     {resources_docstring}
 
     Examples
