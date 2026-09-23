@@ -1119,6 +1119,62 @@ int64_t* offsets);
 
 [`cuvsError_t`](/api-reference/c-api-core-c-api#cuvserror-t)
 
+<a id="cuvscagraconcatenatedatasets"></a>
+### cuvsCagraConcatenateDatasets
+
+Concatenate every input index's dataset (unfiltered, in `indices` order) into a freshly allocated, CAGRA-padded, owning device dataset.
+
+```c
+cuvsError_t cuvsCagraConcatenateDatasets(cuvsResources_t res,
+cuvsCagraIndex_t* indices,
+size_t num_indices,
+cuvsDataset_t* merged_dataset);
+```
+
+This is an optional convenience function for building `cuvsCagraMerge`'s `merged_dataset` argument in the unfiltered case; callers that already have their own concatenated buffer are not required to use it. The matching `offsets` are simply each index's cumulative row count, or `cuvsCagraMergedDatasetOffsets` called with `filter.type == NO_FILTER`.
+
+**Parameters**
+
+| Name | Direction | Type | Description |
+| --- | --- | --- | --- |
+| `res` | in | [`cuvsResources_t`](/api-reference/c-api-core-c-api#cuvsresources-t) | cuvsResources_t opaque C handle |
+| `indices` | in | [`cuvsCagraIndex_t*`](/api-reference/c-api-neighbors-cagra#cuvscagraindex) | Array of input cuvsCagraIndex_t handles to concatenate, in the order they will be passed to `cuvsCagraMerge` |
+| `num_indices` | in | `size_t` | Number of input indices |
+| `merged_dataset` | out | `cuvsDataset_t*` | Newly allocated owning dataset handle containing every index's rows, concatenated in `indices` order. Caller must destroy it with `cuvsDatasetDestroy` when done. |
+
+**Returns**
+
+[`cuvsError_t`](/api-reference/c-api-core-c-api#cuvserror-t)
+
+<a id="cuvscagraconcatenateandfilterdatasets"></a>
+### cuvsCagraConcatenateAndFilterDatasets
+
+Concatenate every input index's dataset (in `indices` order), retaining only the rows selected by `filter`, into a freshly allocated, CAGRA-padded, owning device dataset.
+
+```c
+cuvsError_t cuvsCagraConcatenateAndFilterDatasets(cuvsResources_t res,
+cuvsCagraIndex_t* indices,
+size_t num_indices,
+cuvsFilter filter,
+cuvsDataset_t* merged_dataset);
+```
+
+This is an optional convenience function for building `cuvsCagraMerge`'s `merged_dataset` argument in the bitset-filtered case; callers that already have their own filtered, concatenated buffer are not required to use it. Call `cuvsCagraMergedDatasetOffsets` with the same `filter` to get the matching `offsets`.
+
+**Parameters**
+
+| Name | Direction | Type | Description |
+| --- | --- | --- | --- |
+| `res` | in | [`cuvsResources_t`](/api-reference/c-api-core-c-api#cuvsresources-t) | cuvsResources_t opaque C handle |
+| `indices` | in | [`cuvsCagraIndex_t*`](/api-reference/c-api-neighbors-cagra#cuvscagraindex) | Array of input cuvsCagraIndex_t handles to concatenate, in the order they will be passed to `cuvsCagraMerge` |
+| `num_indices` | in | `size_t` | Number of input indices |
+| `filter` | in | [`cuvsFilter`](/api-reference/c-api-neighbors-common#cuvsfilter) | Bitset row filter selecting which rows survive into the output. Only `BITSET` is supported. |
+| `merged_dataset` | out | `cuvsDataset_t*` | Newly allocated owning dataset handle containing every index's surviving rows, concatenated in `indices` order. Caller must destroy it with `cuvsDatasetDestroy` when done. |
+
+**Returns**
+
+[`cuvsError_t`](/api-reference/c-api-core-c-api#cuvserror-t)
+
 <a id="cuvscagramerge"></a>
 ### cuvsCagraMerge
 
