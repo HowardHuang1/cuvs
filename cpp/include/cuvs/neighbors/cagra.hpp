@@ -3731,6 +3731,46 @@ auto merged_dataset_offsets(
   std::vector<cuvs::neighbors::cagra::index<T, IdxT, DatasetViewT>*> const& indices,
   const cuvs::neighbors::filtering::base_filter& row_filter) -> std::vector<int64_t>;
 
+/** @brief Concatenate every input index's dataset (unfiltered, in `indices` order) into a freshly
+ * allocated, CAGRA-padded, owning device dataset.
+ *
+ * This is an optional convenience helper for building `merge()`'s `merged_dataset` argument in
+ * the unfiltered case; callers that already have their own concatenated buffer (e.g. built on
+ * host, or assembled incrementally) are not required to use it. The matching `offsets` are simply
+ * each index's cumulative `.size()`.
+ *
+ * @param[in] res RAFT resources.
+ * @param[in] indices CAGRA indices to concatenate, in the order they will be passed to `merge()`.
+ * @return An owning, CAGRA-padded device dataset containing every index's rows, concatenated in
+ * `indices` order.
+ */
+template <typename T, typename IdxT, cuvs::neighbors::ann_dataset_view DatasetViewT>
+auto concatenate_datasets(
+  raft::resources const& res,
+  std::vector<cuvs::neighbors::cagra::index<T, IdxT, DatasetViewT>*> const& indices)
+  -> std::unique_ptr<cuvs::neighbors::device_padded_dataset<T, int64_t>>;
+
+/** @brief Concatenate every input index's dataset (in `indices` order), retaining only the rows
+ * selected by `row_filter`, into a freshly allocated, CAGRA-padded, owning device dataset.
+ *
+ * This is an optional convenience helper for building `merge()`'s `merged_dataset` argument in
+ * the bitset-filtered case; callers that already have their own filtered, concatenated buffer are
+ * not required to use it. Call `merged_dataset_offsets()` with the same `row_filter` to get the
+ * matching `offsets`.
+ *
+ * @param[in] res RAFT resources.
+ * @param[in] indices CAGRA indices to concatenate, in the order they will be passed to `merge()`.
+ * @param[in] row_filter Bitset row filter selecting which rows survive into the output.
+ * @return An owning, CAGRA-padded device dataset containing every index's surviving rows,
+ * concatenated in `indices` order.
+ */
+template <typename T, typename IdxT, cuvs::neighbors::ann_dataset_view DatasetViewT>
+auto concatenate_and_filter_datasets(
+  raft::resources const& res,
+  std::vector<cuvs::neighbors::cagra::index<T, IdxT, DatasetViewT>*> const& indices,
+  cuvs::neighbors::filtering::bitset_filter<uint32_t, int64_t> const& row_filter)
+  -> std::unique_ptr<cuvs::neighbors::device_padded_dataset<T, int64_t>>;
+
 /** @brief Merge multiple physical CAGRA indices into one.
  *
  * The caller is responsible for concatenating every input index's dataset (applying `row_filter`
@@ -3759,17 +3799,18 @@ auto merged_dataset_offsets(
  * All input indices must use the same `DatasetViewT` (dense padded or standard device views),
  * and must share one row stride.
  *
- * Usage example:
+ * Usage example, using the `concatenate_datasets()`/`merged_dataset_offsets()` convenience
+ * helpers (unfiltered case -- a caller with its own concatenated buffer, or a bitset row_filter,
+ * would use `concatenate_and_filter_datasets()` instead):
  * @code{.cpp}
  *   using namespace cuvs::neighbors;
- *   // Compute this index's slice, e.g. via merged_dataset_offsets() for a bitset row_filter, or
- *   // cumulative index sizes for an unfiltered merge.
- *   std::vector<int64_t> offsets = {0, index0.size(), index0.size() + index1.size()};
- *   // Build `merged` = concatenated(index0, index1) on device, padded for CAGRA.
- *   auto merged = make_device_padded_dataset(res, concatenated_view);
+ *   std::vector<cagra::index<float, uint32_t>*> indices{&index0, &index1};
+ *
+ *   std::vector<int64_t> offsets =
+ *     cagra::merged_dataset_offsets(res, indices, filtering::none_sample_filter{});
+ *   auto merged      = cagra::concatenate_datasets(res, indices);
  *   auto merged_view = merged->as_dataset_view();
  *
- *   std::vector<cagra::index<float, uint32_t>*> indices{&index0, &index1};
  *   auto merged_index = cagra::merge(res, index_params, indices, merged_view, offsets);
  * @endcode
  *

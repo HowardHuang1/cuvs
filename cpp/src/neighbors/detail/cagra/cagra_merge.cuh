@@ -113,6 +113,192 @@ inline void validate_merge_offsets(std::vector<int64_t> const& offsets,
                long(final_rows));
 }
 
+/** Validate `indices` for concatenation: every index must carry a non-empty, uncompressed,
+ *  dense row-major device dataset, and they must all share the same dimension and row stride.
+ *  Returns that shared (dim, stride). */
+template <class T, class IdxT, cuvs::neighbors::ann_dataset_view DatasetViewT>
+auto validate_indices_for_concat(
+  std::vector<cuvs::neighbors::cagra::index<T, IdxT, DatasetViewT>*> const& indices,
+  char const* caller) -> std::pair<uint32_t, int64_t>
+{
+  using cagra_index_t = cuvs::neighbors::cagra::index<T, IdxT, DatasetViewT>;
+
+  uint32_t dim   = 0;
+  int64_t stride = -1;
+  for (cagra_index_t* index : indices) {
+    RAFT_EXPECTS(index != nullptr,
+                 "Null pointer detected in 'indices'. Ensure all elements are valid before usage.");
+    auto const& dataset = index->dataset();
+    if constexpr (cuvs::neighbors::is_dense_row_major_dataset_view_v<
+                    std::decay_t<decltype(dataset)>>) {
+      RAFT_EXPECTS(dataset.n_rows() != 0,
+                   "%s only supports an index to which the dataset is attached. Please check if "
+                   "the index has an empty dataset; attach one with update_dataset before "
+                   "concatenating.",
+                   caller);
+      if (dim == 0) {
+        dim    = index->dim();
+        stride = static_cast<int64_t>(dataset.stride());
+      } else {
+        RAFT_EXPECTS(dim == index->dim(), "Dimension of datasets in indices must be equal.");
+        RAFT_EXPECTS(stride == static_cast<int64_t>(dataset.stride()),
+                     "Row stride of datasets in indices must be equal.");
+      }
+    } else {
+      RAFT_FAIL("%s only supports an uncompressed dense device dataset index", caller);
+    }
+  }
+  return {dim, stride};
+}
+
+/** Copy every input index's dataset into `dst` (row stride `dst_stride`, in `indices` order),
+ *  starting at row 0. `dst` must already be zeroed/allocated for `total_rows * dst_stride`
+ *  elements. */
+template <class T, class IdxT, cuvs::neighbors::ann_dataset_view DatasetViewT>
+void copy_datasets_into(
+  raft::resources const& handle,
+  std::vector<cuvs::neighbors::cagra::index<T, IdxT, DatasetViewT>*> const& indices,
+  T* dst,
+  int64_t dst_stride,
+  uint32_t dim)
+{
+  using cagra_index_t = cuvs::neighbors::cagra::index<T, IdxT, DatasetViewT>;
+
+  int64_t row_offset  = 0;
+  cudaStream_t stream = raft::resource::get_cuda_stream(handle).get();
+  for (cagra_index_t* index : indices) {
+    auto const& v      = index->dataset();
+    const T* src_ptr   = v.view().data_handle();
+    std::size_t n_rows = static_cast<std::size_t>(v.n_rows());
+    raft::copy_matrix(dst + static_cast<std::size_t>(row_offset) * dst_stride,
+                      static_cast<std::size_t>(dst_stride),
+                      src_ptr,
+                      static_cast<std::size_t>(dst_stride),
+                      static_cast<std::size_t>(dim),
+                      n_rows,
+                      stream);
+    row_offset += static_cast<int64_t>(index->size());
+  }
+}
+
+/** Concatenate every input index's dataset (unfiltered, in `indices` order) into a freshly
+ *  allocated, CAGRA-padded, owning device dataset. This is a convenience helper for building
+ *  `merge()`'s `merged_dataset` argument in the unfiltered case; the matching `offsets` are simply
+ *  each index's cumulative `.size()` (or `merged_dataset_offsets()` with a `none_sample_filter`).
+ */
+template <class T, class IdxT, cuvs::neighbors::ann_dataset_view DatasetViewT>
+auto concatenate_datasets(
+  raft::resources const& handle,
+  std::vector<cuvs::neighbors::cagra::index<T, IdxT, DatasetViewT>*> const& indices)
+  -> std::unique_ptr<cuvs::neighbors::device_padded_dataset<T, int64_t>>
+{
+  auto [dim, stride] =
+    validate_indices_for_concat<T, IdxT, DatasetViewT>(indices, "cagra::concatenate_datasets");
+
+  int64_t total_rows = 0;
+  for (auto* index : indices) {
+    total_rows += static_cast<int64_t>(index->size());
+  }
+
+  auto out_array      = raft::make_device_matrix<T, int64_t>(handle, total_rows, stride);
+  cudaStream_t stream = raft::resource::get_cuda_stream(handle).get();
+  RAFT_CUDA_TRY(cudaMemsetAsync(
+    out_array.data_handle(), 0, static_cast<std::size_t>(out_array.size()) * sizeof(T), stream));
+
+  copy_datasets_into<T, IdxT, DatasetViewT>(handle, indices, out_array.data_handle(), stride, dim);
+
+  return std::make_unique<cuvs::neighbors::device_padded_dataset<T, int64_t>>(std::move(out_array),
+                                                                              dim);
+}
+
+/** Concatenate every input index's dataset (in `indices` order), retaining only the rows selected
+ *  by `row_filter`, into a freshly allocated, CAGRA-padded, owning device dataset. This is a
+ *  convenience helper for building `merge()`'s `merged_dataset` argument in the bitset-filtered
+ *  case; call `merged_dataset_offsets()` with the same `row_filter` to get the matching `offsets`.
+ *
+ *  Peak device memory is only the output buffer, sized to the *surviving* row count: each index's
+ *  surviving rows are gathered directly out of that index's own (already device-resident) dataset
+ *  storage, so no unfiltered-sized staging buffer is ever allocated. The per-index row-id lists fed
+ *  to the gather are small (bounded by the surviving row count) and round-trip through host memory,
+ *  which does not count against device peak.
+ */
+template <class T, class IdxT, cuvs::neighbors::ann_dataset_view DatasetViewT>
+auto concatenate_and_filter_datasets(
+  raft::resources const& handle,
+  std::vector<cuvs::neighbors::cagra::index<T, IdxT, DatasetViewT>*> const& indices,
+  cuvs::neighbors::filtering::bitset_filter<uint32_t, int64_t> const& row_filter)
+  -> std::unique_ptr<cuvs::neighbors::device_padded_dataset<T, int64_t>>
+{
+  auto [dim, stride] = validate_indices_for_concat<T, IdxT, DatasetViewT>(
+    indices, "cagra::concatenate_and_filter_datasets");
+
+  std::vector<int64_t> unfiltered_offsets;
+  unfiltered_offsets.reserve(indices.size() + 1);
+  unfiltered_offsets.push_back(0);
+  for (auto* index : indices) {
+    unfiltered_offsets.push_back(unfiltered_offsets.back() + static_cast<int64_t>(index->size()));
+  }
+  int64_t const unfiltered_rows = unfiltered_offsets.back();
+  int64_t const final_rows      = row_filter.view().count(handle);
+
+  cudaStream_t stream = raft::resource::get_cuda_stream(handle).get();
+
+  // Sorted list of surviving *global* row ids -- sized to `final_rows`, not `unfiltered_rows`.
+  auto surviving_rows_csr = raft::make_device_csr_matrix<uint32_t, int64_t, int64_t, int64_t>(
+    handle, 1, static_cast<std::size_t>(unfiltered_rows));
+  surviving_rows_csr.initialize_sparsity(final_rows);
+  row_filter.view().to_csr(handle, surviving_rows_csr);
+  auto csr_indices = surviving_rows_csr.structure_view().get_indices();
+
+  std::vector<int64_t> surviving_rows_host(csr_indices.size());
+  raft::copy(surviving_rows_host.data(), csr_indices.data(), csr_indices.size(), stream);
+  raft::resource::sync_stream(handle);
+
+  // Per-index segment boundaries within `surviving_rows_host` (same `lower_bound` technique as
+  // `merged_dataset_offsets()`): index i's surviving rows are surviving_rows_host[offsets[i] ..
+  // offsets[i+1]), still expressed as global row ids.
+  std::vector<int64_t> offsets;
+  offsets.reserve(unfiltered_offsets.size());
+  for (int64_t boundary : unfiltered_offsets) {
+    offsets.push_back(static_cast<int64_t>(
+      std::lower_bound(surviving_rows_host.begin(), surviving_rows_host.end(), boundary) -
+      surviving_rows_host.begin()));
+  }
+
+  auto out_array = raft::make_device_matrix<T, int64_t>(handle, final_rows, stride);
+  RAFT_CUDA_TRY(cudaMemsetAsync(
+    out_array.data_handle(), 0, static_cast<std::size_t>(out_array.size()) * sizeof(T), stream));
+
+  for (std::size_t i = 0; i < indices.size(); ++i) {
+    int64_t const n_i = offsets[i + 1] - offsets[i];
+    if (n_i == 0) { continue; }
+
+    // Shift this index's surviving global row ids down to local (0-based within its own storage)
+    // row ids, since the gather source below is that index's own dataset, not a global buffer.
+    std::vector<int64_t> local_ids_host(surviving_rows_host.begin() + offsets[i],
+                                        surviving_rows_host.begin() + offsets[i + 1]);
+    int64_t const base = unfiltered_offsets[i];
+    for (auto& id : local_ids_host) {
+      id -= base;
+    }
+
+    auto local_ids = raft::make_device_vector<int64_t, int64_t>(handle, n_i);
+    raft::copy(local_ids.data_handle(), local_ids_host.data(), local_ids_host.size(), stream);
+    raft::resource::sync_stream(handle);
+
+    auto const& v = indices[i]->dataset();
+    auto src_view = raft::make_device_matrix_view<const T, int64_t>(
+      v.view().data_handle(), static_cast<int64_t>(v.n_rows()), stride);
+    auto dst_view = raft::make_device_matrix_view<T, int64_t>(
+      out_array.data_handle() + static_cast<std::size_t>(offsets[i]) * stride, n_i, stride);
+
+    raft::matrix::copy_rows(handle, src_view, dst_view, raft::make_const_mdspan(local_ids.view()));
+  }
+
+  return std::make_unique<cuvs::neighbors::device_padded_dataset<T, int64_t>>(std::move(out_array),
+                                                                              dim);
+}
+
 /** Build a fresh CAGRA graph over a caller-populated, already-concatenated (and, if applicable,
  *  already-filtered) merged dataset. The caller owns `merged_dataset`; this only merges the graph
  *  and rebinds a view of it, mirroring the `extend()` contract. */
