@@ -298,7 +298,7 @@ auto deserialize_device_dense(raft::resources const& res, std::istream& is)
                                     0,
                                     (metadata.stride - metadata.dim) * sizeof(DataT),
                                     metadata.n_rows,
-                                    stream));
+                                    stream.get()));
     work_queued = true;
   }
   if (metadata.elements > 0) {
@@ -329,7 +329,7 @@ auto deserialize_device_dense(raft::resources const& res, cuvs::util::kvikio_fil
                                     0,
                                     (metadata.stride - metadata.dim) * sizeof(DataT),
                                     metadata.n_rows,
-                                    stream));
+                                    stream.get()));
   }
   raft::resource::sync_stream(res);
 
@@ -383,12 +383,12 @@ auto deserialize_device_dense(raft::resources const& res, cuvs::util::kvikio_fil
                           metadata.dim,
                           rows,
                           stream);
-        copy_complete[slot].record(stream);
+        copy_complete[slot].record(stream.get());
         copy_in_flight[slot] = true;
       }
       raft::resource::sync_stream(res);
     } catch (...) {
-      RAFT_CUDA_TRY_NO_THROW(cudaStreamSynchronize(stream));
+      RAFT_CUDA_TRY_NO_THROW(cudaStreamSynchronize(stream.get()));
       throw;
     }
   }
