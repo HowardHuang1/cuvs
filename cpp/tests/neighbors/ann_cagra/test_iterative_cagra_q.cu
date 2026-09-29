@@ -293,7 +293,8 @@ TEST_F(CagraQContractTest, RejectsEmptyDataset)
   auto vq_code_book = raft::make_device_matrix<half, uint32_t, raft::row_major>(res_, 1, width);
   auto pq_code_book = raft::make_device_matrix<half, uint32_t, raft::row_major>(res_, 256, 2);
   auto codes = raft::make_device_matrix<uint8_t, int64_t, raft::row_major>(res_, 0, 4 + dim / 2);
-  vpq_dataset_t empty{std::move(vq_code_book), std::move(pq_code_book), std::move(codes)};
+  vpq_dataset_t::dictionary_type dictionary{std::move(vq_code_book), std::move(pq_code_book)};
+  vpq_dataset_t empty{std::move(codes), std::move(dictionary)};
   ASSERT_EQ(empty.n_rows(), 0);
 
   EXPECT_THROW(cagra::build(res_, iterative_params(), empty.as_dataset_view()), raft::exception);

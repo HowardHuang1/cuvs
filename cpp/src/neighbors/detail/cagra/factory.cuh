@@ -105,7 +105,7 @@ auto make_key(const cagra::search_params& params,
              reinterpret_cast<uint64_t>(dataset_norms),
              uint64_t(dataset.n_rows()),
              dataset.dim(),
-             dataset.stride(),
+             data_view.stride(),
              uint32_t(params.team_size),
              uint32_t(metric),
              uint32_t(params.smem_dtype)};
@@ -115,7 +115,8 @@ template <typename DatasetT>
 auto make_key(const cagra::search_params& params,
               const DatasetT& dataset,
               cuvs::distance::DistanceType metric,
-              const void* dataset_norms) -> std::enable_if_t<is_vpq_dataset_v<DatasetT>, key>
+              const void* dataset_norms)
+  -> std::enable_if_t<cuvs::neighbors::is_vpq_dataset_view_v<DatasetT>, key>
 {
   auto const data_view = dataset.data_view();
   auto const dict_view = dataset.dictionary_view();
@@ -123,11 +124,27 @@ auto make_key(const cagra::search_params& params,
              reinterpret_cast<uint64_t>(dataset_norms),
              uint64_t(dataset.n_rows()),
              dataset.dim(),
-             uint32_t(reinterpret_cast<uint64_t>(dataset.pq_code_book.data_handle()) >> 6),
+             uint32_t(reinterpret_cast<uint64_t>(dict_view.pq_code_book.data_handle()) >> 6),
              uint32_t(params.team_size),
              uint32_t(metric),
              uint32_t(params.smem_dtype)};
 }
+
+inline auto operator==(const key& a, const key& b) -> bool
+{
+  return a.data_ptr == b.data_ptr && a.norms_ptr == b.norms_ptr && a.n_rows == b.n_rows &&
+         a.dim == b.dim && a.extra_val == b.extra_val && a.team_size == b.team_size &&
+         a.metric == b.metric && a.smem_dtype == b.smem_dtype;
+}
+
+struct key_hash {
+  inline auto operator()(const key& x) const noexcept -> std::size_t
+  {
+    return size_t{x.data_ptr} + size_t{x.norms_ptr} +
+           size_t{x.n_rows} * size_t{x.dim} * size_t{x.extra_val} +
+           (size_t{x.team_size} ^ size_t{x.metric}) + size_t{x.smem_dtype};
+  }
+};
 
 template <typename DataT, typename IndexT, typename DistanceT>
 struct store {

@@ -2312,9 +2312,10 @@ void reconstruct_vpq_queries(raft::resources const& res,
                              uint32_t batch_size,
                              raft::device_matrix_view<T, int64_t> output)
 {
-  auto const& vpq_dset     = vpq_view.dset();
-  const uint32_t dim       = vpq_dset.dim();
-  const uint32_t pq_len    = vpq_dset.pq_len();
+  auto const data_view     = vpq_view.data_view();
+  auto const dict_view     = vpq_view.dictionary_view();
+  const uint32_t dim       = vpq_view.dim();
+  const uint32_t pq_len    = vpq_view.pq_len();
   const uint32_t output_ld = static_cast<uint32_t>(output.extent(1));
   const uint32_t threads   = std::min(dim, 256u);
   RAFT_EXPECTS(output_ld >= dim,
@@ -2324,10 +2325,10 @@ void reconstruct_vpq_queries(raft::resources const& res,
 
   kern_reconstruct_vpq_queries<T, MathT>
     <<<batch_size, threads, 0, raft::resource::get_cuda_stream(res).get()>>>(
-      vpq_dset.data.data_handle(),
-      vpq_dset.encoded_row_length(),
-      vpq_dset.vq_code_book.data_handle(),
-      vpq_dset.pq_code_book.data_handle(),
+      data_view.data_handle(),
+      vpq_view.encoded_row_length(),
+      dict_view.vq_code_book.data_handle(),
+      dict_view.pq_code_book.data_handle(),
       dim,
       pq_len,
       offset,
@@ -2480,14 +2481,15 @@ auto iterative_build_graph(raft::resources const& res,
     vpq_dataset      = dataset;
   } else {
     auto const required_stride = cuvs::neighbors::cagra_required_row_width<T>(dataset.dim());
-    RAFT_EXPECTS(dataset.stride() == required_stride,
+    auto const data_view       = dataset.data_view();
+    RAFT_EXPECTS(data_view.stride() == required_stride,
                  "iterative CAGRA build requires a CAGRA-aligned device dataset "
                  "(stride %u, required %u). Pass a device_padded_dataset_view, or a "
                  "device_standard_dataset_view whose row width already matches "
                  "cagra_required_row_width.",
-                 dataset.stride(),
+                 data_view.stride(),
                  required_stride);
-    dev_dataset      = dataset.data_view();
+    dev_dataset      = data_view;
     logical_dim      = dataset.dim();
     final_graph_size = static_cast<uint64_t>(dataset.n_rows());
   }
