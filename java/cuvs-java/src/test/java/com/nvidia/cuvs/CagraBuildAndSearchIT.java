@@ -1022,6 +1022,237 @@ public class CagraBuildAndSearchIT extends CuVSTestCase {
   }
 
   /**
+   * Same as {@link #testMergingIndexes()}, except the merged dataset is built with {@link
+   * CagraIndex#concatenateDatasets(CagraIndex[])} instead of by hand.
+   */
+  @Test
+  public void testConcatenateDatasetsMerge() throws Throwable {
+    float[][] vector1 = {
+      {0.0f, 0.0f},
+      {1.0f, 1.0f}
+    };
+
+    float[][] vector2 = {
+      {10.0f, 10.0f},
+      {11.0f, 11.0f}
+    };
+
+    float[][] queries = {
+      {1.0f, 1.0f}, // Should be closest to vector1[1] -> index 1
+      {10.5f, 10.5f}, // Should be closest to vector2[0] -> index 2
+      {0.0f, 0.0f} // Should be closest to vector1[0] -> index 0
+    };
+
+    List<Map<Integer, Float>> expectedResults =
+        Arrays.asList(
+            Map.of(1, 0.0f, 0, 2.0f, 2, 162.0f),
+            Map.of(2, 0.5f, 3, 0.5f, 1, 180.5f),
+            Map.of(0, 0.0f, 1, 2.0f, 2, 200.0f));
+
+    try (CuVSResources resources = CheckedCuVSResources.create()) {
+      CagraIndexParams indexParams =
+          new CagraIndexParams.Builder()
+              .withCagraGraphBuildAlgo(CagraGraphBuildAlgo.NN_DESCENT)
+              .withGraphDegree(1)
+              .withIntermediateGraphDegree(2)
+              .withNumWriterThreads(4)
+              .withMetric(CuvsDistanceType.L2Expanded)
+              .build();
+
+      CagraIndex index1 =
+          CagraIndex.newBuilder(resources)
+              .withDataset(vector1)
+              .withIndexParams(indexParams)
+              .build();
+      CagraIndex index2 =
+          CagraIndex.newBuilder(resources)
+              .withDataset(vector2)
+              .withIndexParams(indexParams)
+              .build();
+
+      try (var device1 = CuVSMatrix.ofArray(vector1).toDevice(resources);
+          var device2 = CuVSMatrix.ofArray(vector2).toDevice(resources);
+          var padded1 = index1.makePaddedDataset(device1);
+          var padded2 = index2.makePaddedDataset(device2)) {
+        index1.updateDataset(padded1);
+        index2.updateDataset(padded2);
+
+        CagraIndex[] indexes = new CagraIndex[] {index1, index2};
+        long[] mergeOffsets = {0L, vector1.length, vector1.length + (long) vector2.length};
+
+        try (var mergedDataset = CagraIndex.concatenateDatasets(indexes)) {
+          try (CagraIndex mergedIndex = CagraIndex.merge(indexes, mergedDataset, mergeOffsets)) {
+            assertEquals(
+                "concatenateDatasets should hold every input row",
+                vector1.length + (long) vector2.length,
+                mergedIndex.size());
+
+            CagraSearchParams searchParams =
+                new CagraSearchParams.Builder()
+                    .withAlgo(CagraSearchParams.SearchAlgo.SINGLE_CTA)
+                    .build();
+
+            try (var queryVectors = CuVSMatrix.ofArray(queries)) {
+              CagraQuery query =
+                  new CagraQuery.Builder(resources)
+                      .withTopK(3)
+                      .withSearchParams(searchParams)
+                      .withQueryVectors(queryVectors)
+                      .withMapping(SearchResults.IDENTITY_MAPPING)
+                      .build();
+
+              SearchResults results = mergedIndex.search(query);
+              assertEquals(expectedResults, results.getResults());
+            }
+          }
+        }
+        index1.close();
+        index2.close();
+      }
+    }
+  }
+
+  /**
+   * Same as {@link #testFilteredMerge()}, except the merged dataset and its offsets are built with
+   * {@link CagraIndex#concatenateAndFilterDatasets(CagraIndex[], BitSet)} and {@link
+   * CagraIndex#mergedDatasetOffsets(CagraIndex[], BitSet)} instead of by hand.
+   */
+  @Test
+  public void testConcatenateAndFilterDatasetsMerge() throws Throwable {
+    float[][] vector1 = {
+      {0.0f, 0.0f},
+      {1.0f, 1.0f},
+      {2.0f, 2.0f}
+    };
+
+    float[][] vector2 = {
+      {10.0f, 10.0f},
+      {11.0f, 11.0f},
+      {12.0f, 12.0f}
+    };
+
+    // Bits 0 to 2 address vector1 and bits 3 to 5 address vector2. Drop the middle row of each,
+    // which leaves four rows that have to end up at positions 0 to 3 of the merged index.
+    BitSet rowFilter = new BitSet();
+    rowFilter.set(0, 6);
+    rowFilter.clear(1);
+    rowFilter.clear(4);
+
+    float[][] survivingRows = {
+      {0.0f, 0.0f},
+      {2.0f, 2.0f},
+      {10.0f, 10.0f},
+      {12.0f, 12.0f}
+    };
+    float[][] droppedRows = {
+      {1.0f, 1.0f},
+      {11.0f, 11.0f}
+    };
+
+    try (CuVSResources resources = CheckedCuVSResources.create()) {
+      CagraIndexParams indexParams =
+          new CagraIndexParams.Builder()
+              .withCagraGraphBuildAlgo(CagraGraphBuildAlgo.NN_DESCENT)
+              .withGraphDegree(1)
+              .withIntermediateGraphDegree(2)
+              .withNumWriterThreads(4)
+              .withMetric(CuvsDistanceType.L2Expanded)
+              .build();
+
+      CagraIndex index1 =
+          CagraIndex.newBuilder(resources)
+              .withDataset(vector1)
+              .withIndexParams(indexParams)
+              .build();
+      CagraIndex index2 =
+          CagraIndex.newBuilder(resources)
+              .withDataset(vector2)
+              .withIndexParams(indexParams)
+              .build();
+
+      try (var device1 = CuVSMatrix.ofArray(vector1).toDevice(resources);
+          var device2 = CuVSMatrix.ofArray(vector2).toDevice(resources);
+          var padded1 = index1.makePaddedDataset(device1);
+          var padded2 = index2.makePaddedDataset(device2)) {
+        index1.updateDataset(padded1);
+        index2.updateDataset(padded2);
+
+        assertEquals("Input index sizes", 3, index1.size());
+        assertEquals("Input index sizes", 3, index2.size());
+
+        CagraIndex[] indexes = new CagraIndex[] {index1, index2};
+
+        long[] filteredOffsets = CagraIndex.mergedDatasetOffsets(indexes, rowFilter);
+        assertEquals(3, filteredOffsets.length);
+        assertEquals(0L, filteredOffsets[0]);
+        assertEquals(rowFilter.cardinality(), filteredOffsets[2]);
+
+        try (var filteredDataset = CagraIndex.concatenateAndFilterDatasets(indexes, rowFilter)) {
+          try (CagraIndex mergedIndex =
+              CagraIndex.merge(
+                  indexes, filteredDataset, filteredOffsets, rowFilter, /* mergeParams= */ null)) {
+            assertEquals(
+                "The merged index should hold one row per set bit",
+                rowFilter.cardinality(),
+                mergedIndex.size());
+
+            CagraSearchParams searchParams =
+                new CagraSearchParams.Builder()
+                    .withAlgo(CagraSearchParams.SearchAlgo.SINGLE_CTA)
+                    .build();
+
+            try (var queryVectors = CuVSMatrix.ofArray(survivingRows)) {
+              CagraQuery query =
+                  new CagraQuery.Builder(resources)
+                      .withTopK(1)
+                      .withSearchParams(searchParams)
+                      .withQueryVectors(queryVectors)
+                      .withMapping(SearchResults.IDENTITY_MAPPING)
+                      .build();
+
+              List<Map<Integer, Float>> results = mergedIndex.search(query).getResults();
+              assertEquals(survivingRows.length, results.size());
+              for (int row = 0; row < survivingRows.length; row++) {
+                Map<Integer, Float> hit = results.get(row);
+                assertEquals("Expected a single neighbour for row " + row, 1, hit.size());
+                int id = hit.keySet().iterator().next();
+                assertEquals("Surviving row " + row + " moved", row, id);
+                assertEquals(
+                    "Surviving row " + row + " is not an exact match", 0.0f, hit.get(id), 1e-5f);
+              }
+            }
+
+            try (var queryVectors = CuVSMatrix.ofArray(droppedRows)) {
+              CagraQuery query =
+                  new CagraQuery.Builder(resources)
+                      .withTopK(1)
+                      .withSearchParams(searchParams)
+                      .withQueryVectors(queryVectors)
+                      .withMapping(SearchResults.IDENTITY_MAPPING)
+                      .build();
+
+              List<Map<Integer, Float>> results = mergedIndex.search(query).getResults();
+              assertEquals(droppedRows.length, results.size());
+              for (int row = 0; row < droppedRows.length; row++) {
+                Map<Integer, Float> hit = results.get(row);
+                assertEquals("Expected a single neighbour for dropped row " + row, 1, hit.size());
+                int id = hit.keySet().iterator().next();
+                assertEquals(
+                    "Dropped row " + row + " is still in the merged index",
+                    2.0f,
+                    hit.get(id),
+                    1e-5f);
+              }
+            }
+          }
+        }
+        index1.close();
+        index2.close();
+      }
+    }
+  }
+
+  /**
    * Merges two indexes after the caller has applied a row filter itself, and checks that the merged
    * index holds exactly the rows whose bit was set, packed together in the order the inputs were
    * given.

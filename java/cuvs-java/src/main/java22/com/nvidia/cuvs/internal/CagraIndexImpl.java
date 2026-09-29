@@ -1208,48 +1208,252 @@ public class CagraIndexImpl implements CagraIndex {
       long mergedDatasetHandleAddress,
       long[] offsets,
       CagraIndexParams mergeParams) {
-    CuVSResources resources = indexes[0].getCuVSResources();
-    for (int i = 1; i < indexes.length; i++) {
-      if (!resources.equals(indexes[i].getCuVSResources())) {
-        throw new IllegalArgumentException("All indexes must use the same CuVSResources instance");
-      }
-    }
+    return merge(indexes, mergedDatasetHandleAddress, offsets, null, mergeParams);
+  }
+
+  /**
+   * Merges multiple CAGRA indexes into a single index, using a caller-owned pre-concatenated
+   * padded dataset that was already filtered by {@code filter} (or unfiltered, if {@code filter}
+   * is null).
+   *
+   * <p>The dataset stays owned by the caller: this method never allocates or copies dataset rows,
+   * it only merges the graphs and binds the returned index to the native dataset handle at {@code
+   * mergedDatasetHandleAddress}. Keep the underlying dataset alive while the returned index is in
+   * use.
+   *
+   * @param indexes Array of CAGRA indexes to merge
+   * @param mergedDatasetHandleAddress native handle address of the caller-owned padded dataset (or
+   *                                   padded dataset view) holding the concatenation of every
+   *                                   input index's surviving rows, in {@code indexes} order
+   * @param offsets Per-index starting row within the merged dataset. Array of {@code
+   *                indexes.length + 1} entries; the last entry must equal the merged dataset's row
+   *                count
+   * @param filter Bitset selecting which rows (over the concatenation of every index's rows, in
+   *               {@code indexes} order) survive into the merged dataset; a set bit keeps the row.
+   *               Must be the same filter used to build the dataset at {@code
+   *               mergedDatasetHandleAddress}. Pass null for an unfiltered merge
+   * @param mergeParams Parameters to control the merge operation, or null to use defaults
+   * @return A new merged CAGRA index
+   */
+  public static CagraIndex merge(
+      CagraIndex[] indexes,
+      long mergedDatasetHandleAddress,
+      long[] offsets,
+      BitSet filter,
+      CagraIndexParams mergeParams) {
+    CuVSResources resources = requireSameResources(indexes);
 
     try (var localArena = Arena.ofConfined()) {
-      MemorySegment indexesSegment =
-          localArena.allocate(indexes.length * ValueLayout.ADDRESS.byteSize());
-
-      for (int i = 0; i < indexes.length; i++) {
-        CagraIndexImpl indexImpl = (CagraIndexImpl) indexes[i];
-        indexesSegment.setAtIndex(
-            ValueLayout.ADDRESS, i, indexImpl.cagraIndexReference.getMemorySegment());
-      }
+      MemorySegment indexesSegment = buildIndicesSegment(localArena, indexes);
 
       var mergedIndex = createCagraIndex();
       try (var nativeMergeParams = segmentFromIndexParams(mergeParams);
           var resourcesAccessor = resources.access()) {
         var cuvsRes = resourcesAccessor.handle();
 
-        MemorySegment mergeFilter = cuvsFilter.allocate(localArena);
-        cuvsFilter.type(mergeFilter, 0); // NO_FILTER
-        cuvsFilter.addr(mergeFilter, 0);
-
         MemorySegment mergedDataset = MemorySegment.ofAddress(mergedDatasetHandleAddress);
         MemorySegment offsetsSegment = buildMemorySegment(localArena, offsets);
 
-        checkCuVSError(
-            cuvsCagraMerge(
-                cuvsRes,
-                nativeMergeParams.handle(),
-                indexesSegment,
-                indexes.length,
-                mergeFilter,
-                mergedDataset,
-                offsetsSegment,
-                mergedIndex),
-            "cuvsCagraMerge");
+        if (filter == null) {
+          MemorySegment mergeFilter = cuvsFilter.allocate(localArena);
+          cuvsFilter.type(mergeFilter, 0); // NO_FILTER
+          cuvsFilter.addr(mergeFilter, 0);
+
+          checkCuVSError(
+              cuvsCagraMerge(
+                  cuvsRes,
+                  nativeMergeParams.handle(),
+                  indexesSegment,
+                  indexes.length,
+                  mergeFilter,
+                  mergedDataset,
+                  offsetsSegment,
+                  mergedIndex),
+              "cuvsCagraMerge");
+        } else {
+          try (var nativeFilter =
+              uploadBitsetFilter(cuvsRes, localArena, filter, totalRows(indexes))) {
+            checkCuVSError(
+                cuvsCagraMerge(
+                    cuvsRes,
+                    nativeMergeParams.handle(),
+                    indexesSegment,
+                    indexes.length,
+                    nativeFilter.segment,
+                    mergedDataset,
+                    offsetsSegment,
+                    mergedIndex),
+                "cuvsCagraMerge");
+          }
+        }
         // mergedDataset is caller-owned; the returned index does not take ownership of it.
         return new CagraIndexImpl(new IndexReference(mergedIndex, null, null), resources);
+      }
+    }
+  }
+
+  /**
+   * Computes per-index write offsets for a bitset-filtered merged dataset buffer. See {@link
+   * CagraIndex#mergedDatasetOffsets(CagraIndex[], BitSet)}.
+   */
+  public static long[] mergedDatasetOffsets(CagraIndex[] indexes, BitSet filter) {
+    CuVSResources resources = requireSameResources(indexes);
+    try (var localArena = Arena.ofConfined();
+        var resourcesAccessor = resources.access()) {
+      var cuvsRes = resourcesAccessor.handle();
+      MemorySegment indicesSegment = buildIndicesSegment(localArena, indexes);
+
+      SequenceLayout offsetsLayout = MemoryLayout.sequenceLayout(indexes.length + 1, int64_t);
+      MemorySegment offsetsOut = localArena.allocate(offsetsLayout);
+
+      try (var nativeFilter = uploadBitsetFilter(cuvsRes, localArena, filter, totalRows(indexes))) {
+        checkCuVSError(
+            cuvsCagraMergedDatasetOffsets(
+                cuvsRes, indicesSegment, indexes.length, nativeFilter.segment, offsetsOut),
+            "cuvsCagraMergedDatasetOffsets");
+      }
+
+      long[] offsets = new long[indexes.length + 1];
+      MemorySegment.copy(offsetsOut, int64_t, 0, offsets, 0, offsets.length);
+      return offsets;
+    }
+  }
+
+  /**
+   * Concatenates every input index's dataset (unfiltered, in {@code indexes} order) into a newly
+   * allocated, owning padded dataset. See {@link CagraIndex#concatenateDatasets(CagraIndex[])}.
+   */
+  public static CagraIndex.PaddedDataset concatenateDatasets(CagraIndex[] indexes) {
+    CuVSResources resources = requireSameResources(indexes);
+    try (var localArena = Arena.ofConfined();
+        var resourcesAccessor = resources.access()) {
+      var cuvsRes = resourcesAccessor.handle();
+      MemorySegment indicesSegment = buildIndicesSegment(localArena, indexes);
+
+      MemorySegment out = localArena.allocate(cuvsDataset_t);
+      checkCuVSError(
+          cuvsCagraConcatenateDatasets(cuvsRes, indicesSegment, indexes.length, out),
+          "cuvsCagraConcatenateDatasets");
+      MemorySegment merged = out.get(cuvsDataset_t, 0);
+
+      var result = new CagraIndex.PaddedDataset();
+      result.setDelegate(new DatasetCloseDelegate(merged), merged.address());
+      return result;
+    }
+  }
+
+  /**
+   * Concatenates every input index's dataset (in {@code indexes} order), retaining only the rows
+   * selected by {@code filter}, into a newly allocated, owning padded dataset. See
+   * {@link CagraIndex#concatenateAndFilterDatasets(CagraIndex[], BitSet)}.
+   */
+  public static CagraIndex.PaddedDataset concatenateAndFilterDatasets(
+      CagraIndex[] indexes, BitSet filter) {
+    CuVSResources resources = requireSameResources(indexes);
+    try (var localArena = Arena.ofConfined();
+        var resourcesAccessor = resources.access()) {
+      var cuvsRes = resourcesAccessor.handle();
+      MemorySegment indicesSegment = buildIndicesSegment(localArena, indexes);
+
+      MemorySegment out = localArena.allocate(cuvsDataset_t);
+      try (var nativeFilter = uploadBitsetFilter(cuvsRes, localArena, filter, totalRows(indexes))) {
+        checkCuVSError(
+            cuvsCagraConcatenateAndFilterDatasets(
+                cuvsRes, indicesSegment, indexes.length, nativeFilter.segment, out),
+            "cuvsCagraConcatenateAndFilterDatasets");
+      }
+      MemorySegment merged = out.get(cuvsDataset_t, 0);
+
+      var result = new CagraIndex.PaddedDataset();
+      result.setDelegate(new DatasetCloseDelegate(merged), merged.address());
+      return result;
+    }
+  }
+
+  /** Validates that every index shares one {@link CuVSResources} and returns it. */
+  private static CuVSResources requireSameResources(CagraIndex[] indexes) {
+    CuVSResources resources = indexes[0].getCuVSResources();
+    for (int i = 1; i < indexes.length; i++) {
+      if (!resources.equals(indexes[i].getCuVSResources())) {
+        throw new IllegalArgumentException("All indexes must use the same CuVSResources instance");
+      }
+    }
+    return resources;
+  }
+
+  /** Builds the native {@code cuvsCagraIndex_t[]} array backing several merge-family calls. */
+  private static MemorySegment buildIndicesSegment(Arena arena, CagraIndex[] indexes) {
+    MemorySegment indexesSegment = arena.allocate(indexes.length * ValueLayout.ADDRESS.byteSize());
+    for (int i = 0; i < indexes.length; i++) {
+      CagraIndexImpl indexImpl = (CagraIndexImpl) indexes[i];
+      indexesSegment.setAtIndex(
+          ValueLayout.ADDRESS, i, indexImpl.cagraIndexReference.getMemorySegment());
+    }
+    return indexesSegment;
+  }
+
+  /** Sum of {@link CagraIndex#size()} across every element of {@code indexes}. */
+  private static long totalRows(CagraIndex[] indexes) {
+    long total = 0;
+    for (CagraIndex index : indexes) {
+      total += index.size();
+    }
+    return total;
+  }
+
+  /**
+   * A device-resident {@code cuvsFilter} of type {@code BITSET}, built from a caller-supplied
+   * {@link BitSet} (a set bit means the corresponding row survives). Must be closed after the
+   * native call using {@link #segment} returns, to release the device allocation backing it.
+   */
+  private static final class NativeBitsetFilter implements AutoCloseable {
+    final MemorySegment segment;
+    private final CloseableRMMAllocation deviceAllocation;
+
+    private NativeBitsetFilter(MemorySegment segment, CloseableRMMAllocation deviceAllocation) {
+      this.segment = segment;
+      this.deviceAllocation = deviceAllocation;
+    }
+
+    @Override
+    public void close() {
+      deviceAllocation.close();
+    }
+  }
+
+  /**
+   * Uploads {@code filter} (a set bit means the row survives) as a device {@code BITSET}
+   * {@code cuvsFilter} over the concatenation of every index's rows (of total size {@code
+   * totalRows}), in the same order used to build the merged dataset.
+   */
+  private static NativeBitsetFilter uploadBitsetFilter(
+      long cuvsRes, Arena arena, BitSet filter, long totalRows) {
+    Objects.requireNonNull(filter);
+    long wordCount = (totalRows + 63) / 64; // number of uint64 words to upload
+    MemorySegment hostBitset = buildMemorySegment(arena, filter.toLongArray(), wordCount);
+    long bitsetBytes = wordCount * Long.BYTES;
+
+    var stream = Util.getStream(cuvsRes);
+    var deviceAllocation = allocateRMMSegment(cuvsRes, bitsetBytes);
+    boolean success = false;
+    try {
+      Util.cudaMemcpyAsync(
+          deviceAllocation.handle(), hostBitset, bitsetBytes, HOST_TO_DEVICE, stream);
+      checkCuVSError(cuvsStreamSync(cuvsRes), "cuvsStreamSync");
+
+      long[] bitsetShape = {(totalRows + 31) / 32}; // number of uint32 words, as cuVS expects
+      MemorySegment bitsetTensor =
+          prepareTensor(arena, deviceAllocation.handle(), bitsetShape, kDLUInt(), 32, kDLCUDA());
+
+      MemorySegment filterSegment = cuvsFilter.allocate(arena);
+      cuvsFilter.type(filterSegment, 1); // BITSET
+      cuvsFilter.addr(filterSegment, bitsetTensor.address());
+
+      success = true;
+      return new NativeBitsetFilter(filterSegment, deviceAllocation);
+    } finally {
+      if (!success) {
+        deviceAllocation.close();
       }
     }
   }

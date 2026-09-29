@@ -8,6 +8,7 @@ import com.nvidia.cuvs.*;
 import java.lang.invoke.MethodHandle;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.BitSet;
 import java.util.List;
 import java.util.logging.Level;
 
@@ -86,6 +87,32 @@ final class UnsupportedProvider implements CuVSProvider {
       long mergedDatasetHandleAddress,
       long[] offsets,
       CagraIndexParams mergeParams) {
+    throw new UnsupportedOperationException(reasons);
+  }
+
+  @Override
+  public CagraIndex mergeCagraIndexes(
+      CagraIndex[] indexes,
+      long mergedDatasetHandleAddress,
+      long[] offsets,
+      BitSet filter,
+      CagraIndexParams mergeParams) {
+    throw new UnsupportedOperationException(reasons);
+  }
+
+  @Override
+  public long[] cagraMergedDatasetOffsets(CagraIndex[] indexes, BitSet filter) {
+    throw new UnsupportedOperationException(reasons);
+  }
+
+  @Override
+  public CagraIndex.PaddedDataset concatenateCagraDatasets(CagraIndex[] indexes) {
+    throw new UnsupportedOperationException(reasons);
+  }
+
+  @Override
+  public CagraIndex.PaddedDataset concatenateAndFilterCagraDatasets(
+      CagraIndex[] indexes, BitSet filter) {
     throw new UnsupportedOperationException(reasons);
   }
 
