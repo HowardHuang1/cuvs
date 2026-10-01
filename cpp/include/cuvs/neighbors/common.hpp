@@ -318,9 +318,6 @@ struct dense_row_major_dataset_view_storage : public ViewT {
   {
     return static_cast<uint32_t>(ViewT::stride(0) > 0 ? ViewT::stride(0) : this->extent(1));
   }
-  // ViewT (mdspan) has no view() of its own -- it already *is* the view -- so this shrinks to a
-  // plain upcast instead of reaching into a wrapped field.
-  [[nodiscard]] auto view() const noexcept -> ViewT { return *this; }
 };
 
 /** Spec-side implementation shared by `padded_dataset_spec`/`standard_dataset_spec`; those two
