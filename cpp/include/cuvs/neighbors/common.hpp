@@ -557,7 +557,7 @@ struct dataset {
   {
     return spec_type::get_dim(data_, dictionary_);
   }
-  [[nodiscard]] auto data_view() const noexcept { return spec_type::get_data_view(data_); }
+  [[nodiscard]] auto as_matrix_view() const noexcept { return spec_type::get_data_view(data_); }
   [[nodiscard]] auto dictionary_view() const noexcept
   {
     return spec_type::get_dictionary_view(dictionary_);
@@ -565,7 +565,7 @@ struct dataset {
 
   [[nodiscard]] auto as_dataset_view() const noexcept -> dataset_view<T, IdxT, SpecT>
   {
-    return dataset_view<T, IdxT, SpecT>(data_view(), dictionary_view());
+    return dataset_view<T, IdxT, SpecT>(as_matrix_view(), dictionary_view());
   }
 
   // Move the owning storage out (e.g. to reuse an already-encoded codes matrix while rebuilding
@@ -660,7 +660,7 @@ struct dataset_view {
   {
     return spec_type::get_dim(data_view_, dictionary_view_);
   }
-  [[nodiscard]] auto data_view() const noexcept -> view_type { return data_view_; }
+  [[nodiscard]] auto as_matrix_view() const noexcept -> view_type { return data_view_; }
   [[nodiscard]] auto dictionary_view() const noexcept -> dictionary_view_type
   {
     return dictionary_view_;

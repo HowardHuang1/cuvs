@@ -37,7 +37,7 @@ struct standard_descriptor_spec : public instance_spec<DataT, IndexT, DistanceT>
                    cuvs::distance::DistanceType metric,
                    const DistanceT* dataset_norms = nullptr) -> host_type
   {
-    auto const data_view = dataset.data_view();
+    auto const data_view = dataset.as_matrix_view();
     return init_(params,
                  data_view.data_handle(),
                  IndexT(dataset.n_rows()),

@@ -299,13 +299,13 @@ template <typename SrcT>
                                     SrcT const& src)
   -> cuvs::neighbors::device_vpq_dataset<half, int64_t>
 {
-  // A cuVS dataset keeps its logical width in `dim()` while `data_view()` spans the full row
+  // A cuVS dataset keeps its logical width in `dim()` while `as_matrix_view()` spans the full row
   // pitch.
   if constexpr (requires {
-                  src.data_view();
+                  src.as_matrix_view();
                   src.dim();
                 }) {
-    auto const rows    = src.data_view();
+    auto const rows    = src.as_matrix_view();
     using value_type   = typename decltype(rows)::value_type;
     using extents_type = raft::matrix_extent<int64_t>;
     return make_vpq_dataset(

@@ -51,7 +51,7 @@ void decode_vpq_dataset(raft::device_matrix_view<data_t, int64_t> decoded_datase
 {
   const auto dataset_size = decoded_dataset.extent(0);
   auto const dict_view    = vpq_dataset.dictionary_view();
-  auto const data_view    = vpq_dataset.data_view();
+  auto const data_view    = vpq_dataset.as_matrix_view();
   RAFT_EXPECTS(data_view.extent(0) == dataset_size, "Dataset sizes mismatch");
   RAFT_EXPECTS(vpq_dataset.pq_bits() == 8,
                "decode_vpq_dataset currently only supports pq_bits == 8 (got %u)",

@@ -87,7 +87,7 @@ void serialize(const raft::resources& res, std::ostream& os, ViewT const& datase
 {
   auto n_rows    = dataset.n_rows();
   auto dim       = dataset.dim();
-  auto data_view = dataset.data_view();
+  auto data_view = dataset.as_matrix_view();
   auto stride    = data_view.stride();
   raft::serialize_scalar(res, os, n_rows);
   raft::serialize_scalar(res, os, dim);
