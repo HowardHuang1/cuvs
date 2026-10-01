@@ -331,10 +331,10 @@ inline host_quantizer_storage quantize(const float* data,
 template <typename IdxT>
 auto copy_bbq_owning_storage_host_to_device(raft::resources const& res,
                                             host_quantizer_storage const& host_storage) ->
-  typename cuvs::neighbors::device_bbq_dataset<float, IdxT>::owning_storage_type
+  typename cuvs::neighbors::device_bbq_dataset<float, IdxT>::data_type::owning_storage_type
 {
   using device_storage =
-    typename cuvs::neighbors::device_bbq_dataset<float, IdxT>::owning_storage_type;
+    typename cuvs::neighbors::device_bbq_dataset<float, IdxT>::data_type::owning_storage_type;
   auto stream = raft::resource::get_cuda_stream(res);
   device_storage device{res,
                         static_cast<IdxT>(host_storage.codes.extent(0)),
@@ -389,7 +389,7 @@ auto make_device_bbq_dataset(raft::resources const& res,
   cuvs::neighbors::device_bbq_dataset<float, IdxT> device{
     copy_bbq_owning_storage_host_to_device<IdxT>(res, host[0])};
   for (std::size_t i = 1; i < host.size(); ++i) {
-    device.add_quantizer(copy_bbq_owning_storage_host_to_device<IdxT>(res, host[i]));
+    device.data().add_quantizer(copy_bbq_owning_storage_host_to_device<IdxT>(res, host[i]));
   }
   return device;
 }

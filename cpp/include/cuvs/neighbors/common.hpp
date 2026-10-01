@@ -153,15 +153,16 @@ enum class MergeStrategy {
 /**
  * @brief Spec-based `dataset` / `dataset_view`.
  *
- * `dataset<T,IdxT,SpecT>` and `dataset_view<T,IdxT,SpecT>` are single generic templates with zero
- * per-kind dispatch inside them: every member is a one-line forward to `spec_type::get_*(...)`,
- * and all kind-specific logic lives in the per-kind Spec structs below (`empty_dataset_spec`,
- * `padded_dataset_spec`, `standard_dataset_spec`, `vpq_dataset_spec`), which `dataset`/
- * `dataset_view` never name or branch on. `dataset` and `dataset_view` are deliberately two
- * independent, non-inheriting types (no shared_ptr, no "sometimes owning" object): `dataset` holds
- * owning storage (mdarray-shaped), `dataset_view` holds the corresponding view storage
- * (mdspan-shaped). The same `get_n_rows`/`get_dim` spec functions serve both, since
- * `raft::mdarray`/`raft::mdspan` both expose `.extent(r)`.
+ * `dataset<T,IdxT,SpecT>` and `dataset_view<T,IdxT,SpecT>` are single generic templates that know
+ * nothing about any particular kind of dataset. They hold exactly one payload (`data_type` /
+ * `view_type`, chosen by the spec) and expose only what every dataset has: `n_rows()`, `dim()`,
+ * `as_matrix_view()`, `as_dataset_view()` and `data()`. Each is a one-line forward to one of the
+ * three spec functions `get_data_view()`, `get_n_rows()` and `get_dim()`. Anything else a kind
+ * needs (e.g. VPQ codebooks, BBQ quantizers) is state and methods of that kind's payload type,
+ * reached through `data()`; `dataset`/`dataset_view` never name or branch on it. `dataset` and
+ * `dataset_view` are deliberately two independent, non-inheriting types (no shared_ptr, no
+ * "sometimes owning" object): `dataset` holds the owning payload, `dataset_view` the
+ * corresponding non-owning payload.
  */
 
 template <typename T, typename IdxT, typename SpecT>
@@ -169,18 +170,6 @@ struct dataset;
 
 template <typename T, typename IdxT, typename SpecT>
 struct dataset_view;
-
-/**
- * A spec defines a dictionary iff it needs a second storage slot to interpret the data (e.g. PQ
- * codebooks). Non-compressed specs declare `dictionary_type = std::monostate` -- the same
- * vocabulary type for "no dictionary," not just an omitted member -- so `dataset`/`dataset_view`
- * never need to branch on whether the slot exists; they just always have one, sometimes empty.
- */
-template <typename SpecT>
-concept compressed_dataset_spec = requires {
-  typename SpecT::dictionary_type;
-  typename SpecT::dictionary_view_type;
-} && !std::is_same_v<typename SpecT::dictionary_type, std::monostate>;
 
 namespace detail {
 
@@ -328,36 +317,132 @@ template <typename ContainerPolicy>
 struct dense_dataset_spec_impl {
   template <typename T, typename IdxT>
   struct apply {
-    using value_type           = std::remove_cv_t<T>;
-    using index_type           = std::remove_cv_t<IdxT>;
-    using MatrixT              = dense_owning_matrix<T, IdxT, ContainerPolicy>;
-    using ViewT                = dense_view_matrix<T, IdxT, ContainerPolicy>;
-    using data_type            = dense_row_major_dataset_owning_storage<MatrixT, ViewT, T, IdxT>;
-    using view_type            = dense_row_major_dataset_view_storage<ViewT, T, IdxT>;
-    using dictionary_type      = std::monostate;
-    using dictionary_view_type = std::monostate;
+    using value_type = std::remove_cv_t<T>;
+    using index_type = std::remove_cv_t<IdxT>;
+    using MatrixT    = dense_owning_matrix<T, IdxT, ContainerPolicy>;
+    using ViewT      = dense_view_matrix<T, IdxT, ContainerPolicy>;
+    using data_type  = dense_row_major_dataset_owning_storage<MatrixT, ViewT, T, IdxT>;
+    using view_type  = dense_row_major_dataset_view_storage<ViewT, T, IdxT>;
 
     [[nodiscard]] static auto get_data_view(data_type const& data) noexcept -> view_type
     {
       return view_type(data.view(), data.dim());
     }
-    template <typename AnyDatasetOrView>
-    [[nodiscard]] static auto get_n_rows(AnyDatasetOrView const& data) noexcept -> index_type
+    template <typename AnyStorage>
+    [[nodiscard]] static auto get_n_rows(AnyStorage const& data) noexcept -> index_type
     {
       return data.n_rows();
     }
-    template <typename AnyDatasetOrView>
-    [[nodiscard]] static auto get_dim(AnyDatasetOrView const& data, dictionary_type const&) noexcept
-      -> uint32_t
+    template <typename AnyStorage>
+    [[nodiscard]] static auto get_dim(AnyStorage const& data) noexcept -> uint32_t
     {
       return data.dim();
     }
-    [[nodiscard]] static auto get_dictionary_view(dictionary_type const&) noexcept
-      -> dictionary_view_type
-    {
-      return {};
-    }
   };
+};
+
+// -----------------------------------------------------------------------------
+// vpq payloads: everything VPQ-specific lives here, not in dataset/dataset_view.
+// -----------------------------------------------------------------------------
+
+/** Read-only helpers derived from the codebook shapes; shared by the owning and view payloads.
+ * `Derived` provides `vq_code_book`, `pq_code_book` and the codes' `extent(r)`. */
+template <typename Derived>
+struct vpq_codebook_helpers {
+  /** Logical dimension: it comes from the VQ codebook, not from the encoded rows (row padding
+   * makes the encoded-row width ambiguous as a dimension). */
+  [[nodiscard]] auto dim() const noexcept -> uint32_t
+  {
+    return static_cast<uint32_t>(self().vq_code_book.extent(1));
+  }
+  [[nodiscard]] auto vq_n_centers() const noexcept -> uint32_t
+  {
+    return static_cast<uint32_t>(self().vq_code_book.extent(0));
+  }
+  [[nodiscard]] auto pq_n_centers() const noexcept -> uint32_t
+  {
+    return static_cast<uint32_t>(self().pq_code_book.extent(0));
+  }
+  [[nodiscard]] auto pq_len() const noexcept -> uint32_t
+  {
+    return static_cast<uint32_t>(self().pq_code_book.extent(1));
+  }
+  [[nodiscard]] auto pq_bits() const noexcept -> uint32_t
+  {
+    auto pq_width = pq_n_centers();
+#ifdef __cpp_lib_bitops
+    return std::countr_zero(pq_width);
+#else
+    uint32_t bits = 0;
+    while (pq_width > 1) {
+      bits++;
+      pq_width >>= 1;
+    }
+    return bits;
+#endif
+  }
+  [[nodiscard]] auto pq_dim() const noexcept -> uint32_t
+  {
+    return raft::div_rounding_up_unsafe(dim(), pq_len());
+  }
+  [[nodiscard]] auto encoded_row_length() const noexcept -> uint32_t
+  {
+    return static_cast<uint32_t>(self().extent(1));
+  }
+
+ private:
+  [[nodiscard]] auto self() const noexcept -> Derived const&
+  {
+    return static_cast<Derived const&>(*this);
+  }
+};
+
+/** Owning VPQ payload: the encoded rows (it *is* the `uint8_t` codes mdarray) plus the VQ and PQ
+ * codebooks. `Accessor` drives both codebook and code residency. */
+template <typename MathT, typename IdxT, typename Accessor>
+struct vpq_owning_storage : public vpq_data_matrix<IdxT, Accessor>,
+                            public vpq_codebook_helpers<vpq_owning_storage<MathT, IdxT, Accessor>> {
+  using codes_type   = vpq_data_matrix<IdxT, Accessor>;
+  using vq_book_type = vpq_vq_book_matrix<MathT, IdxT, Accessor>;
+  using pq_book_type = vpq_vq_book_matrix<MathT, IdxT, Accessor>;
+
+  vq_book_type vq_code_book;
+  pq_book_type pq_code_book;
+
+  vpq_owning_storage(codes_type&& codes, vq_book_type&& vq_codes, pq_book_type&& pq_codes) noexcept
+    : codes_type{std::move(codes)},
+      vq_code_book{std::move(vq_codes)},
+      pq_code_book{std::move(pq_codes)}
+  {
+  }
+};
+
+/** Non-owning VPQ payload: a view of the encoded rows plus views of the VQ and PQ codebooks. */
+template <typename MathT, typename IdxT, typename Accessor>
+struct vpq_view_storage : public raft::mdspan<const uint8_t,
+                                              raft::matrix_extent<IdxT>,
+                                              raft::row_major,
+                                              dataset_view_accessor_for_owning<uint8_t, Accessor>>,
+                          public vpq_codebook_helpers<vpq_view_storage<MathT, IdxT, Accessor>> {
+  using codes_view_type = raft::mdspan<const uint8_t,
+                                       raft::matrix_extent<IdxT>,
+                                       raft::row_major,
+                                       dataset_view_accessor_for_owning<uint8_t, Accessor>>;
+  using vq_book_view_type =
+    typename vpq_owning_storage<MathT, IdxT, Accessor>::vq_book_type::const_view_type;
+  using pq_book_view_type =
+    typename vpq_owning_storage<MathT, IdxT, Accessor>::pq_book_type::const_view_type;
+
+  vq_book_view_type vq_code_book;
+  pq_book_view_type pq_code_book;
+
+  vpq_view_storage() noexcept = default;
+  vpq_view_storage(codes_view_type codes,
+                   vq_book_view_type vq_codes,
+                   pq_book_view_type pq_codes) noexcept
+    : codes_view_type(codes), vq_code_book(vq_codes), pq_code_book(pq_codes)
+  {
+  }
 };
 
 }  // namespace detail
@@ -372,12 +457,10 @@ struct empty_dataset_spec {
 
   template <typename T, typename IdxT>
   struct apply {
-    using value_type           = std::remove_cv_t<T>;
-    using index_type           = std::remove_cv_t<IdxT>;
-    using data_type            = detail::empty_dataset_storage<IdxT>;
-    using view_type            = detail::empty_dataset_storage<IdxT>;
-    using dictionary_type      = std::monostate;
-    using dictionary_view_type = std::monostate;
+    using value_type = std::remove_cv_t<T>;
+    using index_type = std::remove_cv_t<IdxT>;
+    using data_type  = detail::empty_dataset_storage<IdxT>;
+    using view_type  = detail::empty_dataset_storage<IdxT>;
 
     [[nodiscard]] static auto get_data_view(data_type const& data) noexcept -> view_type
     {
@@ -387,15 +470,9 @@ struct empty_dataset_spec {
     {
       return static_cast<index_type>(data.n_rows());
     }
-    [[nodiscard]] static auto get_dim(data_type const& data, dictionary_type const&) noexcept
-      -> uint32_t
+    [[nodiscard]] static auto get_dim(data_type const& data) noexcept -> uint32_t
     {
       return data.dim();
-    }
-    [[nodiscard]] static auto get_dictionary_view(dictionary_type const&) noexcept
-      -> dictionary_view_type
-    {
-      return {};
     }
   };
 };
@@ -415,9 +492,8 @@ struct standard_dataset_spec {
 };
 
 /** `Accessor` drives both codebook and code residency, mirroring today's
- * single-`Accessor`-per-VPQ-dataset design (`vpq_vq_book_matrix`/`vpq_data_matrix` are both keyed
- * off one `Accessor`). Data = encoded rows (uint8_t codes); dictionary = {vq_code_book,
- * pq_code_book}. Inlined directly (unlike padded/standard) since no second tag shares this body. */
+ * single-`Accessor`-per-VPQ-dataset design. The payload (`detail::vpq_owning_storage` /
+ * `detail::vpq_view_storage`) holds the encoded rows and the VQ/PQ codebooks. */
 template <typename MathT, typename Accessor>
 struct vpq_dataset_spec {
   using accessor_type = Accessor;
@@ -428,94 +504,22 @@ struct vpq_dataset_spec {
     using index_type = std::remove_cv_t<IdxT>;
     using math_type  = MathT;
 
-    using data_type = detail::vpq_data_matrix<IdxT, Accessor>;
-    using view_type = raft::mdspan<const uint8_t,
-                                   raft::matrix_extent<IdxT>,
-                                   raft::row_major,
-                                   detail::dataset_view_accessor_for_owning<uint8_t, Accessor>>;
-
-    using vq_book_type = detail::vpq_vq_book_matrix<MathT, IdxT, Accessor>;
-    using pq_book_type = detail::vpq_vq_book_matrix<MathT, IdxT, Accessor>;
-
-    struct dictionary_type {
-      vq_book_type vq_code_book;
-      pq_book_type pq_code_book;
-    };
-    struct dictionary_view_type {
-      typename vq_book_type::const_view_type vq_code_book;
-      typename pq_book_type::const_view_type pq_code_book;
-
-      [[nodiscard]] auto dim() const noexcept -> uint32_t
-      {
-        return static_cast<uint32_t>(vq_code_book.extent(1));
-      }
-      [[nodiscard]] auto vq_n_centers() const noexcept -> uint32_t
-      {
-        return static_cast<uint32_t>(vq_code_book.extent(0));
-      }
-      [[nodiscard]] auto pq_n_centers() const noexcept -> uint32_t
-      {
-        return static_cast<uint32_t>(pq_code_book.extent(0));
-      }
-      [[nodiscard]] auto pq_len() const noexcept -> uint32_t
-      {
-        return static_cast<uint32_t>(pq_code_book.extent(1));
-      }
-      [[nodiscard]] auto pq_bits() const noexcept -> uint32_t
-      {
-        auto pq_width = pq_n_centers();
-#ifdef __cpp_lib_bitops
-        return std::countr_zero(pq_width);
-#else
-        uint32_t bits = 0;
-        while (pq_width > 1) {
-          bits++;
-          pq_width >>= 1;
-        }
-        return bits;
-#endif
-      }
-      [[nodiscard]] auto pq_dim() const noexcept -> uint32_t
-      {
-        return raft::div_rounding_up_unsafe(dim(), pq_len());
-      }
-    };
+    using data_type = detail::vpq_owning_storage<MathT, IdxT, Accessor>;
+    using view_type = detail::vpq_view_storage<MathT, IdxT, Accessor>;
 
     [[nodiscard]] static auto get_data_view(data_type const& data) noexcept -> view_type
     {
-      return data.view();
+      return view_type(data.view(), data.vq_code_book.view(), data.pq_code_book.view());
     }
-    template <typename AnyExtentShaped>
-    [[nodiscard]] static auto get_n_rows(AnyExtentShaped const& data) noexcept -> index_type
+    template <typename AnyStorage>
+    [[nodiscard]] static auto get_n_rows(AnyStorage const& data) noexcept -> index_type
     {
       return static_cast<index_type>(data.extent(0));
     }
-    /* get_dim differs from a plain dense dataset: the dimension comes from the VQ codebook, not
-    the encoded rows (row padding makes the encoded-row width ambiguous as a dimension). */
-    template <typename AnyData>
-    [[nodiscard]] static auto get_dim(AnyData const&, dictionary_type const& dict) noexcept
-      -> uint32_t
+    template <typename AnyStorage>
+    [[nodiscard]] static auto get_dim(AnyStorage const& data) noexcept -> uint32_t
     {
-      return static_cast<uint32_t>(dict.vq_code_book.extent(1));
-    }
-    template <typename AnyData>
-    [[nodiscard]] static auto get_dim(AnyData const&, dictionary_view_type const& dict) noexcept
-      -> uint32_t
-    {
-      return dict.dim();
-    }
-    [[nodiscard]] static auto get_dictionary_view(dictionary_type const& dict) noexcept
-      -> dictionary_view_type
-    {
-      return {dict.vq_code_book.view(), dict.pq_code_book.view()};
-    }
-    [[nodiscard]] static auto get_encoded_row_length(data_type const& data) noexcept -> uint32_t
-    {
-      return static_cast<uint32_t>(data.extent(1));
-    }
-    [[nodiscard]] static auto get_encoded_row_length(view_type const& data) noexcept -> uint32_t
-    {
-      return static_cast<uint32_t>(data.extent(1));
+      return data.dim();
     }
   };
 };
@@ -524,131 +528,68 @@ struct vpq_dataset_spec {
 // dataset / dataset_view
 // -----------------------------------------------------------------------------
 
-/** Owning dataset: value-held storage (no shared_ptr -- exclusive ownership). Every member is a
- * one-line forward to `spec_type::get_*`; all per-kind logic lives in `SpecT`, never inside this
- * struct. */
+/** Owning dataset: value-held payload (no shared_ptr -- exclusive ownership). Every member is a
+ * one-line forward to `spec_type::get_*` or to the payload; all per-kind state and logic lives in
+ * the spec's `data_type`, never inside this struct. */
 template <typename T, typename IdxT, typename SpecT>
 struct dataset {
-  using spec_type       = typename SpecT::template apply<T, IdxT>;
-  using value_type      = typename spec_type::value_type;
-  using index_type      = typename spec_type::index_type;
-  using data_type       = typename spec_type::data_type;
-  using dictionary_type = typename spec_type::dictionary_type;
+  using spec_type  = typename SpecT::template apply<T, IdxT>;
+  using value_type = typename spec_type::value_type;
+  using index_type = typename spec_type::index_type;
+  using data_type  = typename spec_type::data_type;
 
-  // Non-compressed: forward constructor args straight to data_type's own constructor (e.g.
-  // (MatrixT&&, uint32_t logical_dim) for dense, (uint32_t dim) for empty) -- preserves today's
-  // construction call sites unchanged.
+  // Forward constructor args straight to data_type's own constructor (e.g. (MatrixT&&, uint32_t
+  // logical_dim) for dense, (uint32_t dim) for empty, (codes&&, vq&&, pq&&) for VPQ).
   template <typename... Args>
   explicit dataset(Args&&... args)
-    requires(!compressed_dataset_spec<spec_type> && std::is_constructible_v<data_type, Args...>)
-    : data_(std::forward<Args>(args)...), dictionary_{}
-  {
-  }
-
-  // Compressed: data (codes) and dictionary (codebooks) constructed independently.
-  dataset(data_type&& data, dictionary_type&& dictionary)
-    requires(compressed_dataset_spec<spec_type>)
-    : data_(std::move(data)), dictionary_(std::move(dictionary))
+    requires(std::is_constructible_v<data_type, Args...>)
+    : data_(std::forward<Args>(args)...)
   {
   }
 
   [[nodiscard]] auto n_rows() const noexcept -> index_type { return spec_type::get_n_rows(data_); }
-  [[nodiscard]] auto dim() const noexcept -> uint32_t
-  {
-    return spec_type::get_dim(data_, dictionary_);
-  }
+  [[nodiscard]] auto dim() const noexcept -> uint32_t { return spec_type::get_dim(data_); }
+  /** The spec-defined non-owning view of the payload (for dense and VPQ it is an mdspan
+   * derivative). */
   [[nodiscard]] auto as_matrix_view() const noexcept { return spec_type::get_data_view(data_); }
-  [[nodiscard]] auto dictionary_view() const noexcept
-  {
-    return spec_type::get_dictionary_view(dictionary_);
-  }
-
   [[nodiscard]] auto as_dataset_view() const noexcept -> dataset_view<T, IdxT, SpecT>
   {
-    return dataset_view<T, IdxT, SpecT>(as_matrix_view(), dictionary_view());
+    return dataset_view<T, IdxT, SpecT>(as_matrix_view());
   }
 
-  // Move the owning storage out (e.g. to reuse an already-encoded codes matrix while rebuilding
-  // only the dictionary at a different math_type, as in VPQ's f32->f16 conversion path).
-  [[nodiscard]] auto release_data() noexcept -> data_type&& { return std::move(data_); }
-  [[nodiscard]] auto release_dictionary() noexcept -> dictionary_type&&
-  {
-    return std::move(dictionary_);
-  }
-
-  // Dictionary-derived helpers (VPQ: encoded_row_length/vq_n_centers/pq_bits/pq_dim/pq_len/
-  // pq_n_centers) forward through dictionary_view() when the dictionary provides them; SFINAE'd
-  // away for kinds without a dictionary, matching today's VPQ-only surface without dataset<>
-  // itself branching on which kind it is.
-  [[nodiscard]] auto encoded_row_length() const noexcept
-    requires requires(data_type const& d) { spec_type::get_encoded_row_length(d); }
-  {
-    return spec_type::get_encoded_row_length(data_);
-  }
-  [[nodiscard]] auto vq_n_centers() const noexcept
-    requires requires(decltype(dictionary_view()) const& d) { d.vq_n_centers(); }
-  {
-    return dictionary_view().vq_n_centers();
-  }
-  [[nodiscard]] auto pq_n_centers() const noexcept
-    requires requires(decltype(dictionary_view()) const& d) { d.pq_n_centers(); }
-  {
-    return dictionary_view().pq_n_centers();
-  }
-  [[nodiscard]] auto pq_len() const noexcept
-    requires requires(decltype(dictionary_view()) const& d) { d.pq_len(); }
-  {
-    return dictionary_view().pq_len();
-  }
-  [[nodiscard]] auto pq_bits() const noexcept
-    requires requires(decltype(dictionary_view()) const& d) { d.pq_bits(); }
-  {
-    return dictionary_view().pq_bits();
-  }
-  [[nodiscard]] auto pq_dim() const noexcept
-    requires requires(decltype(dictionary_view()) const& d) { d.pq_dim(); }
-  {
-    return dictionary_view().pq_dim();
-  }
+  /** The owning payload; kind-specific state and methods are reached through it. */
+  [[nodiscard]] auto data() const noexcept -> data_type const& { return data_; }
+  [[nodiscard]] auto data() noexcept -> data_type& { return data_; }
 
  private:
   data_type data_;
-  [[no_unique_address]] dictionary_type dictionary_;
 };
 
-/** Non-owning dataset view: holds only view-shaped storage (mdspan, not mdarray). Deliberately not
- * derived from `dataset` -- a view type holds "all view state" with no inheritance and no shared
- * ownership tying it to the owning type. Reuses the same `get_n_rows`/`get_dim` spec functions as
- * `dataset`, fed view-shaped arguments instead of owning ones. */
+/** Non-owning dataset view: holds only the view-shaped payload. Deliberately not derived from
+ * `dataset` -- a view type holds "all view state" with no inheritance and no shared ownership tying
+ * it to the owning type. Reuses the same `get_n_rows`/`get_dim` spec functions as `dataset`, fed
+ * the view payload instead of the owning one. */
 template <typename T, typename IdxT, typename SpecT>
 struct dataset_view {
-  using spec_type            = typename SpecT::template apply<T, IdxT>;
-  using value_type           = typename spec_type::value_type;
-  using index_type           = typename spec_type::index_type;
-  using view_type            = typename spec_type::view_type;
-  using dictionary_view_type = typename spec_type::dictionary_view_type;
+  using spec_type  = typename SpecT::template apply<T, IdxT>;
+  using value_type = typename spec_type::value_type;
+  using index_type = typename spec_type::index_type;
+  using view_type  = typename spec_type::view_type;
 
   dataset_view() noexcept = default;
 
-  // Already-constructed (view_type, dictionary_view_type) pair -- the shape `as_dataset_view()`
-  // always constructs with, for every kind (dictionary_view_type is std::monostate and
-  // defaults away when there's no dictionary). Not a template, so it's preferred over the
-  // forwarding constructor below whenever both could apply.
-  dataset_view(view_type data_view, dictionary_view_type dictionary_view = {}) noexcept
-    : data_view_{data_view}, dictionary_view_{dictionary_view}
-  {
-  }
+  // Already-constructed view payload -- the shape `as_dataset_view()` always constructs with, for
+  // every kind. Not a template, so it's preferred over the forwarding constructor below whenever
+  // both could apply.
+  explicit dataset_view(view_type data_view) noexcept : data_view_{data_view} {}
 
   // Forward raw constructor args straight to view_type's own constructor (e.g. (ViewT, uint32_t
   // logical_dim) for dense, (uint32_t dim) for empty) -- preserves today's direct-construction
-  // call sites (e.g. `device_padded_dataset_view<T,IdxT>(raw_mdspan, dim)`) unchanged. `view_type`
-  // is never itself constructible from `(view_type, dictionary_view_type)` (its own constructors
-  // only take mdspan-shaped args), so this and the plain constructor above never both match the
-  // same call -- no ambiguity.
+  // call sites (e.g. `device_padded_dataset_view<T,IdxT>(raw_mdspan, dim)`) unchanged.
   template <typename... Args>
   explicit dataset_view(Args&&... args)
     requires(std::is_constructible_v<view_type, Args...>)
-    : data_view_(std::forward<Args>(args)...), dictionary_view_{}
+    : data_view_(std::forward<Args>(args)...)
   {
   }
 
@@ -656,52 +597,15 @@ struct dataset_view {
   {
     return spec_type::get_n_rows(data_view_);
   }
-  [[nodiscard]] auto dim() const noexcept -> uint32_t
-  {
-    return spec_type::get_dim(data_view_, dictionary_view_);
-  }
+  [[nodiscard]] auto dim() const noexcept -> uint32_t { return spec_type::get_dim(data_view_); }
   [[nodiscard]] auto as_matrix_view() const noexcept -> view_type { return data_view_; }
-  [[nodiscard]] auto dictionary_view() const noexcept -> dictionary_view_type
-  {
-    return dictionary_view_;
-  }
 
-  // See dataset<>'s equivalent block: VPQ-only helpers, SFINAE'd away for kinds without a
-  // dictionary.
-  [[nodiscard]] auto encoded_row_length() const noexcept
-    requires requires(view_type const& d) { spec_type::get_encoded_row_length(d); }
-  {
-    return spec_type::get_encoded_row_length(data_view_);
-  }
-  [[nodiscard]] auto vq_n_centers() const noexcept
-    requires requires(dictionary_view_type const& d) { d.vq_n_centers(); }
-  {
-    return dictionary_view_.vq_n_centers();
-  }
-  [[nodiscard]] auto pq_n_centers() const noexcept
-    requires requires(dictionary_view_type const& d) { d.pq_n_centers(); }
-  {
-    return dictionary_view_.pq_n_centers();
-  }
-  [[nodiscard]] auto pq_len() const noexcept
-    requires requires(dictionary_view_type const& d) { d.pq_len(); }
-  {
-    return dictionary_view_.pq_len();
-  }
-  [[nodiscard]] auto pq_bits() const noexcept
-    requires requires(dictionary_view_type const& d) { d.pq_bits(); }
-  {
-    return dictionary_view_.pq_bits();
-  }
-  [[nodiscard]] auto pq_dim() const noexcept
-    requires requires(dictionary_view_type const& d) { d.pq_dim(); }
-  {
-    return dictionary_view_.pq_dim();
-  }
+  /** The view payload; kind-specific state and methods are reached through it. */
+  [[nodiscard]] auto data() const noexcept -> view_type const& { return data_view_; }
+  [[nodiscard]] auto data() noexcept -> view_type& { return data_view_; }
 
  private:
   view_type data_view_{};
-  [[no_unique_address]] dictionary_view_type dictionary_view_{};
 };
 
 /**

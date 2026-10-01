@@ -413,8 +413,8 @@ template <typename T>
 void validate_bbq_layouts(cuvs::neighbors::device_bbq_dataset_view<T, int64_t> const& dataset)
 {
   using layout_t = cuvs::preprocessing::quantize::bbq::bbq_code_layout;
-  if (dataset.quantizers.size() == 1) {
-    auto layout = dataset.quantizers.front().layout;
+  if (dataset.data().quantizers.size() == 1) {
+    auto layout = dataset.data().quantizers.front().layout;
     RAFT_EXPECTS(layout == layout_t::packed_1b || layout == layout_t::transposed_2b ||
                    layout == layout_t::packed_4b || layout == layout_t::packed_7b ||
                    layout == layout_t::packed_8b,
@@ -422,10 +422,10 @@ void validate_bbq_layouts(cuvs::neighbors::device_bbq_dataset_view<T, int64_t> c
     return;
   }
 
-  const bool has_1b  = dataset.has_layout(layout_t::packed_1b);
-  const bool has_2bt = dataset.has_layout(layout_t::transposed_2b);
-  const bool has_4b  = dataset.has_layout(layout_t::packed_4b);
-  const bool has_4bt = dataset.has_layout(layout_t::transposed_4b);
+  const bool has_1b  = dataset.data().has_layout(layout_t::packed_1b);
+  const bool has_2bt = dataset.data().has_layout(layout_t::transposed_2b);
+  const bool has_4b  = dataset.data().has_layout(layout_t::packed_4b);
+  const bool has_4bt = dataset.data().has_layout(layout_t::transposed_4b);
   RAFT_EXPECTS((has_1b && (has_4b || has_2bt || has_4bt)) || (has_2bt && has_4bt),
                "cuvsDatasetMakeBbqView: unsupported asymmetric BBQ layout pair");
 }
@@ -469,7 +469,7 @@ auto make_bbq_dataset_view(cuvsBbqQuantizer_t* quantizers, std::size_t num_quant
       RAFT_EXPECTS(quantizer.metric == expected_metric,
                    "cuvsDatasetMakeBbqView: all quantizers must use the same metric");
     }
-    dataset->add_quantizer(quantizer);
+    dataset->data().add_quantizer(quantizer);
   }
 
   return dataset;

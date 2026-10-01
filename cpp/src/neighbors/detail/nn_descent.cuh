@@ -2485,11 +2485,11 @@ void GNND<Data_t, Index_t>::local_join(
   // Both kernels take the same (document, query) pair, so there is no symmetric/asymmetric split
   // here: a single quantizer just means the same one on both operands, which is exactly what
   // SelfJoin encodes. Picking the two quantizers is all that differs.
-  const bool self_join = dataset.quantizers.size() == 1;
-  const bool has_1b    = dataset.has_layout(bbq_code_layout::packed_1b);
-  const bool has_4b    = dataset.has_layout(bbq_code_layout::packed_4b);
-  const bool has_2bt   = dataset.has_layout(bbq_code_layout::transposed_2b);
-  const bool has_4bt   = dataset.has_layout(bbq_code_layout::transposed_4b);
+  const bool self_join = dataset.data().quantizers.size() == 1;
+  const bool has_1b    = dataset.data().has_layout(bbq_code_layout::packed_1b);
+  const bool has_4b    = dataset.data().has_layout(bbq_code_layout::packed_4b);
+  const bool has_2bt   = dataset.data().has_layout(bbq_code_layout::transposed_2b);
+  const bool has_4bt   = dataset.data().has_layout(bbq_code_layout::transposed_4b);
 
   // Asymmetric: a packed_4b query selects the tensor-core path, a transposed query the SIMT one.
   // Only packed_1b promotes to the tensor-core path; transposed_2b is SIMT-only (it would need
@@ -2501,13 +2501,14 @@ void GNND<Data_t, Index_t>::local_join(
                "packed_1b x packed_4b (tensor core); packed_1b x transposed_2b, "
                "packed_1b x transposed_4b, transposed_2b x transposed_4b (SIMT).");
   auto quantizer_query =
-    self_join ? dataset.quantizers[0]
-              : (tc_pair ? dataset.get_quantizer(bbq_code_layout::packed_4b)
-                         : (has_4bt ? dataset.get_quantizer(bbq_code_layout::transposed_4b)
-                                    : dataset.get_quantizer(bbq_code_layout::transposed_2b)));
-  auto quantizer_document = self_join ? dataset.quantizers[0]
-                            : has_1b  ? dataset.get_quantizer(bbq_code_layout::packed_1b)
-                                      : dataset.get_quantizer(bbq_code_layout::transposed_2b);
+    self_join
+      ? dataset.data().quantizers[0]
+      : (tc_pair ? dataset.data().get_quantizer(bbq_code_layout::packed_4b)
+                 : (has_4bt ? dataset.data().get_quantizer(bbq_code_layout::transposed_4b)
+                            : dataset.data().get_quantizer(bbq_code_layout::transposed_2b)));
+  auto quantizer_document = self_join ? dataset.data().quantizers[0]
+                            : has_1b  ? dataset.data().get_quantizer(bbq_code_layout::packed_1b)
+                                     : dataset.data().get_quantizer(bbq_code_layout::transposed_2b);
 
   // stage_tile_simt / stage_promoted_tile cast code buffers to uint32_t*, so every plane stride
   // must be 4-byte aligned.
@@ -2982,8 +2983,8 @@ void build(raft::resources const& res,
            cuvs::neighbors::device_bbq_dataset_view<DataT, int64_t> dataset,
            index<IdxT>& idx)
 {
-  RAFT_EXPECTS(dataset.quantizers.size() > 0, "BBQ dataset must not be empty.");
-  auto front_quantizer = dataset.quantizers[0];
+  RAFT_EXPECTS(dataset.data().quantizers.size() > 0, "BBQ dataset must not be empty.");
+  auto front_quantizer = dataset.data().quantizers[0];
   cuvs::common::nvtx::range<cuvs::common::nvtx::domain::cuvs> fun_scope(
     "neighbors::nn_descent::detail::build-bbq(%zu, %zu, %zu, %zu, %zu)",
     size_t(dataset.n_rows()),
@@ -3001,7 +3002,7 @@ void build(raft::resources const& res,
                "BBQ dataset metric does not match the NN-Descent metric.");
   // packed_4b is the only layout dispatched to local_join_kernel_bbq_wmma, and the int4 MMA that
   // kernel is built around only exists from sm_75 on.
-  if (dataset.has_layout(bbq_code_layout::packed_4b)) {
+  if (dataset.data().has_layout(bbq_code_layout::packed_4b)) {
     auto kernel       = local_join_kernel_bbq_wmma<bbq_code_layout::packed_4b,
                                                    bbq_code_layout::packed_4b,
                                                    true,

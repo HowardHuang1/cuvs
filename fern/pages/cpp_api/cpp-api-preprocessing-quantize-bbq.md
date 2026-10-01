@@ -154,14 +154,14 @@ dequant_sum_delta from that delta and quantized_component_sums.
 
 ## Types
 
-<a id="neighbors-bbq-dataset-view"></a>
-### neighbors::bbq_dataset_view
+<a id="neighbors-bbq-dataset-spec"></a>
+### neighbors::bbq_dataset_spec
 
-BBQ doesn't fit the shared Spec-based `dataset`/`dataset_view` shape (one data slot + one
+BBQ is just another dataset type: it plugs its payloads into the shared `dataset`/
 
-optional dictionary slot): a BBQ dataset is a small bag of alternate encodings of the *same* rows, one per `bbq_code_layout`, selected at query time. So unlike padded/standard/vpq, BBQ gets its own standalone owning/view types rather than a `SpecT` plugged into `dataset`/ `dataset_view` -- they only need to satisfy `ann_dataset_view` (`n_rows()`/`dim()`) to work everywhere a dataset view is expected, plus the handful of trait specializations below.
+`dataset_view` through a spec, like padded/standard/vpq do.
 
 ```cpp
-template <typename DataT, typename IdxT, typename Accessor>
-struct bbq_dataset_view;
+template <typename Accessor>
+struct bbq_dataset_spec;
 ```

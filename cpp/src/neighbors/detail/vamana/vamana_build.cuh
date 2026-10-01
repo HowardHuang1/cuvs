@@ -678,13 +678,11 @@ index<T, IdxT> build(
     const uint32_t n_rows = dataset.extent(0);
 
     using vpq_owning_t = cuvs::neighbors::device_vpq_dataset<float, int64_t>;
-    typename vpq_owning_t::dictionary_type vpq_dictionary{
-      raft::make_device_matrix<float, uint32_t, raft::row_major>(res, 0, 0),
-      std::move(pq_codebook)};
-    auto quantizer = cuvs::preprocessing::quantize::pq::quantizer<float>(
+    auto quantizer     = cuvs::preprocessing::quantize::pq::quantizer<float>(
       pq_params,
       vpq_owning_t(raft::make_device_matrix<uint8_t, int64_t, raft::row_major>(res, 0, 0),
-                   std::move(vpq_dictionary)));
+                   raft::make_device_matrix<float, uint32_t, raft::row_major>(res, 0, 0),
+                   std::move(pq_codebook)));
     const int64_t codes_rowlen = cuvs::preprocessing::quantize::pq::get_quantized_dim(pq_params);
     quantized_vectors =
       raft::make_device_matrix<uint8_t, int64_t, raft::row_major>(res, n_rows, codes_rowlen);

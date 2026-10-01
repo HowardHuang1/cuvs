@@ -261,7 +261,7 @@ class AnnCagraBbqTest : public ::testing::TestWithParam<AnnCagraBbqInputs> {
     ASSERT_EQ(restored.graph_degree(), graph_index.graph_degree());
     EXPECT_EQ(restored.metric(), graph_index.metric());
     EXPECT_EQ(restored.dataset().n_rows(), 0);
-    EXPECT_TRUE(restored.dataset().quantizers.empty());
+    EXPECT_TRUE(restored.dataset().data().quantizers.empty());
 
     auto original   = cagra::update_dataset(handle_, std::move(graph_index), device_padded.view);
     auto reattached = cagra::update_dataset(handle_, std::move(restored), device_padded.view);
@@ -284,7 +284,7 @@ class AnnCagraBbqTest : public ::testing::TestWithParam<AnnCagraBbqInputs> {
     ASSERT_EQ(index.graph_size(), static_cast<uint32_t>(ps.n_rows));
     ASSERT_EQ(index.graph_degree(), static_cast<uint32_t>(ps.graph_degree));
     EXPECT_EQ(index.dataset().n_rows(), 0);
-    EXPECT_TRUE(index.dataset().quantizers.empty());
+    EXPECT_TRUE(index.dataset().data().quantizers.empty());
   }
 
   /** Only NN-descent graph construction and the four BBQ metrics are accepted. */
@@ -331,7 +331,7 @@ class AnnCagraBbqTest : public ::testing::TestWithParam<AnnCagraBbqInputs> {
 
  private:
   raft::resources handle_;
-  rmm::cuda_stream_view stream_;
+  cuda::stream_ref stream_;
   AnnCagraBbqInputs ps;
   rmm::device_uvector<float> database;
   rmm::device_uvector<float> search_queries;

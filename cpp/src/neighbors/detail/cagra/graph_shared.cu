@@ -257,12 +257,14 @@ auto select_sort_quantizers(cuvs::neighbors::device_bbq_dataset_view<DataT, int6
 {
   using bbq_code_layout = cuvs::preprocessing::quantize::bbq::bbq_code_layout;
 
-  if (dataset.quantizers.size() == 1) { return {dataset.quantizers[0], dataset.quantizers[0]}; }
+  if (dataset.data().quantizers.size() == 1) {
+    return {dataset.data().quantizers[0], dataset.data().quantizers[0]};
+  }
 
-  const bool has_1b  = dataset.has_layout(bbq_code_layout::packed_1b);
-  const bool has_4b  = dataset.has_layout(bbq_code_layout::packed_4b);
-  const bool has_2bt = dataset.has_layout(bbq_code_layout::transposed_2b);
-  const bool has_4bt = dataset.has_layout(bbq_code_layout::transposed_4b);
+  const bool has_1b  = dataset.data().has_layout(bbq_code_layout::packed_1b);
+  const bool has_4b  = dataset.data().has_layout(bbq_code_layout::packed_4b);
+  const bool has_2bt = dataset.data().has_layout(bbq_code_layout::transposed_2b);
+  const bool has_4bt = dataset.data().has_layout(bbq_code_layout::transposed_4b);
 
   const bool tc_pair   = has_1b && has_4b;
   const bool simt_pair = (has_4bt && (has_1b || has_2bt)) || (has_2bt && has_1b);
@@ -270,11 +272,11 @@ auto select_sort_quantizers(cuvs::neighbors::device_bbq_dataset_view<DataT, int6
                "Unsupported BBQ layout pair for an asymmetric dataset. Supported (document, "
                "query) pairs: (packed_1b, packed_4b), (packed_1b, transposed_2b), "
                "(packed_1b, transposed_4b), (transposed_2b, transposed_4b).");
-  return {has_1b ? dataset.get_quantizer(bbq_code_layout::packed_1b)
-                 : dataset.get_quantizer(bbq_code_layout::transposed_2b),
-          tc_pair   ? dataset.get_quantizer(bbq_code_layout::packed_4b)
-          : has_4bt ? dataset.get_quantizer(bbq_code_layout::transposed_4b)
-                    : dataset.get_quantizer(bbq_code_layout::transposed_2b)};
+  return {has_1b ? dataset.data().get_quantizer(bbq_code_layout::packed_1b)
+                 : dataset.data().get_quantizer(bbq_code_layout::transposed_2b),
+          tc_pair   ? dataset.data().get_quantizer(bbq_code_layout::packed_4b)
+          : has_4bt ? dataset.data().get_quantizer(bbq_code_layout::transposed_4b)
+                    : dataset.data().get_quantizer(bbq_code_layout::transposed_2b)};
 }
 
 template <typename DataT>
@@ -285,7 +287,7 @@ void sort_knn_graph_bbq_impl(raft::resources const& res,
 {
   namespace bbq = cuvs::preprocessing::quantize::bbq;
 
-  RAFT_EXPECTS(!dataset.quantizers.empty(), "the BBQ dataset holds no quantizer");
+  RAFT_EXPECTS(!dataset.data().quantizers.empty(), "the BBQ dataset holds no quantizer");
   RAFT_EXPECTS(dataset.n_rows() == knn_graph.extent(0),
                "dataset size is expected to have the same number of graph index size");
   RAFT_EXPECTS(metric == cuvs::distance::DistanceType::L2Expanded ||

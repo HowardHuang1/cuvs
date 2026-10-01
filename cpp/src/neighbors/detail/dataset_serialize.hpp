@@ -436,8 +436,8 @@ auto deserialize_vpq(raft::resources const& res, std::istream& is)
   raft::deserialize_mdspan(res, is, data.view());
 
   using owning_t = device_vpq_dataset<DataT, IdxT>;
-  typename owning_t::dictionary_type dictionary{std::move(vq_code_book), std::move(pq_code_book)};
-  return std::make_unique<owning_t>(std::move(data), std::move(dictionary));
+  return std::make_unique<owning_t>(
+    std::move(data), std::move(vq_code_book), std::move(pq_code_book));
 }
 
 template <typename DataT, typename IdxT, typename OwningDatasetT, typename Input>

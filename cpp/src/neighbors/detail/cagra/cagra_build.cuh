@@ -2313,9 +2313,8 @@ void reconstruct_vpq_queries(raft::resources const& res,
                              raft::device_matrix_view<T, int64_t> output)
 {
   auto const data_view     = vpq_view.as_matrix_view();
-  auto const dict_view     = vpq_view.dictionary_view();
   const uint32_t dim       = vpq_view.dim();
-  const uint32_t pq_len    = vpq_view.pq_len();
+  const uint32_t pq_len    = vpq_view.data().pq_len();
   const uint32_t output_ld = static_cast<uint32_t>(output.extent(1));
   const uint32_t threads   = std::min(dim, 256u);
   RAFT_EXPECTS(output_ld >= dim,
@@ -2326,9 +2325,9 @@ void reconstruct_vpq_queries(raft::resources const& res,
   kern_reconstruct_vpq_queries<T, MathT>
     <<<batch_size, threads, 0, raft::resource::get_cuda_stream(res).get()>>>(
       data_view.data_handle(),
-      vpq_view.encoded_row_length(),
-      dict_view.vq_code_book.data_handle(),
-      dict_view.pq_code_book.data_handle(),
+      vpq_view.data().encoded_row_length(),
+      data_view.vq_code_book.data_handle(),
+      data_view.pq_code_book.data_handle(),
       dim,
       pq_len,
       offset,
@@ -2950,7 +2949,7 @@ auto build_from_bbq_dataset(raft::resources const& res,
                             DatasetViewT const& dataset)
   -> cuvs::neighbors::cagra::index<T, IdxT, DatasetViewT>
 {
-  RAFT_EXPECTS(!dataset.quantizers.empty(), "cagra::build: the BBQ dataset is empty.");
+  RAFT_EXPECTS(!dataset.data().quantizers.empty(), "cagra::build: the BBQ dataset is empty.");
   RAFT_EXPECTS(params.metric == cuvs::distance::DistanceType::L2Expanded ||
                  params.metric == cuvs::distance::DistanceType::L2SqrtExpanded ||
                  params.metric == cuvs::distance::DistanceType::CosineExpanded ||

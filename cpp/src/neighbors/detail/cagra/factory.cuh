@@ -92,7 +92,7 @@ struct key {
 };
 
 // `DatasetT` here is the non-owning dataset_view passed in by the search path, so all state comes
-// off the view's own `as_matrix_view()`/`dictionary_view()`, not owning-only members.
+// off the view's own `as_matrix_view()`, not owning-only members.
 template <typename DatasetT>
 auto make_key(const cagra::search_params& params,
               const DatasetT& dataset,
@@ -121,12 +121,11 @@ auto make_key(const cagra::search_params& params,
   -> std::enable_if_t<cuvs::neighbors::is_vpq_dataset_view_v<DatasetT>, key>
 {
   auto const data_view = dataset.as_matrix_view();
-  auto const dict_view = dataset.dictionary_view();
   return key{reinterpret_cast<uint64_t>(data_view.data_handle()),
              reinterpret_cast<uint64_t>(dataset_norms),
              uint64_t(dataset.n_rows()),
              dataset.dim(),
-             uint32_t(reinterpret_cast<uint64_t>(dict_view.pq_code_book.data_handle()) >> 6),
+             uint32_t(reinterpret_cast<uint64_t>(data_view.pq_code_book.data_handle()) >> 6),
              uint32_t(params.team_size),
              uint32_t(metric),
              uint32_t(params.smem_dtype)};

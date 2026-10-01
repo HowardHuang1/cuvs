@@ -244,7 +244,7 @@ extern "C" cuvsError_t cuvsProductQuantizerGetPqCodebook(cuvsProductQuantizer_t 
       if (quantizer->dtype.code == kDLFloat && quantizer->dtype.bits == 32) {
         auto pq_mdspan =
           (reinterpret_cast<cuvs::preprocessing::quantize::pq::quantizer<float>*>(quant_addr))
-            ->vpq_codebooks.dictionary_view()
+            ->vpq_codebooks.as_matrix_view()
             .pq_code_book;
         cuvs::core::to_dlpack(pq_mdspan, pq_codebook);
       } else {
@@ -267,7 +267,7 @@ extern "C" cuvsError_t cuvsProductQuantizerGetVqCodebook(cuvsProductQuantizer_t 
       if (quantizer->dtype.code == kDLFloat && quantizer->dtype.bits == 32) {
         auto pq_mdspan =
           (reinterpret_cast<cuvs::preprocessing::quantize::pq::quantizer<float>*>(quant_addr))
-            ->vpq_codebooks.dictionary_view()
+            ->vpq_codebooks.as_matrix_view()
             .vq_code_book;
         cuvs::core::to_dlpack(pq_mdspan, vq_codebook);
       } else {
