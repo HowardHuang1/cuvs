@@ -448,7 +448,7 @@ func mergeIndex(Resources cuvs.Resource, params *IndexParams, mergeParams *Merge
 	}
 
 	if mergeParams == nil {
-		err = cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsCagraMerge(
+		err = cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsCagraMerge_v2(
 			C.cuvsResources_t(Resources.Resource),
 			params.params,
 			&cIndices[0],
@@ -459,7 +459,7 @@ func mergeIndex(Resources cuvs.Resource, params *IndexParams, mergeParams *Merge
 			index.index,
 		)))
 	} else {
-		err = cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsCagraMergeWithParams(
+		err = cuvs.CheckCuvs(cuvs.CuvsError(C.cuvsCagraMergeWithParams_v2(
 			C.cuvsResources_t(Resources.Resource),
 			params.params,
 			mergeParams.params,

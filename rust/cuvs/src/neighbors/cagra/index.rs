@@ -242,7 +242,7 @@ impl<'d> Index<'d> {
         with_filter(filter, |c_filter| {
             check_cuvs(unsafe {
                 match merge_params {
-                    Some(merge_params) => ffi::cuvsCagraMergeWithParams(
+                    Some(merge_params) => ffi::cuvsCagraMergeWithParams_v2(
                         res.handle(),
                         params.handle(),
                         merge_params.handle(),
@@ -253,7 +253,7 @@ impl<'d> Index<'d> {
                         offsets.as_ptr(),
                         handle.raw(),
                     ),
-                    None => ffi::cuvsCagraMerge(
+                    None => ffi::cuvsCagraMerge_v2(
                         res.handle(),
                         params.handle(),
                         raw_indices.as_mut_ptr(),

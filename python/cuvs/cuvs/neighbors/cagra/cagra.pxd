@@ -227,24 +227,24 @@ cdef extern from "cuvs/neighbors/cagra.h" nogil:
                                               cuvsFilter filter,
                                               int64_t* offsets)
 
-    cuvsError_t cuvsCagraMerge(cuvsResources_t res,
-                               cuvsCagraIndexParams_t params,
-                               cuvsCagraIndex_t* indices,
-                               size_t num_indices,
-                               cuvsFilter filter,
-                               cuvsDataset_t merged_dataset,
-                               const int64_t* offsets,
-                               cuvsCagraIndex_t output_index)
+    cuvsError_t cuvsCagraMerge_v2(cuvsResources_t res,
+                                  cuvsCagraIndexParams_t params,
+                                  cuvsCagraIndex_t* indices,
+                                  size_t num_indices,
+                                  cuvsFilter filter,
+                                  cuvsDataset_t merged_dataset,
+                                  const int64_t* offsets,
+                                  cuvsCagraIndex_t output_index)
 
-    cuvsError_t cuvsCagraMergeWithParams(cuvsResources_t res,
-                                         cuvsCagraIndexParams_t params,
-                                         cuvsCagraMergeParams_t merge_params,
-                                         cuvsCagraIndex_t* indices,
-                                         size_t num_indices,
-                                         cuvsFilter filter,
-                                         cuvsDataset_t merged_dataset,
-                                         const int64_t* offsets,
-                                         cuvsCagraIndex_t output_index)
+    cuvsError_t cuvsCagraMergeWithParams_v2(cuvsResources_t res,
+                                             cuvsCagraIndexParams_t params,
+                                             cuvsCagraMergeParams_t merge_params,
+                                             cuvsCagraIndex_t* indices,
+                                             size_t num_indices,
+                                             cuvsFilter filter,
+                                             cuvsDataset_t merged_dataset,
+                                             const int64_t* offsets,
+                                             cuvsCagraIndex_t output_index)
 
 
 cdef class Index:

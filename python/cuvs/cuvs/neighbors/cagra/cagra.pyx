@@ -1405,7 +1405,7 @@ def merge(IndexParams params, indices, merged_dataset, offsets,
 
     try:
         with cuda_interruptible():
-            check_cuvs(cuvsCagraMergeWithParams(
+            check_cuvs(cuvsCagraMergeWithParams_v2(
                 res,
                 params.params,
                 merge_params_ptr,
