@@ -1260,7 +1260,7 @@ public class CagraIndexImpl implements CagraIndex {
           cuvsFilter.addr(mergeFilter, 0);
 
           checkCuVSError(
-              cuvsCagraMerge(
+              cuvsCagraMerge_v2(
                   cuvsRes,
                   nativeMergeParams.handle(),
                   indexesSegment,
@@ -1269,12 +1269,12 @@ public class CagraIndexImpl implements CagraIndex {
                   mergedDataset,
                   offsetsSegment,
                   mergedIndex),
-              "cuvsCagraMerge");
+              "cuvsCagraMerge_v2");
         } else {
           try (var nativeFilter =
               uploadBitsetFilter(cuvsRes, localArena, filter, totalRows(indexes))) {
             checkCuVSError(
-                cuvsCagraMerge(
+                cuvsCagraMerge_v2(
                     cuvsRes,
                     nativeMergeParams.handle(),
                     indexesSegment,
@@ -1283,7 +1283,7 @@ public class CagraIndexImpl implements CagraIndex {
                     mergedDataset,
                     offsetsSegment,
                     mergedIndex),
-                "cuvsCagraMerge");
+                "cuvsCagraMerge_v2");
           }
         }
         // mergedDataset is caller-owned; the returned index does not take ownership of it.

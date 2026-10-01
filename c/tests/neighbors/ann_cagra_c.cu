@@ -478,14 +478,14 @@ TEST(CagraC, DatasetContractFailures)
             CUVS_SUCCESS);
   cuvsCagraIndex_t host_indices[2] = {host_index, host_index_2};
   int64_t host_merge_offsets[3]    = {0, 4, 8};
-  EXPECT_EQ(cuvsCagraMerge(res,
-                           build_params,
-                           host_indices,
-                           2,
-                           filter,
-                           merged_dataset,
-                           host_merge_offsets,
-                           merge_out),
+  EXPECT_EQ(cuvsCagraMerge_v2(res,
+                              build_params,
+                              host_indices,
+                              2,
+                              filter,
+                              merged_dataset,
+                              host_merge_offsets,
+                              merge_out),
             CUVS_ERROR);
 
   ASSERT_EQ(cuvsCagraExtendParamsDestroy(extend_params), CUVS_SUCCESS);
@@ -1081,15 +1081,15 @@ TEST(CagraC, BuildMergeSearch)
   ASSERT_EQ(cuvsCagraMergeParamsCreate(&merge_params), CUVS_SUCCESS);
   EXPECT_EQ(merge_params->algo, CUVS_CAGRA_MERGE_AUTO);
   merge_params->algo = CUVS_CAGRA_MERGE_REBUILD;
-  ASSERT_EQ(cuvsCagraMergeWithParams(res,
-                                     build_params,
-                                     merge_params,
-                                     index_array,
-                                     2,
-                                     filter,
-                                     merged_dataset,
-                                     merge_offsets,
-                                     index_merged),
+  ASSERT_EQ(cuvsCagraMergeWithParams_v2(res,
+                                        build_params,
+                                        merge_params,
+                                        index_array,
+                                        2,
+                                        filter,
+                                        merged_dataset,
+                                        merge_offsets,
+                                        index_merged),
             CUVS_SUCCESS);
   {
     cuvsDatasetMemType_t mem_type{};
@@ -1285,14 +1285,14 @@ TEST(CagraC, ConcatenateDatasetsMergeSearch)
   cuvsCagraIndex_t index_merged;
   cuvsCagraIndexCreate(&index_merged);
   int64_t merge_offsets[3] = {0, 4, 7};
-  ASSERT_EQ(cuvsCagraMerge(res,
-                           build_params,
-                           index_array,
-                           2,
-                           no_filter,
-                           concatenated_dataset,
-                           merge_offsets,
-                           index_merged),
+  ASSERT_EQ(cuvsCagraMerge_v2(res,
+                              build_params,
+                              index_array,
+                              2,
+                              no_filter,
+                              concatenated_dataset,
+                              merge_offsets,
+                              index_merged),
             CUVS_SUCCESS);
 
   int64_t merged_dim = -1;
@@ -1355,14 +1355,14 @@ TEST(CagraC, ConcatenateDatasetsMergeSearch)
 
   cuvsCagraIndex_t index_filtered_merged;
   cuvsCagraIndexCreate(&index_filtered_merged);
-  ASSERT_EQ(cuvsCagraMerge(res,
-                           build_params,
-                           index_array,
-                           2,
-                           bitset_filter,
-                           filtered_dataset,
-                           filtered_offsets,
-                           index_filtered_merged),
+  ASSERT_EQ(cuvsCagraMerge_v2(res,
+                              build_params,
+                              index_array,
+                              2,
+                              bitset_filter,
+                              filtered_dataset,
+                              filtered_offsets,
+                              index_filtered_merged),
             CUVS_SUCCESS);
 
   ASSERT_EQ(cuvsCagraSearch(res,

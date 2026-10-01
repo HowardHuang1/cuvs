@@ -2279,28 +2279,28 @@ extern "C" cuvsError_t cuvsCagraSearchMultiPartition(cuvsResources_t res,
   });
 }
 
-extern "C" cuvsError_t cuvsCagraMerge(cuvsResources_t res,
-                                      cuvsCagraIndexParams_t params,
-                                      cuvsCagraIndex_t* indices,
-                                      size_t num_indices,
-                                      cuvsFilter filter,
-                                      cuvsDataset_t merged_dataset,
-                                      const int64_t* offsets,
-                                      cuvsCagraIndex_t output_index)
+extern "C" cuvsError_t cuvsCagraMerge_v2(cuvsResources_t res,
+                                         cuvsCagraIndexParams_t params,
+                                         cuvsCagraIndex_t* indices,
+                                         size_t num_indices,
+                                         cuvsFilter filter,
+                                         cuvsDataset_t merged_dataset,
+                                         const int64_t* offsets,
+                                         cuvsCagraIndex_t output_index)
 {
-  return cuvsCagraMergeWithParams(
+  return cuvsCagraMergeWithParams_v2(
     res, params, nullptr, indices, num_indices, filter, merged_dataset, offsets, output_index);
 }
 
-extern "C" cuvsError_t cuvsCagraMergeWithParams(cuvsResources_t res,
-                                                cuvsCagraIndexParams_t params,
-                                                cuvsCagraMergeParams_t merge_params,
-                                                cuvsCagraIndex_t* indices,
-                                                size_t num_indices,
-                                                cuvsFilter filter,
-                                                cuvsDataset_t merged_dataset,
-                                                const int64_t* offsets,
-                                                cuvsCagraIndex_t output_index)
+extern "C" cuvsError_t cuvsCagraMergeWithParams_v2(cuvsResources_t res,
+                                                   cuvsCagraIndexParams_t params,
+                                                   cuvsCagraMergeParams_t merge_params,
+                                                   cuvsCagraIndex_t* indices,
+                                                   size_t num_indices,
+                                                   cuvsFilter filter,
+                                                   cuvsDataset_t merged_dataset,
+                                                   const int64_t* offsets,
+                                                   cuvsCagraIndex_t output_index)
 {
   return cuvs::core::translate_exceptions([=] {
     RAFT_EXPECTS(indices != nullptr && num_indices > 0, "indices array cannot be null or empty");
@@ -2385,6 +2385,85 @@ extern "C" cuvsError_t cuvsCagraMergeWithParams(cuvsResources_t res,
     }
   });
 }
+
+// Deprecated: internally concatenates/filters, then delegates to cuvsCagraMergeWithParams_v2.
+// Preserved for C ABI compatibility; will be removed in release 27.02.
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+extern "C" cuvsError_t cuvsCagraMergeWithParams(cuvsResources_t res,
+                                                cuvsCagraIndexParams_t params,
+                                                cuvsCagraMergeParams_t merge_params,
+                                                cuvsCagraIndex_t* indices,
+                                                size_t num_indices,
+                                                cuvsFilter filter,
+                                                cuvsDataset_t merged_dataset,
+                                                cuvsCagraIndex_t output_index)
+{
+  if (merged_dataset == nullptr || merged_dataset->addr != 0) {
+    cuvsSetLastErrorText(
+      "cuvsCagraMergeWithParams (deprecated): merged_dataset must be a non-null empty handle "
+      "created with cuvsDatasetCreate");
+    return CUVS_ERROR;
+  }
+
+  // Step 1: build the merged dataset internally using the concat helpers.
+  cuvsDataset_t concat_result = nullptr;
+  cuvsError_t err;
+  if (filter.type == NO_FILTER) {
+    err = cuvsCagraConcatenateDatasets(res, indices, num_indices, &concat_result);
+  } else {
+    err = cuvsCagraConcatenateAndFilterDatasets(res, indices, num_indices, filter, &concat_result);
+  }
+  if (err != CUVS_SUCCESS) {
+    if (concat_result != nullptr) { cuvsDatasetDestroy(concat_result); }
+    return err;
+  }
+
+  // Step 2: compute per-index offsets (needed even for NO_FILTER to satisfy v2's contract).
+  std::vector<int64_t> offsets_vec(num_indices + 1);
+  err = cuvsCagraMergedDatasetOffsets(res, indices, num_indices, filter, offsets_vec.data());
+  if (err != CUVS_SUCCESS) {
+    cuvsDatasetDestroy(concat_result);
+    return err;
+  }
+
+  // Step 3: merge the graph.
+  err = cuvsCagraMergeWithParams_v2(res,
+                                    params,
+                                    merge_params,
+                                    indices,
+                                    num_indices,
+                                    filter,
+                                    concat_result,
+                                    offsets_vec.data(),
+                                    output_index);
+  if (err != CUVS_SUCCESS) {
+    cuvsDatasetDestroy(concat_result);
+    return err;
+  }
+
+  // Step 4: transfer dataset ownership into the caller's handle.
+  // concat_result is a heap-allocated cuvsDataset wrapper; shallow-copy its fields into
+  // merged_dataset, then delete just the wrapper (not the underlying data).
+  *merged_dataset      = *concat_result;
+  concat_result->addr  = 0;  // prevent double-free of the underlying data
+  delete concat_result;
+
+  return CUVS_SUCCESS;
+}
+
+extern "C" cuvsError_t cuvsCagraMerge(cuvsResources_t res,
+                                      cuvsCagraIndexParams_t params,
+                                      cuvsCagraIndex_t* indices,
+                                      size_t num_indices,
+                                      cuvsFilter filter,
+                                      cuvsDataset_t merged_dataset,
+                                      cuvsCagraIndex_t output_index)
+{
+  return cuvsCagraMergeWithParams(
+    res, params, nullptr, indices, num_indices, filter, merged_dataset, output_index);
+}
+#pragma GCC diagnostic pop
 
 extern "C" cuvsError_t cuvsCagraMergedDatasetOffsets(cuvsResources_t res,
                                                      cuvsCagraIndex_t* indices,

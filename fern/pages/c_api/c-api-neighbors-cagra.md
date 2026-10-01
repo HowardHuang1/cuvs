@@ -1103,7 +1103,7 @@ cuvsFilter filter,
 int64_t* offsets);
 ```
 
-`cuvsCagraMerge`/`cuvsCagraMergeWithParams` require the caller to have already concatenated every input index's dataset (in `indices` order, applying `filter` if any) into a single buffer and to know each index's starting row within it. For `filter.type == NO_FILTER`, those offsets are just the cumulative sizes of `indices` and this function is not needed. For `BITSET`, the number of surviving rows per index cannot be derived any other way, so call this first.
+`cuvsCagraMerge_v2`/`cuvsCagraMergeWithParams_v2` require the caller to have already concatenated every input index's dataset (in `indices` order, applying `filter` if any) into a single buffer and to know each index's starting row within it. For `filter.type == NO_FILTER`, those offsets are just the cumulative sizes of `indices` and this function is not needed. For `BITSET`, the number of surviving rows per index cannot be derived any other way, so call this first.
 
 **Parameters**
 
@@ -1131,14 +1131,14 @@ size_t num_indices,
 cuvsDataset_t* merged_dataset);
 ```
 
-This is an optional convenience function for building `cuvsCagraMerge`'s `merged_dataset` argument in the unfiltered case; callers that already have their own concatenated buffer are not required to use it. The matching `offsets` are simply each index's cumulative row count, or `cuvsCagraMergedDatasetOffsets` called with `filter.type == NO_FILTER`.
+This is an optional convenience function for building `cuvsCagraMerge_v2`'s `merged_dataset` argument in the unfiltered case; callers that already have their own concatenated buffer are not required to use it. The matching `offsets` are simply each index's cumulative row count, or `cuvsCagraMergedDatasetOffsets` called with `filter.type == NO_FILTER`.
 
 **Parameters**
 
 | Name | Direction | Type | Description |
 | --- | --- | --- | --- |
 | `res` | in | [`cuvsResources_t`](/api-reference/c-api-core-c-api#cuvsresources-t) | cuvsResources_t opaque C handle |
-| `indices` | in | [`cuvsCagraIndex_t*`](/api-reference/c-api-neighbors-cagra#cuvscagraindex) | Array of input cuvsCagraIndex_t handles to concatenate, in the order they will be passed to `cuvsCagraMerge` |
+| `indices` | in | [`cuvsCagraIndex_t*`](/api-reference/c-api-neighbors-cagra#cuvscagraindex) | Array of input cuvsCagraIndex_t handles to concatenate, in the order they will be passed to `cuvsCagraMerge_v2` |
 | `num_indices` | in | `size_t` | Number of input indices |
 | `merged_dataset` | out | `cuvsDataset_t*` | Newly allocated owning dataset handle containing every index's rows, concatenated in `indices` order. Caller must destroy it with `cuvsDatasetDestroy` when done. |
 
@@ -1159,14 +1159,14 @@ cuvsFilter filter,
 cuvsDataset_t* merged_dataset);
 ```
 
-This is an optional convenience function for building `cuvsCagraMerge`'s `merged_dataset` argument in the bitset-filtered case; callers that already have their own filtered, concatenated buffer are not required to use it. Call `cuvsCagraMergedDatasetOffsets` with the same `filter` to get the matching `offsets`.
+This is an optional convenience function for building `cuvsCagraMerge_v2`'s `merged_dataset` argument in the bitset-filtered case; callers that already have their own filtered, concatenated buffer are not required to use it. Call `cuvsCagraMergedDatasetOffsets` with the same `filter` to get the matching `offsets`.
 
 **Parameters**
 
 | Name | Direction | Type | Description |
 | --- | --- | --- | --- |
 | `res` | in | [`cuvsResources_t`](/api-reference/c-api-core-c-api#cuvsresources-t) | cuvsResources_t opaque C handle |
-| `indices` | in | [`cuvsCagraIndex_t*`](/api-reference/c-api-neighbors-cagra#cuvscagraindex) | Array of input cuvsCagraIndex_t handles to concatenate, in the order they will be passed to `cuvsCagraMerge` |
+| `indices` | in | [`cuvsCagraIndex_t*`](/api-reference/c-api-neighbors-cagra#cuvscagraindex) | Array of input cuvsCagraIndex_t handles to concatenate, in the order they will be passed to `cuvsCagraMerge_v2` |
 | `num_indices` | in | `size_t` | Number of input indices |
 | `filter` | in | [`cuvsFilter`](/api-reference/c-api-neighbors-common#cuvsfilter) | Bitset row filter selecting which rows survive into the output. Only `BITSET` is supported. |
 | `merged_dataset` | out | `cuvsDataset_t*` | Newly allocated owning dataset handle containing every index's surviving rows, concatenated in `indices` order. Caller must destroy it with `cuvsDatasetDestroy` when done. |
@@ -1175,13 +1175,13 @@ This is an optional convenience function for building `cuvsCagraMerge`'s `merged
 
 [`cuvsError_t`](/api-reference/c-api-core-c-api#cuvserror-t)
 
-<a id="cuvscagramerge"></a>
-### cuvsCagraMerge
+<a id="cuvscagramerge-v2"></a>
+### cuvsCagraMerge_v2
 
 Merge multiple CAGRA indices into a single CAGRA index.
 
 ```c
-cuvsError_t cuvsCagraMerge(cuvsResources_t res,
+cuvsError_t cuvsCagraMerge_v2(cuvsResources_t res,
 cuvsCagraIndexParams_t params,
 cuvsCagraIndex_t* indices,
 size_t num_indices,
@@ -1223,13 +1223,13 @@ Example:
 
 [`cuvsError_t`](/api-reference/c-api-core-c-api#cuvserror-t)
 
-<a id="cuvscagramergewithparams"></a>
-### cuvsCagraMergeWithParams
+<a id="cuvscagramergewithparams-v2"></a>
+### cuvsCagraMergeWithParams_v2
 
 Merge multiple CAGRA indices with explicit merge parameters.
 
 ```c
-cuvsError_t cuvsCagraMergeWithParams(cuvsResources_t res,
+cuvsError_t cuvsCagraMergeWithParams_v2(cuvsResources_t res,
 cuvsCagraIndexParams_t params,
 cuvsCagraMergeParams_t merge_params,
 cuvsCagraIndex_t* indices,
@@ -1240,7 +1240,7 @@ const int64_t* offsets,
 cuvsCagraIndex_t output_index);
 ```
 
-See `cuvsCagraMerge` for the full `merged_dataset`/`offsets` contract.
+See `cuvsCagraMerge_v2` for the full `merged_dataset`/`offsets` contract.
 
 **Parameters**
 
@@ -1259,3 +1259,59 @@ See `cuvsCagraMerge` for the full `merged_dataset`/`offsets` contract.
 **Returns**
 
 [`cuvsError_t`](/api-reference/c-api-core-c-api#cuvserror-t)
+
+<a id="attribute"></a>
+### __attribute__
+
+Merge multiple CAGRA indices into a single CAGRA index (deprecated).
+
+```c
+__attribute__((deprecated(
+"Use cuvsCagraMerge_v2 instead; will be removed in 27.02"))) cuvsError_t
+cuvsCagraMerge(cuvsResources_t res,
+cuvsCagraIndexParams_t params,
+cuvsCagraIndex_t* indices,
+size_t num_indices,
+cuvsFilter filter,
+cuvsDataset_t merged_dataset,
+cuvsCagraIndex_t output_index);
+```
+
+populates the merged dataset buffer, hiding memory allocation from the caller. `cuvsCagraMerge_v2` requires the caller to pre-allocate and populate `merged_dataset`, matching the `cuvsCagraExtend` contract, and gives the caller control over peak GPU memory. Will be removed in release 27.02.
+
+**Parameters**
+
+| Name | Direction | Type | Description |
+| --- | --- | --- | --- |
+| `arg1` |  | `(deprecated( "Use cuvsCagraMerge_v2 instead; will be removed in 27.02"))` |  |
+
+**Returns**
+
+`void`
+
+**Additional overload:** `__attribute__`
+
+Merge multiple CAGRA indices with explicit merge parameters (deprecated).
+
+```c
+__attribute__((deprecated(
+"Use cuvsCagraMergeWithParams_v2 instead; will be removed in 27.02"))) cuvsError_t
+cuvsCagraMergeWithParams(cuvsResources_t res,
+cuvsCagraIndexParams_t params,
+cuvsCagraMergeParams_t merge_params,
+cuvsCagraIndex_t* indices,
+size_t num_indices,
+cuvsFilter filter,
+cuvsDataset_t merged_dataset,
+cuvsCagraIndex_t output_index);
+```
+
+**Parameters**
+
+| Name | Direction | Type | Description |
+| --- | --- | --- | --- |
+| `arg1` |  | `(deprecated( "Use cuvsCagraMergeWithParams_v2 instead; will be removed in 27.02"))` |  |
+
+**Returns**
+
+`void`
