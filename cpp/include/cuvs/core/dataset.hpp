@@ -30,9 +30,6 @@
 #include <numeric>
 #include <type_traits>
 #include <utility>
-#ifdef __cpp_lib_bitops
-#include <bit>
-#endif
 
 namespace CUVS_EXPORT cuvs {
 namespace neighbors {
@@ -45,8 +42,10 @@ namespace neighbors {
  * `view_type`, chosen by the spec) and expose only what every dataset has: `n_rows()`, `dim()`,
  * `as_matrix_view()`, `as_dataset_view()` and `data()`. Each is a one-line forward to one of the
  * three spec functions `get_data_view()`, `get_n_rows()` and `get_dim()`. Anything else a kind
- * needs (e.g. VPQ codebooks, BBQ quantizers) is state and methods of that kind's payload type,
- * reached through `data()`; `dataset`/`dataset_view` never name or branch on it. `dataset` and
+ * needs (e.g. codebooks or quantizers of a compressed dataset) is state and methods of that
+ * kind's payload type, reached through `data()`; `dataset`/`dataset_view` never name or branch on
+ * it. Compressed kinds define their payloads and specs in their own headers (quantize/pq.hpp,
+ * quantize/bbq.hpp) as children of these two structs. `dataset` and
  * `dataset_view` are deliberately two independent, non-inheriting types (no shared_ptr, no
  * "sometimes owning" object): `dataset` holds the owning payload, `dataset_view` the
  * corresponding non-owning payload.
@@ -98,23 +97,6 @@ using dense_view_matrix = raft::mdspan<const DataT,
                                        raft::matrix_extent<IdxT>,
                                        raft::row_major,
                                        dataset_view_accessor_for_owning<DataT, Accessor>>;
-
-template <typename MathT, typename IdxT, typename Accessor>
-using vpq_vq_book_matrix =
-  raft::mdarray<MathT, raft::matrix_extent<uint32_t>, raft::row_major, Accessor>;
-
-// VPQ codes are always uint8_t regardless of MathT, so retarget the owning accessor's element
-// type instead of re-deriving a device/host matrix; residency is still driven by Accessor.
-template <typename NewT, typename Accessor>
-using owning_accessor_with_value_type = std::conditional_t<Accessor::is_device_accessible,
-                                                           device_owning_accessor<NewT>,
-                                                           host_owning_accessor<NewT>>;
-
-template <typename IdxT, typename Accessor>
-using vpq_data_matrix = raft::mdarray<uint8_t,
-                                      raft::matrix_extent<IdxT>,
-                                      raft::row_major,
-                                      owning_accessor_with_value_type<uint8_t, Accessor>>;
 
 // -----------------------------------------------------------------------------
 // empty
@@ -228,110 +210,6 @@ struct dense_dataset_spec_impl {
   };
 };
 
-// -----------------------------------------------------------------------------
-// vpq payloads: everything VPQ-specific lives here, not in dataset/dataset_view.
-// -----------------------------------------------------------------------------
-
-/** Read-only helpers derived from the codebook shapes; shared by the owning and view payloads.
- * `Derived` provides `vq_code_book`, `pq_code_book` and the codes' `extent(r)`. */
-template <typename Derived>
-struct vpq_codebook_helpers {
-  /** Logical dimension: it comes from the VQ codebook, not from the encoded rows (row padding
-   * makes the encoded-row width ambiguous as a dimension). */
-  [[nodiscard]] auto dim() const noexcept -> uint32_t
-  {
-    return static_cast<uint32_t>(self().vq_code_book.extent(1));
-  }
-  [[nodiscard]] auto vq_n_centers() const noexcept -> uint32_t
-  {
-    return static_cast<uint32_t>(self().vq_code_book.extent(0));
-  }
-  [[nodiscard]] auto pq_n_centers() const noexcept -> uint32_t
-  {
-    return static_cast<uint32_t>(self().pq_code_book.extent(0));
-  }
-  [[nodiscard]] auto pq_len() const noexcept -> uint32_t
-  {
-    return static_cast<uint32_t>(self().pq_code_book.extent(1));
-  }
-  [[nodiscard]] auto pq_bits() const noexcept -> uint32_t
-  {
-    auto pq_width = pq_n_centers();
-#ifdef __cpp_lib_bitops
-    return std::countr_zero(pq_width);
-#else
-    uint32_t bits = 0;
-    while (pq_width > 1) {
-      bits++;
-      pq_width >>= 1;
-    }
-    return bits;
-#endif
-  }
-  [[nodiscard]] auto pq_dim() const noexcept -> uint32_t
-  {
-    return raft::div_rounding_up_unsafe(dim(), pq_len());
-  }
-  [[nodiscard]] auto encoded_row_length() const noexcept -> uint32_t
-  {
-    return static_cast<uint32_t>(self().extent(1));
-  }
-
- private:
-  [[nodiscard]] auto self() const noexcept -> Derived const&
-  {
-    return static_cast<Derived const&>(*this);
-  }
-};
-
-/** Owning VPQ payload: the encoded rows (it *is* the `uint8_t` codes mdarray) plus the VQ and PQ
- * codebooks. `Accessor` drives both codebook and code residency. */
-template <typename MathT, typename IdxT, typename Accessor>
-struct vpq_owning_storage : public vpq_data_matrix<IdxT, Accessor>,
-                            public vpq_codebook_helpers<vpq_owning_storage<MathT, IdxT, Accessor>> {
-  using codes_type   = vpq_data_matrix<IdxT, Accessor>;
-  using vq_book_type = vpq_vq_book_matrix<MathT, IdxT, Accessor>;
-  using pq_book_type = vpq_vq_book_matrix<MathT, IdxT, Accessor>;
-
-  vq_book_type vq_code_book;
-  pq_book_type pq_code_book;
-
-  vpq_owning_storage(codes_type&& codes, vq_book_type&& vq_codes, pq_book_type&& pq_codes) noexcept
-    : codes_type{std::move(codes)},
-      vq_code_book{std::move(vq_codes)},
-      pq_code_book{std::move(pq_codes)}
-  {
-  }
-};
-
-/** Non-owning VPQ payload: a view of the encoded rows plus views of the VQ and PQ codebooks. */
-template <typename MathT, typename IdxT, typename Accessor>
-struct vpq_view_storage : public raft::mdspan<const uint8_t,
-                                              raft::matrix_extent<IdxT>,
-                                              raft::row_major,
-                                              dataset_view_accessor_for_owning<uint8_t, Accessor>>,
-                          public vpq_codebook_helpers<vpq_view_storage<MathT, IdxT, Accessor>> {
-  using codes_view_type = raft::mdspan<const uint8_t,
-                                       raft::matrix_extent<IdxT>,
-                                       raft::row_major,
-                                       dataset_view_accessor_for_owning<uint8_t, Accessor>>;
-  using vq_book_view_type =
-    typename vpq_owning_storage<MathT, IdxT, Accessor>::vq_book_type::const_view_type;
-  using pq_book_view_type =
-    typename vpq_owning_storage<MathT, IdxT, Accessor>::pq_book_type::const_view_type;
-
-  vq_book_view_type vq_code_book;
-  pq_book_view_type pq_code_book;
-
-  vpq_view_storage() noexcept = default;
-  vpq_view_storage(codes_view_type codes,
-                   vq_book_view_type vq_codes,
-                   pq_book_view_type pq_codes) noexcept
-    : codes_view_type(codes), vq_code_book(vq_codes), pq_code_book(pq_codes)
-  {
-  }
-};
-
 }  // namespace detail
 
 // -----------------------------------------------------------------------------
@@ -341,6 +219,8 @@ struct vpq_view_storage : public raft::mdspan<const uint8_t,
 template <typename Accessor>
 struct empty_dataset_spec {
   using accessor_type = Accessor;
+  template <typename NewAccessor>
+  using rebind_accessor = empty_dataset_spec<NewAccessor>;
 
   template <typename T, typename IdxT>
   struct apply {
@@ -367,6 +247,8 @@ struct empty_dataset_spec {
 template <typename ContainerPolicy>
 struct padded_dataset_spec {
   using accessor_type = ContainerPolicy;
+  template <typename NewAccessor>
+  using rebind_accessor = padded_dataset_spec<NewAccessor>;
   template <typename T, typename IdxT>
   struct apply : detail::dense_dataset_spec_impl<ContainerPolicy>::template apply<T, IdxT> {};
 };
@@ -374,41 +256,10 @@ struct padded_dataset_spec {
 template <typename ContainerPolicy>
 struct standard_dataset_spec {
   using accessor_type = ContainerPolicy;
+  template <typename NewAccessor>
+  using rebind_accessor = standard_dataset_spec<NewAccessor>;
   template <typename T, typename IdxT>
   struct apply : detail::dense_dataset_spec_impl<ContainerPolicy>::template apply<T, IdxT> {};
-};
-
-/** `Accessor` drives both codebook and code residency, mirroring today's
- * single-`Accessor`-per-VPQ-dataset design. The payload (`detail::vpq_owning_storage` /
- * `detail::vpq_view_storage`) holds the encoded rows and the VQ/PQ codebooks. */
-template <typename MathT, typename Accessor>
-struct vpq_dataset_spec {
-  using accessor_type = Accessor;
-
-  template <typename T, typename IdxT>
-  struct apply {
-    using value_type = std::remove_cv_t<T>;
-    using index_type = std::remove_cv_t<IdxT>;
-    using math_type  = MathT;
-
-    using data_type = detail::vpq_owning_storage<MathT, IdxT, Accessor>;
-    using view_type = detail::vpq_view_storage<MathT, IdxT, Accessor>;
-
-    [[nodiscard]] static auto get_data_view(data_type const& data) noexcept -> view_type
-    {
-      return view_type(data.view(), data.vq_code_book.view(), data.pq_code_book.view());
-    }
-    template <typename AnyStorage>
-    [[nodiscard]] static auto get_n_rows(AnyStorage const& data) noexcept -> index_type
-    {
-      return static_cast<index_type>(data.extent(0));
-    }
-    template <typename AnyStorage>
-    [[nodiscard]] static auto get_dim(AnyStorage const& data) noexcept -> uint32_t
-    {
-      return data.dim();
-    }
-  };
 };
 
 // -----------------------------------------------------------------------------
@@ -426,7 +277,8 @@ struct dataset {
   using data_type  = typename spec_type::data_type;
 
   // Forward constructor args straight to data_type's own constructor (e.g. (MatrixT&&, uint32_t
-  // logical_dim) for dense, (uint32_t dim) for empty, (codes&&, vq&&, pq&&) for VPQ).
+  // logical_dim) for dense, (uint32_t dim) for empty, or whatever a compressed kind's payload
+  // takes).
   template <typename... Args>
   explicit dataset(Args&&... args)
     requires(std::is_constructible_v<data_type, Args...>)
@@ -436,8 +288,7 @@ struct dataset {
 
   [[nodiscard]] auto n_rows() const noexcept -> index_type { return spec_type::get_n_rows(data_); }
   [[nodiscard]] auto dim() const noexcept -> uint32_t { return spec_type::get_dim(data_); }
-  /** The spec-defined non-owning view of the payload (for dense and VPQ it is an mdspan
-   * derivative). */
+  /** The spec-defined non-owning view of the payload (an mdspan derivative for dense kinds). */
   [[nodiscard]] auto as_matrix_view() const noexcept { return spec_type::get_data_view(data_); }
   [[nodiscard]] auto as_dataset_view() const noexcept -> dataset_view<T, IdxT, SpecT>
   {
@@ -546,22 +397,6 @@ template <typename DataT, typename IdxT>
 using host_standard_dataset_view =
   dataset_view<DataT, IdxT, standard_dataset_spec<detail::host_owning_accessor<DataT>>>;
 
-template <typename DataT, typename IdxT>
-using device_vpq_dataset =
-  dataset<DataT, IdxT, vpq_dataset_spec<DataT, detail::device_owning_accessor<DataT>>>;
-
-template <typename DataT, typename IdxT>
-using device_vpq_dataset_view =
-  dataset_view<DataT, IdxT, vpq_dataset_spec<DataT, detail::device_owning_accessor<DataT>>>;
-
-template <typename DataT, typename IdxT>
-using host_vpq_dataset =
-  dataset<DataT, IdxT, vpq_dataset_spec<DataT, detail::host_owning_accessor<DataT>>>;
-
-template <typename DataT, typename IdxT>
-using host_vpq_dataset_view =
-  dataset_view<DataT, IdxT, vpq_dataset_spec<DataT, detail::host_owning_accessor<DataT>>>;
-
 // Maps a dataset view type to its owning (allocating) dataset counterpart. Trivial and total under
 // the Spec design: the owning type for `dataset_view<T,IdxT,SpecT>` is always
 // `dataset<T,IdxT,SpecT>`
@@ -578,7 +413,9 @@ template <typename DatasetViewT>
 using owning_dataset_for_view_t = typename owning_dataset_for_view<DatasetViewT>::type;
 
 // -----------------------------------------------------------------------------
-// Spec-kind classification (all derived from SpecT; dataset/dataset_view never branch on kind).
+// Spec-kind classification. Only the kinds that live in this header are named here; every other
+// kind (e.g. the compressed kinds in quantize/pq.hpp and quantize/bbq.hpp) defines its own spec
+// predicate next to its own spec and reuses `dataset_view_has_spec_v` below.
 // -----------------------------------------------------------------------------
 
 template <typename SpecT>
@@ -602,25 +439,7 @@ struct is_standard_spec<standard_dataset_spec<ContainerPolicy>> : std::true_type
 template <typename SpecT>
 inline constexpr bool is_standard_spec_v = is_standard_spec<SpecT>::value;
 
-template <typename SpecT>
-struct is_vpq_spec : std::false_type {};
-template <typename MathT, typename Accessor>
-struct is_vpq_spec<vpq_dataset_spec<MathT, Accessor>> : std::true_type {};
-template <typename SpecT>
-inline constexpr bool is_vpq_spec_v = is_vpq_spec<SpecT>::value;
-
-template <typename SpecT>
-struct vpq_spec_math_type {};
-template <typename MathT, typename Accessor>
-struct vpq_spec_math_type<vpq_dataset_spec<MathT, Accessor>> {
-  using type = MathT;
-};
-template <typename SpecT>
-using vpq_spec_math_type_t = typename vpq_spec_math_type<SpecT>::type;
-
-/** Owning-side kind traits (mirror today's `is_padded_dataset_v`/`is_standard_dataset_v`/
- * `is_vpq_dataset_v`, used for SFINAE overload selection in factory.cuh/compute_distance_vpq.hpp).
- */
+/** Owning-side kind traits (true for both `dataset<...>` and `dataset_view<...>` of that kind). */
 template <typename DatasetT>
 struct is_padded_dataset : std::false_type {};
 template <typename T, typename IdxT, typename SpecT>
@@ -642,13 +461,6 @@ struct is_standard_dataset<dataset_view<T, IdxT, SpecT>>
 template <typename DatasetT>
 inline constexpr bool is_standard_dataset_v = is_standard_dataset<DatasetT>::value;
 
-template <typename DatasetT>
-struct is_vpq_dataset : std::false_type {};
-template <typename T, typename IdxT, typename SpecT>
-struct is_vpq_dataset<dataset<T, IdxT, SpecT>> : std::bool_constant<is_vpq_spec_v<SpecT>> {};
-template <typename DatasetT>
-inline constexpr bool is_vpq_dataset_v = is_vpq_dataset<DatasetT>::value;
-
 // -----------------------------------------------------------------------------
 // Dataset view compile-time classification (replaces runtime std::variant dispatch).
 // -----------------------------------------------------------------------------
@@ -660,50 +472,28 @@ concept ann_dataset_view = requires(V const& v) {
   { v.dim() } -> std::convertible_to<uint32_t>;
 };
 
-enum class dataset_view_kind {
-  // TODO(removal): Remove `unknown` once all deprecated host_matrix_view / device_matrix_view /
-  // mdspan overloads are deleted. It exists solely so that overload resolution on the deprecated
-  // build(host_matrix_view) / build(device_matrix_view) shims does not cause a hard error when
-  // the compiler evaluates is_host/device_dataset_view_v for a plain mdspan type.
-  unknown,
-  empty,
-  padded,
-  standard,
-  vpq_f16,
-  vpq_f32,
-  bbq,
-};
-
 template <typename V>
 using dataset_view_type_t = std::remove_cvref_t<V>;
 
-/** Primary template returns `unknown` so traits safely return `false` for non-dataset-view types.
- */
+/** True for any `dataset_view<...>` specialization. Evaluates to `false` (never a hard error) for
+ * everything else, e.g. a plain mdspan passed to a deprecated `build(matrix_view)` overload. */
 template <typename V>
-struct dataset_view_kind_of {
-  static constexpr dataset_view_kind value = dataset_view_kind::unknown;
-};
-
+struct is_dataset_view : std::false_type {};
 template <typename T, typename IdxT, typename SpecT>
-struct dataset_view_kind_of<dataset_view<T, IdxT, SpecT>> {
-  static constexpr dataset_view_kind value = []() constexpr {
-    if constexpr (is_empty_spec_v<SpecT>) {
-      return dataset_view_kind::empty;
-    } else if constexpr (is_padded_spec_v<SpecT>) {
-      return dataset_view_kind::padded;
-    } else if constexpr (is_standard_spec_v<SpecT>) {
-      return dataset_view_kind::standard;
-    } else if constexpr (is_vpq_spec_v<SpecT>) {
-      static_assert(std::is_same_v<vpq_spec_math_type_t<SpecT>, half> ||
-                      std::is_same_v<vpq_spec_math_type_t<SpecT>, float>,
-                    "VPQ dataset_view_kind_of expects MathT to be half or float");
-      return std::is_same_v<vpq_spec_math_type_t<SpecT>, half> ? dataset_view_kind::vpq_f16
-                                                               : dataset_view_kind::vpq_f32;
-    } else {
-      return dataset_view_kind::unknown;
-    }
-  }();
-};
+struct is_dataset_view<dataset_view<T, IdxT, SpecT>> : std::true_type {};
+template <typename V>
+inline constexpr bool is_dataset_view_v = is_dataset_view<dataset_view_type_t<V>>::value;
+
+/** True when `V` is a `dataset_view` whose spec satisfies the predicate `SpecPred<SpecT>::value`.
+ * This is how a kind that lives outside this header classifies its own views. */
+template <typename V, template <typename> typename SpecPred>
+struct dataset_view_has_spec : std::false_type {};
+template <typename T, typename IdxT, typename SpecT, template <typename> typename SpecPred>
+struct dataset_view_has_spec<dataset_view<T, IdxT, SpecT>, SpecPred>
+  : std::bool_constant<SpecPred<SpecT>::value> {};
+template <typename V, template <typename> typename SpecPred>
+inline constexpr bool dataset_view_has_spec_v =
+  dataset_view_has_spec<dataset_view_type_t<V>, SpecPred>::value;
 
 /** True when the dataset view accessor is device-accessible. */
 template <typename V>
@@ -718,16 +508,12 @@ inline constexpr bool dataset_view_is_device_accessible_v =
   dataset_view_is_device_accessible<dataset_view_type_t<V>>::value;
 
 template <typename V>
-inline constexpr dataset_view_kind dataset_view_kind_v =
-  dataset_view_kind_of<dataset_view_type_t<V>>::value;
-
-template <typename V>
 inline constexpr bool is_device_empty_dataset_view_v =
-  dataset_view_kind_v<V> == dataset_view_kind::empty && dataset_view_is_device_accessible_v<V>;
+  dataset_view_has_spec_v<V, is_empty_spec> && dataset_view_is_device_accessible_v<V>;
 
 template <typename V>
 inline constexpr bool is_host_empty_dataset_view_v =
-  dataset_view_kind_v<V> == dataset_view_kind::empty && !dataset_view_is_device_accessible_v<V>;
+  dataset_view_has_spec_v<V, is_empty_spec> && !dataset_view_is_device_accessible_v<V>;
 
 /** True for any empty dataset view (device or host). */
 template <typename V>
@@ -736,11 +522,11 @@ inline constexpr bool is_empty_dataset_view_v =
 
 template <typename V>
 inline constexpr bool is_device_padded_dataset_view_v =
-  dataset_view_kind_v<V> == dataset_view_kind::padded && dataset_view_is_device_accessible_v<V>;
+  dataset_view_has_spec_v<V, is_padded_spec> && dataset_view_is_device_accessible_v<V>;
 
 template <typename V>
 inline constexpr bool is_host_padded_dataset_view_v =
-  dataset_view_kind_v<V> == dataset_view_kind::padded && !dataset_view_is_device_accessible_v<V>;
+  dataset_view_has_spec_v<V, is_padded_spec> && !dataset_view_is_device_accessible_v<V>;
 
 /** True for either `device_padded_dataset_view` or `host_padded_dataset_view`. */
 template <typename V>
@@ -749,119 +535,46 @@ inline constexpr bool is_padded_dataset_view_v =
 
 template <typename V>
 inline constexpr bool is_device_standard_dataset_view_v =
-  dataset_view_kind_v<V> == dataset_view_kind::standard && dataset_view_is_device_accessible_v<V>;
+  dataset_view_has_spec_v<V, is_standard_spec> && dataset_view_is_device_accessible_v<V>;
 
 template <typename V>
 inline constexpr bool is_host_standard_dataset_view_v =
-  dataset_view_kind_v<V> == dataset_view_kind::standard && !dataset_view_is_device_accessible_v<V>;
+  dataset_view_has_spec_v<V, is_standard_spec> && !dataset_view_is_device_accessible_v<V>;
 
 /** True for either `device_standard_dataset_view` or `host_standard_dataset_view`. */
 template <typename V>
 inline constexpr bool is_standard_dataset_view_v =
   is_device_standard_dataset_view_v<V> || is_host_standard_dataset_view_v<V>;
 
-template <typename V>
-inline constexpr bool is_device_vpq_f16_dataset_view_v =
-  dataset_view_kind_v<V> == dataset_view_kind::vpq_f16 && dataset_view_is_device_accessible_v<V>;
-
-template <typename V>
-inline constexpr bool is_host_vpq_f16_dataset_view_v =
-  dataset_view_kind_v<V> == dataset_view_kind::vpq_f16 && !dataset_view_is_device_accessible_v<V>;
-
-template <typename V>
-inline constexpr bool is_vpq_f16_dataset_view_v =
-  is_device_vpq_f16_dataset_view_v<V> || is_host_vpq_f16_dataset_view_v<V>;
-
-template <typename V>
-inline constexpr bool is_device_vpq_f32_dataset_view_v =
-  dataset_view_kind_v<V> == dataset_view_kind::vpq_f32 && dataset_view_is_device_accessible_v<V>;
-
-template <typename V>
-inline constexpr bool is_host_vpq_f32_dataset_view_v =
-  dataset_view_kind_v<V> == dataset_view_kind::vpq_f32 && !dataset_view_is_device_accessible_v<V>;
-
-template <typename V>
-inline constexpr bool is_vpq_f32_dataset_view_v =
-  is_device_vpq_f32_dataset_view_v<V> || is_host_vpq_f32_dataset_view_v<V>;
-
-template <typename V>
-inline constexpr bool is_device_vpq_dataset_view_v =
-  is_device_vpq_f16_dataset_view_v<V> || is_device_vpq_f32_dataset_view_v<V>;
-
-template <typename V>
-inline constexpr bool is_host_vpq_dataset_view_v =
-  is_host_vpq_f16_dataset_view_v<V> || is_host_vpq_f32_dataset_view_v<V>;
-
-template <typename V>
-inline constexpr bool is_vpq_dataset_view_v =
-  is_device_vpq_dataset_view_v<V> || is_host_vpq_dataset_view_v<V>;
-
 /** True for any device-resident dataset view. */
 template <typename V>
 inline constexpr bool is_device_dataset_view_v =
-  dataset_view_kind_v<V> != dataset_view_kind::unknown && dataset_view_is_device_accessible_v<V>;
+  is_dataset_view_v<V> && dataset_view_is_device_accessible_v<V>;
 
 /** True for any host-resident dataset view. */
 template <typename V>
 inline constexpr bool is_host_dataset_view_v =
-  dataset_view_kind_v<V> != dataset_view_kind::unknown && !dataset_view_is_device_accessible_v<V>;
+  is_dataset_view_v<V> && !dataset_view_is_device_accessible_v<V>;
 
 /**
- * True when a host view `H` and device view `D` represent the same storage kind and differ
- * only in residency (host vs. device). Used by host/device conversion helpers.
- */
-template <typename HostViewT, typename DeviceViewT>
-inline constexpr bool compatible_host_device_dataset_views_v =
-  is_host_dataset_view_v<HostViewT> && is_device_dataset_view_v<DeviceViewT> &&
-  (dataset_view_kind_v<HostViewT> == dataset_view_kind_v<DeviceViewT>);
-
-/**
- * Generic accessor retargeting while preserving the dataset tag/layout and value/index types:
+ * Generic accessor retargeting while preserving the spec kind and value/index types:
  * `dataset<T, IdxT, SpecT<..., OldAccessor>>      -> dataset<T, IdxT, SpecT<..., NewAccessor>>`
  * `dataset_view<T, IdxT, SpecT<..., OldAccessor>> -> dataset_view<T, IdxT, SpecT<...,
  * NewAccessor>>`
+ * Every spec provides `rebind_accessor<NewAccessor>` for this, so this header does not need to
+ * know about any particular kind.
  */
 template <typename DatasetLikeT, typename NewAccessor>
 struct with_accessor;
 
-template <typename T, typename IdxT, typename NewAccessor>
-struct with_accessor<dataset<T, IdxT, empty_dataset_spec<NewAccessor>>, NewAccessor> {
-  using type = dataset<T, IdxT, empty_dataset_spec<NewAccessor>>;
+template <typename T, typename IdxT, typename SpecT, typename NewAccessor>
+struct with_accessor<dataset<T, IdxT, SpecT>, NewAccessor> {
+  using type = dataset<T, IdxT, typename SpecT::template rebind_accessor<NewAccessor>>;
 };
 
-template <typename T, typename IdxT, typename OldAccessor, typename NewAccessor>
-struct with_accessor<dataset<T, IdxT, padded_dataset_spec<OldAccessor>>, NewAccessor> {
-  using type = dataset<T, IdxT, padded_dataset_spec<NewAccessor>>;
-};
-
-template <typename T, typename IdxT, typename OldAccessor, typename NewAccessor>
-struct with_accessor<dataset<T, IdxT, standard_dataset_spec<OldAccessor>>, NewAccessor> {
-  using type = dataset<T, IdxT, standard_dataset_spec<NewAccessor>>;
-};
-
-template <typename T, typename IdxT, typename MathT, typename OldAccessor, typename NewAccessor>
-struct with_accessor<dataset<T, IdxT, vpq_dataset_spec<MathT, OldAccessor>>, NewAccessor> {
-  using type = dataset<T, IdxT, vpq_dataset_spec<MathT, NewAccessor>>;
-};
-
-template <typename T, typename IdxT, typename OldAccessor, typename NewAccessor>
-struct with_accessor<dataset_view<T, IdxT, empty_dataset_spec<OldAccessor>>, NewAccessor> {
-  using type = dataset_view<T, IdxT, empty_dataset_spec<NewAccessor>>;
-};
-
-template <typename T, typename IdxT, typename OldAccessor, typename NewAccessor>
-struct with_accessor<dataset_view<T, IdxT, padded_dataset_spec<OldAccessor>>, NewAccessor> {
-  using type = dataset_view<T, IdxT, padded_dataset_spec<NewAccessor>>;
-};
-
-template <typename T, typename IdxT, typename OldAccessor, typename NewAccessor>
-struct with_accessor<dataset_view<T, IdxT, standard_dataset_spec<OldAccessor>>, NewAccessor> {
-  using type = dataset_view<T, IdxT, standard_dataset_spec<NewAccessor>>;
-};
-
-template <typename T, typename IdxT, typename MathT, typename OldAccessor, typename NewAccessor>
-struct with_accessor<dataset_view<T, IdxT, vpq_dataset_spec<MathT, OldAccessor>>, NewAccessor> {
-  using type = dataset_view<T, IdxT, vpq_dataset_spec<MathT, NewAccessor>>;
+template <typename T, typename IdxT, typename SpecT, typename NewAccessor>
+struct with_accessor<dataset_view<T, IdxT, SpecT>, NewAccessor> {
+  using type = dataset_view<T, IdxT, typename SpecT::template rebind_accessor<NewAccessor>>;
 };
 
 template <typename DatasetLikeT, typename NewAccessor>
@@ -900,12 +613,21 @@ struct device_counterpart<dataset_view<T, IdxT, SpecT>> {
 template <typename HostViewT>
 using device_counterpart_t = typename device_counterpart<dataset_view_type_t<HostViewT>>::type;
 
-/** True for device padded or standard views accepted by dense graph build (VPQ excluded). */
+/**
+ * True when a host view `H` and device view `D` represent the same storage kind and differ
+ * only in residency (host vs. device). Used by host/device conversion helpers.
+ */
+template <typename HostViewT, typename DeviceViewT>
+inline constexpr bool compatible_host_device_dataset_views_v =
+  is_host_dataset_view_v<HostViewT> && is_device_dataset_view_v<DeviceViewT> &&
+  std::is_same_v<device_counterpart_t<HostViewT>, dataset_view_type_t<DeviceViewT>>;
+
+/** True for device padded or standard views accepted by dense graph build. */
 template <typename V>
 inline constexpr bool is_dense_row_major_device_dataset_view_v =
   is_device_padded_dataset_view_v<V> || is_device_standard_dataset_view_v<V>;
 
-/** True for host or device padded/standard views (dense graph build; VPQ excluded). */
+/** True for host or device padded/standard views (dense graph build). */
 template <typename V>
 inline constexpr bool is_dense_row_major_dataset_view_v =
   is_padded_dataset_view_v<V> || is_standard_dataset_view_v<V>;

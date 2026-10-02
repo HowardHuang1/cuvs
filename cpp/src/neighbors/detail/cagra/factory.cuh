@@ -118,7 +118,7 @@ auto make_key(const cagra::search_params& params,
               const DatasetT& dataset,
               cuvs::distance::DistanceType metric,
               const void* dataset_norms)
-  -> std::enable_if_t<cuvs::neighbors::is_vpq_dataset_view_v<DatasetT>, key>
+  -> std::enable_if_t<cuvs::preprocessing::quantize::pq::is_vpq_dataset_view_v<DatasetT>, key>
 {
   auto const data_view = dataset.as_matrix_view();
   return key{reinterpret_cast<uint64_t>(data_view.data_handle()),

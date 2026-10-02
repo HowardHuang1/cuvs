@@ -252,7 +252,8 @@ auto select_sort_bbq_kernel(uint32_t degree) -> sort_bbq_kernel_type<DataT>
 }
 
 template <typename DataT>
-auto select_sort_quantizers(cuvs::neighbors::device_bbq_dataset_view<DataT, int64_t> const& dataset)
+auto select_sort_quantizers(
+  cuvs::preprocessing::quantize::bbq::device_bbq_dataset_view<DataT, int64_t> const& dataset)
   -> std::pair<bbq_quantizer_view_t<DataT, int64_t>, bbq_quantizer_view_t<DataT, int64_t>>
 {
   using bbq_code_layout = cuvs::preprocessing::quantize::bbq::bbq_code_layout;
@@ -280,10 +281,11 @@ auto select_sort_quantizers(cuvs::neighbors::device_bbq_dataset_view<DataT, int6
 }
 
 template <typename DataT>
-void sort_knn_graph_bbq_impl(raft::resources const& res,
-                             cuvs::distance::DistanceType metric,
-                             cuvs::neighbors::device_bbq_dataset_view<DataT, int64_t> dataset,
-                             raft::host_matrix_view<uint32_t, int64_t, raft::row_major> knn_graph)
+void sort_knn_graph_bbq_impl(
+  raft::resources const& res,
+  cuvs::distance::DistanceType metric,
+  cuvs::preprocessing::quantize::bbq::device_bbq_dataset_view<DataT, int64_t> dataset,
+  raft::host_matrix_view<uint32_t, int64_t, raft::row_major> knn_graph)
 {
   namespace bbq = cuvs::preprocessing::quantize::bbq;
 
@@ -369,13 +371,14 @@ CUVS_DEFINE_CAGRA_GRAPH_SORT(uint8_t)
 
 #undef CUVS_DEFINE_CAGRA_GRAPH_SORT
 
-#define CUVS_DEFINE_CAGRA_GRAPH_SORT_BBQ(DataT)                                                 \
-  void sort_knn_graph_bbq(raft::resources const& res,                                           \
-                          cuvs::distance::DistanceType metric,                                  \
-                          cuvs::neighbors::device_bbq_dataset_view<DataT, int64_t> dataset,     \
-                          raft::host_matrix_view<uint32_t, int64_t, raft::row_major> knn_graph) \
-  {                                                                                             \
-    sort_knn_graph_bbq_impl(res, metric, dataset, knn_graph);                                   \
+#define CUVS_DEFINE_CAGRA_GRAPH_SORT_BBQ(DataT)                                          \
+  void sort_knn_graph_bbq(                                                               \
+    raft::resources const& res,                                                          \
+    cuvs::distance::DistanceType metric,                                                 \
+    cuvs::preprocessing::quantize::bbq::device_bbq_dataset_view<DataT, int64_t> dataset, \
+    raft::host_matrix_view<uint32_t, int64_t, raft::row_major> knn_graph)                \
+  {                                                                                      \
+    sort_knn_graph_bbq_impl(res, metric, dataset, knn_graph);                            \
   }
 
 CUVS_DEFINE_CAGRA_GRAPH_SORT_BBQ(float)

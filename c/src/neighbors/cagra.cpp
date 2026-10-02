@@ -73,9 +73,9 @@ constexpr auto sg_cagra_index_layout_from_view()
     return sg_cagra_c_api_index_box::dataset_layout::device_standard;
   } else if constexpr (cuvs::neighbors::is_device_padded_dataset_view_v<DatasetViewT>) {
     return sg_cagra_c_api_index_box::dataset_layout::device_padded;
-  } else if constexpr (cuvs::neighbors::is_device_vpq_dataset_view_v<DatasetViewT>) {
+  } else if constexpr (cuvs::preprocessing::quantize::pq::is_device_vpq_dataset_view_v<DatasetViewT>) {
     return sg_cagra_c_api_index_box::dataset_layout::device_vpq;
-  } else if constexpr (cuvs::neighbors::is_device_bbq_dataset_view_v<DatasetViewT>) {
+  } else if constexpr (cuvs::preprocessing::quantize::bbq::is_device_bbq_dataset_view_v<DatasetViewT>) {
     return sg_cagra_c_api_index_box::dataset_layout::device_bbq;
   } else if constexpr (cuvs::neighbors::is_host_standard_dataset_view_v<DatasetViewT>) {
     return sg_cagra_c_api_index_box::dataset_layout::host_standard;
@@ -120,7 +120,7 @@ static void with_index_by_layout(sg_cagra_c_api_index_box* box,
     }
     case sg_cagra_c_api_index_box::dataset_layout::device_vpq: {
       using index_t = cuvs::neighbors::cagra::
-        index<T, IdxT, cuvs::neighbors::device_vpq_dataset_view<half, int64_t>>;
+        index<T, IdxT, cuvs::preprocessing::quantize::pq::device_vpq_dataset_view<half, int64_t>>;
       auto* idx = reinterpret_cast<index_t*>(box->index_ptr);
       fn(*idx);
       break;
@@ -410,7 +410,7 @@ static void with_dataset_view(cuvsDataset_t dataset, Fn&& fn)
 }
 
 template <typename T>
-void validate_bbq_layouts(cuvs::neighbors::device_bbq_dataset_view<T, int64_t> const& dataset)
+void validate_bbq_layouts(cuvs::preprocessing::quantize::bbq::device_bbq_dataset_view<T, int64_t> const& dataset)
 {
   using layout_t = cuvs::preprocessing::quantize::bbq::bbq_code_layout;
   if (dataset.data().quantizers.size() == 1) {
@@ -446,9 +446,9 @@ auto get_cpp_bbq_quantizer_view(cuvsBbqQuantizer_t quantizer)
 
 template <typename T>
 auto make_bbq_dataset_view(cuvsBbqQuantizer_t* quantizers, std::size_t num_quantizers)
-  -> std::unique_ptr<cuvs::neighbors::device_bbq_dataset_view<T, int64_t>>
+  -> std::unique_ptr<cuvs::preprocessing::quantize::bbq::device_bbq_dataset_view<T, int64_t>>
 {
-  using dataset_view_t = cuvs::neighbors::device_bbq_dataset_view<T, int64_t>;
+  using dataset_view_t = cuvs::preprocessing::quantize::bbq::device_bbq_dataset_view<T, int64_t>;
   auto dataset         = std::make_unique<dataset_view_t>();
   int64_t expected_rows{-1};
   uint32_t expected_dim{};
@@ -481,7 +481,7 @@ void make_and_bind_bbq_dataset(cuvsBbqQuantizer_t* quantizers,
                                DLDataType dtype,
                                cuvsDataset_t* output)
 {
-  using dataset_view_t = cuvs::neighbors::device_bbq_dataset_view<T, int64_t>;
+  using dataset_view_t = cuvs::preprocessing::quantize::bbq::device_bbq_dataset_view<T, int64_t>;
   auto view            = make_bbq_dataset_view<T>(quantizers, num_quantizers);
   validate_bbq_layouts(*view);
 
@@ -495,8 +495,8 @@ void make_and_bind_bbq_dataset(cuvsBbqQuantizer_t* quantizers,
   *output              = handle.release();
 }
 
-using device_vpq_owner_t = cuvs::neighbors::device_vpq_dataset<half, int64_t>;
-using device_vpq_view_t  = cuvs::neighbors::device_vpq_dataset_view<half, int64_t>;
+using device_vpq_owner_t = cuvs::preprocessing::quantize::pq::device_vpq_dataset<half, int64_t>;
+using device_vpq_view_t  = cuvs::preprocessing::quantize::pq::device_vpq_dataset_view<half, int64_t>;
 
 static void bind_vpq_owner_to_dataset(std::unique_ptr<device_vpq_owner_t> owner,
                                       cuvsDataset_t* output)
@@ -515,9 +515,9 @@ static void bind_vpq_owner_to_dataset(std::unique_ptr<device_vpq_owner_t> owner,
 }
 
 static auto make_cpp_vpq_params(cuvsPqParams const& params)
-  -> cuvs::neighbors::vpq_params
+  -> cuvs::preprocessing::quantize::pq::vpq_params
 {
-  auto out                            = cuvs::neighbors::vpq_params{};
+  auto out                            = cuvs::preprocessing::quantize::pq::vpq_params{};
   out.pq_bits                         = params.pq_bits;
   out.pq_dim                          = params.pq_dim;
   out.vq_n_centers                    = params.vq_n_centers;
@@ -1119,11 +1119,11 @@ void _serialize(cuvsResources_t res, const char *filename,
   with_index_by_layout<T, uint32_t,
                        true>(box, null_handle_err, "", [&](auto &idx) {
     using index_dataset_view_t = std::remove_cvref_t<decltype(idx.dataset())>;
-    if constexpr (cuvs::neighbors::is_bbq_dataset_view_v<index_dataset_view_t>) {
+    if constexpr (cuvs::preprocessing::quantize::bbq::is_bbq_dataset_view_v<index_dataset_view_t>) {
       RAFT_EXPECTS(!include_dataset,
                    "cuvsCagraSerializeGraphAndDataset is not supported for BBQ indices");
       cuvs::neighbors::cagra::serialize(*res_ptr, std::string(filename), idx);
-    } else if constexpr (cuvs::neighbors::is_vpq_dataset_view_v<index_dataset_view_t>) {
+    } else if constexpr (cuvs::preprocessing::quantize::pq::is_vpq_dataset_view_v<index_dataset_view_t>) {
       RAFT_EXPECTS(
         !include_dataset,
         "cuvsCagraSerializeGraphAndDataset is not supported for PQ indices; serialize the PQ "
@@ -1295,8 +1295,8 @@ void _serialize_to_hnswlib(cuvsResources_t res, const char *filename,
       "cuvsCagraSerializeToHnswlib: host indices are allowed",
       [&](auto &idx) {
         using index_dataset_view_t = std::remove_cvref_t<decltype(idx.dataset())>;
-        if constexpr (cuvs::neighbors::is_vpq_dataset_view_v<index_dataset_view_t> ||
-                      cuvs::neighbors::is_bbq_dataset_view_v<index_dataset_view_t>) {
+        if constexpr (cuvs::preprocessing::quantize::pq::is_vpq_dataset_view_v<index_dataset_view_t> ||
+                      cuvs::preprocessing::quantize::bbq::is_bbq_dataset_view_v<index_dataset_view_t>) {
           RAFT_FAIL("cuvsCagraSerializeToHnswlib is not supported for quantized dataset layouts");
         } else {
           cuvs::neighbors::cagra::serialize_to_hnswlib(
@@ -1378,8 +1378,8 @@ void get_dataset_view(cuvsCagraIndex_t index, DLManagedTensor* dataset)
     "cuvsCagraIndexGetDataset: host indices are allowed",
     [&](auto& idx) {
       using index_dataset_view_t = std::remove_cvref_t<decltype(idx.dataset())>;
-      if constexpr (cuvs::neighbors::is_vpq_dataset_view_v<index_dataset_view_t> ||
-                    cuvs::neighbors::is_bbq_dataset_view_v<index_dataset_view_t>) {
+      if constexpr (cuvs::preprocessing::quantize::pq::is_vpq_dataset_view_v<index_dataset_view_t> ||
+                    cuvs::preprocessing::quantize::bbq::is_bbq_dataset_view_v<index_dataset_view_t>) {
         RAFT_FAIL(
           "cuvsCagraIndexGetDataset does not expose quantized datasets as dense DLPack tensors");
       } else {
@@ -1921,8 +1921,8 @@ static void build_dispatch_on_mem_type_and_layout(raft::resources* res_ptr,
   if (dataset->layout == CUVS_DATASET_LAYOUT_BBQ) {
     RAFT_EXPECTS(dataset->mem_type == CUVS_DATASET_MEM_TYPE_DEVICE,
                  "cuvsCagraBuild: BBQ dataset must be device-resident");
-    using owner_t = cuvs::neighbors::device_bbq_dataset<T, int64_t>;
-    using view_t  = cuvs::neighbors::device_bbq_dataset_view<T, int64_t>;
+    using owner_t = cuvs::preprocessing::quantize::bbq::device_bbq_dataset<T, int64_t>;
+    using view_t  = cuvs::preprocessing::quantize::bbq::device_bbq_dataset_view<T, int64_t>;
     with_dataset_view<owner_t, view_t>(dataset, [&](auto const& view) {
       build_index_from_dataset_view<T>(res_ptr, params, view, index);
     });
@@ -2302,7 +2302,7 @@ extern "C" cuvsError_t cuvsCagraMergeParamsDestroy(cuvsCagraMergeParams_t params
 extern "C" cuvsError_t cuvsCagraCompressionParamsCreate(cuvsCagraCompressionParams_t* params)
 {
   return cuvs::core::translate_exceptions([=] {
-    auto ps = cuvs::neighbors::vpq_params();
+    auto ps = cuvs::preprocessing::quantize::pq::vpq_params();
     *params =
       new cuvsCagraCompressionParams{.pq_bits                     = ps.pq_bits,
                                      .pq_dim                      = ps.pq_dim,

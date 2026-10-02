@@ -5,6 +5,7 @@
 #pragma once
 
 #include <cuvs/neighbors/common.hpp>
+#include <cuvs/preprocessing/quantize/pq.hpp>
 #include <cuvs/util/file_io.hpp>
 #include <raft/core/device_mdarray.hpp>
 #include <raft/core/host_mdarray.hpp>
@@ -415,7 +416,7 @@ auto deserialize_host_dense(raft::resources const& res, std::istream& is)
 
 template <typename DataT, typename IdxT>
 auto deserialize_vpq(raft::resources const& res, std::istream& is)
-  -> std::unique_ptr<device_vpq_dataset<DataT, IdxT>>
+  -> std::unique_ptr<cuvs::preprocessing::quantize::pq::device_vpq_dataset<DataT, IdxT>>
 {
   auto n_rows             = raft::deserialize_scalar<IdxT>(res, is);
   auto dim                = raft::deserialize_scalar<uint32_t>(res, is);
@@ -435,7 +436,7 @@ auto deserialize_vpq(raft::resources const& res, std::istream& is)
   raft::deserialize_mdspan(res, is, pq_code_book.view());
   raft::deserialize_mdspan(res, is, data.view());
 
-  using owning_t = device_vpq_dataset<DataT, IdxT>;
+  using owning_t = cuvs::preprocessing::quantize::pq::device_vpq_dataset<DataT, IdxT>;
   return std::make_unique<owning_t>(
     std::move(data), std::move(vq_code_book), std::move(pq_code_book));
 }

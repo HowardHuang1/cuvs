@@ -12,6 +12,7 @@
 #include <cuvs/neighbors/ivf_pq.hpp>
 #include <cuvs/neighbors/nn_descent.hpp>
 #include <cuvs/preprocessing/quantize/bbq.hpp>
+#include <cuvs/preprocessing/quantize/pq.hpp>
 #include <cuvs/util/file_io.hpp>
 
 #include <raft/core/device_mdarray.hpp>
@@ -955,20 +956,21 @@ using host_standard_index = index<T, IdxT, cuvs::neighbors::host_standard_datase
 /** CAGRA index with a device-resident VPQ dataset. */
 template <typename T, typename IdxT = uint32_t, typename CodebookT = half>
 using device_pq_index =
-  index<T, IdxT, cuvs::neighbors::device_vpq_dataset_view<CodebookT, int64_t>>;
+  index<T, IdxT, cuvs::preprocessing::quantize::pq::device_vpq_dataset_view<CodebookT, int64_t>>;
 
 /** CAGRA index with a device-resident BBQ-quantized dataset. */
 template <typename T, typename IdxT = uint32_t>
-using device_bbq_index = index<T, IdxT, cuvs::neighbors::device_bbq_dataset_view<T, int64_t>>;
+using device_bbq_index =
+  index<T, IdxT, cuvs::preprocessing::quantize::bbq::device_bbq_dataset_view<T, int64_t>>;
 
 /** Index type returned by `cagra::build(res, params, dataset_view)`. */
 template <typename DatasetViewT>
-using cagra_index_t =
-  std::conditional_t<cuvs::neighbors::is_device_vpq_f16_dataset_view_v<DatasetViewT>,
-                     device_pq_index<float>,
-                     index<cuvs::neighbors::cagra_view_element_type_t<DatasetViewT>,
-                           uint32_t,
-                           cuvs::neighbors::dataset_view_type_t<DatasetViewT>>>;
+using cagra_index_t = std::conditional_t<
+  cuvs::preprocessing::quantize::pq::is_device_vpq_f16_dataset_view_v<DatasetViewT>,
+  device_pq_index<float>,
+  index<cuvs::neighbors::cagra_view_element_type_t<DatasetViewT>,
+        uint32_t,
+        cuvs::neighbors::dataset_view_type_t<DatasetViewT>>>;
 
 /**
  * @}
@@ -1020,11 +1022,12 @@ using cagra_index_t =
  * @param[in] res raft resources
  * @param[in] params CAGRA index build parameters
  * @param[in] dataset device VPQ dataset view
- * @return built `index<float, uint32_t, device_vpq_dataset_view<half, int64_t>>`
+ * @return built `index<float, uint32_t,
+ * cuvs::preprocessing::quantize::pq::device_vpq_dataset_view<half, int64_t>>`
  */
 auto build(raft::resources const& res,
            const cuvs::neighbors::cagra::index_params& params,
-           cuvs::neighbors::device_vpq_dataset_view<half, int64_t> const& dataset)
+           cuvs::preprocessing::quantize::pq::device_vpq_dataset_view<half, int64_t> const& dataset)
   -> cuvs::neighbors::cagra::device_pq_index<float, uint32_t, half>;
 
 /**
@@ -1236,30 +1239,34 @@ auto build(raft::resources const& res,
  * @param[in] dataset device BBQ dataset view [n_rows, dim]
  * @return built `device_bbq_index<float, uint32_t>`
  */
-auto build(raft::resources const& res,
-           const cuvs::neighbors::cagra::index_params& params,
-           cuvs::neighbors::device_bbq_dataset_view<float, int64_t> const& dataset)
+auto build(
+  raft::resources const& res,
+  const cuvs::neighbors::cagra::index_params& params,
+  cuvs::preprocessing::quantize::bbq::device_bbq_dataset_view<float, int64_t> const& dataset)
   -> cuvs::neighbors::cagra::device_bbq_index<float, uint32_t>;
 
 /** @copydoc build(raft::resources const& res, const cuvs::neighbors::cagra::index_params& params,
- * cuvs::neighbors::device_bbq_dataset_view<float, int64_t> const& dataset) */
-auto build(raft::resources const& res,
-           const cuvs::neighbors::cagra::index_params& params,
-           cuvs::neighbors::device_bbq_dataset_view<half, int64_t> const& dataset)
+ * cuvs::preprocessing::quantize::bbq::device_bbq_dataset_view<float, int64_t> const& dataset) */
+auto build(
+  raft::resources const& res,
+  const cuvs::neighbors::cagra::index_params& params,
+  cuvs::preprocessing::quantize::bbq::device_bbq_dataset_view<half, int64_t> const& dataset)
   -> cuvs::neighbors::cagra::device_bbq_index<half, uint32_t>;
 
 /** @copydoc build(raft::resources const& res, const cuvs::neighbors::cagra::index_params& params,
- * cuvs::neighbors::device_bbq_dataset_view<float, int64_t> const& dataset) */
-auto build(raft::resources const& res,
-           const cuvs::neighbors::cagra::index_params& params,
-           cuvs::neighbors::device_bbq_dataset_view<int8_t, int64_t> const& dataset)
+ * cuvs::preprocessing::quantize::bbq::device_bbq_dataset_view<float, int64_t> const& dataset) */
+auto build(
+  raft::resources const& res,
+  const cuvs::neighbors::cagra::index_params& params,
+  cuvs::preprocessing::quantize::bbq::device_bbq_dataset_view<int8_t, int64_t> const& dataset)
   -> cuvs::neighbors::cagra::device_bbq_index<int8_t, uint32_t>;
 
 /** @copydoc build(raft::resources const& res, const cuvs::neighbors::cagra::index_params& params,
- * cuvs::neighbors::device_bbq_dataset_view<float, int64_t> const& dataset) */
-auto build(raft::resources const& res,
-           const cuvs::neighbors::cagra::index_params& params,
-           cuvs::neighbors::device_bbq_dataset_view<uint8_t, int64_t> const& dataset)
+ * cuvs::preprocessing::quantize::bbq::device_bbq_dataset_view<float, int64_t> const& dataset) */
+auto build(
+  raft::resources const& res,
+  const cuvs::neighbors::cagra::index_params& params,
+  cuvs::preprocessing::quantize::bbq::device_bbq_dataset_view<uint8_t, int64_t> const& dataset)
   -> cuvs::neighbors::cagra::device_bbq_index<uint8_t, uint32_t>;
 
 /**
@@ -4728,158 +4735,256 @@ auto update_dataset(
 auto update_dataset(
   raft::resources const& res,
   index<float, uint32_t, host_standard_dataset_view<float, int64_t>>&& cagra_index,
-  device_vpq_dataset_view<half, int64_t> dataset)
-  -> index<float, uint32_t, device_vpq_dataset_view<half, int64_t>>;
-auto update_dataset(raft::resources const& res,
-                    index<half, uint32_t, host_standard_dataset_view<half, int64_t>>&& cagra_index,
-                    device_vpq_dataset_view<half, int64_t> dataset)
-  -> index<half, uint32_t, device_vpq_dataset_view<half, int64_t>>;
+  cuvs::preprocessing::quantize::pq::device_vpq_dataset_view<half, int64_t> dataset)
+  -> index<float,
+           uint32_t,
+           cuvs::preprocessing::quantize::pq::device_vpq_dataset_view<half, int64_t>>;
+auto update_dataset(
+  raft::resources const& res,
+  index<half, uint32_t, host_standard_dataset_view<half, int64_t>>&& cagra_index,
+  cuvs::preprocessing::quantize::pq::device_vpq_dataset_view<half, int64_t> dataset)
+  -> index<half,
+           uint32_t,
+           cuvs::preprocessing::quantize::pq::device_vpq_dataset_view<half, int64_t>>;
 auto update_dataset(
   raft::resources const& res,
   index<int8_t, uint32_t, host_standard_dataset_view<int8_t, int64_t>>&& cagra_index,
-  device_vpq_dataset_view<half, int64_t> dataset)
-  -> index<int8_t, uint32_t, device_vpq_dataset_view<half, int64_t>>;
+  cuvs::preprocessing::quantize::pq::device_vpq_dataset_view<half, int64_t> dataset)
+  -> index<int8_t,
+           uint32_t,
+           cuvs::preprocessing::quantize::pq::device_vpq_dataset_view<half, int64_t>>;
 auto update_dataset(
   raft::resources const& res,
   index<uint8_t, uint32_t, host_standard_dataset_view<uint8_t, int64_t>>&& cagra_index,
-  device_vpq_dataset_view<half, int64_t> dataset)
-  -> index<uint8_t, uint32_t, device_vpq_dataset_view<half, int64_t>>;
+  cuvs::preprocessing::quantize::pq::device_vpq_dataset_view<half, int64_t> dataset)
+  -> index<uint8_t,
+           uint32_t,
+           cuvs::preprocessing::quantize::pq::device_vpq_dataset_view<half, int64_t>>;
 
-auto update_dataset(raft::resources const& res,
-                    index<float, uint32_t, host_padded_dataset_view<float, int64_t>>&& cagra_index,
-                    device_vpq_dataset_view<half, int64_t> dataset)
-  -> index<float, uint32_t, device_vpq_dataset_view<half, int64_t>>;
-auto update_dataset(raft::resources const& res,
-                    index<half, uint32_t, host_padded_dataset_view<half, int64_t>>&& cagra_index,
-                    device_vpq_dataset_view<half, int64_t> dataset)
-  -> index<half, uint32_t, device_vpq_dataset_view<half, int64_t>>;
+auto update_dataset(
+  raft::resources const& res,
+  index<float, uint32_t, host_padded_dataset_view<float, int64_t>>&& cagra_index,
+  cuvs::preprocessing::quantize::pq::device_vpq_dataset_view<half, int64_t> dataset)
+  -> index<float,
+           uint32_t,
+           cuvs::preprocessing::quantize::pq::device_vpq_dataset_view<half, int64_t>>;
+auto update_dataset(
+  raft::resources const& res,
+  index<half, uint32_t, host_padded_dataset_view<half, int64_t>>&& cagra_index,
+  cuvs::preprocessing::quantize::pq::device_vpq_dataset_view<half, int64_t> dataset)
+  -> index<half,
+           uint32_t,
+           cuvs::preprocessing::quantize::pq::device_vpq_dataset_view<half, int64_t>>;
 auto update_dataset(
   raft::resources const& res,
   index<int8_t, uint32_t, host_padded_dataset_view<int8_t, int64_t>>&& cagra_index,
-  device_vpq_dataset_view<half, int64_t> dataset)
-  -> index<int8_t, uint32_t, device_vpq_dataset_view<half, int64_t>>;
+  cuvs::preprocessing::quantize::pq::device_vpq_dataset_view<half, int64_t> dataset)
+  -> index<int8_t,
+           uint32_t,
+           cuvs::preprocessing::quantize::pq::device_vpq_dataset_view<half, int64_t>>;
 auto update_dataset(
   raft::resources const& res,
   index<uint8_t, uint32_t, host_padded_dataset_view<uint8_t, int64_t>>&& cagra_index,
-  device_vpq_dataset_view<half, int64_t> dataset)
-  -> index<uint8_t, uint32_t, device_vpq_dataset_view<half, int64_t>>;
+  cuvs::preprocessing::quantize::pq::device_vpq_dataset_view<half, int64_t> dataset)
+  -> index<uint8_t,
+           uint32_t,
+           cuvs::preprocessing::quantize::pq::device_vpq_dataset_view<half, int64_t>>;
 
 auto update_dataset(
   raft::resources const& res,
   index<float, uint32_t, device_standard_dataset_view<float, int64_t>>&& cagra_index,
-  device_vpq_dataset_view<half, int64_t> dataset)
-  -> index<float, uint32_t, device_vpq_dataset_view<half, int64_t>>;
+  cuvs::preprocessing::quantize::pq::device_vpq_dataset_view<half, int64_t> dataset)
+  -> index<float,
+           uint32_t,
+           cuvs::preprocessing::quantize::pq::device_vpq_dataset_view<half, int64_t>>;
 auto update_dataset(
   raft::resources const& res,
   index<half, uint32_t, device_standard_dataset_view<half, int64_t>>&& cagra_index,
-  device_vpq_dataset_view<half, int64_t> dataset)
-  -> index<half, uint32_t, device_vpq_dataset_view<half, int64_t>>;
+  cuvs::preprocessing::quantize::pq::device_vpq_dataset_view<half, int64_t> dataset)
+  -> index<half,
+           uint32_t,
+           cuvs::preprocessing::quantize::pq::device_vpq_dataset_view<half, int64_t>>;
 auto update_dataset(
   raft::resources const& res,
   index<int8_t, uint32_t, device_standard_dataset_view<int8_t, int64_t>>&& cagra_index,
-  device_vpq_dataset_view<half, int64_t> dataset)
-  -> index<int8_t, uint32_t, device_vpq_dataset_view<half, int64_t>>;
+  cuvs::preprocessing::quantize::pq::device_vpq_dataset_view<half, int64_t> dataset)
+  -> index<int8_t,
+           uint32_t,
+           cuvs::preprocessing::quantize::pq::device_vpq_dataset_view<half, int64_t>>;
 auto update_dataset(
   raft::resources const& res,
   index<uint8_t, uint32_t, device_standard_dataset_view<uint8_t, int64_t>>&& cagra_index,
-  device_vpq_dataset_view<half, int64_t> dataset)
-  -> index<uint8_t, uint32_t, device_vpq_dataset_view<half, int64_t>>;
+  cuvs::preprocessing::quantize::pq::device_vpq_dataset_view<half, int64_t> dataset)
+  -> index<uint8_t,
+           uint32_t,
+           cuvs::preprocessing::quantize::pq::device_vpq_dataset_view<half, int64_t>>;
 
 auto update_dataset(
   raft::resources const& res,
   index<float, uint32_t, device_padded_dataset_view<float, int64_t>>&& cagra_index,
-  device_vpq_dataset_view<half, int64_t> dataset)
-  -> index<float, uint32_t, device_vpq_dataset_view<half, int64_t>>;
-auto update_dataset(raft::resources const& res,
-                    index<half, uint32_t, device_padded_dataset_view<half, int64_t>>&& cagra_index,
-                    device_vpq_dataset_view<half, int64_t> dataset)
-  -> index<half, uint32_t, device_vpq_dataset_view<half, int64_t>>;
+  cuvs::preprocessing::quantize::pq::device_vpq_dataset_view<half, int64_t> dataset)
+  -> index<float,
+           uint32_t,
+           cuvs::preprocessing::quantize::pq::device_vpq_dataset_view<half, int64_t>>;
+auto update_dataset(
+  raft::resources const& res,
+  index<half, uint32_t, device_padded_dataset_view<half, int64_t>>&& cagra_index,
+  cuvs::preprocessing::quantize::pq::device_vpq_dataset_view<half, int64_t> dataset)
+  -> index<half,
+           uint32_t,
+           cuvs::preprocessing::quantize::pq::device_vpq_dataset_view<half, int64_t>>;
 auto update_dataset(
   raft::resources const& res,
   index<int8_t, uint32_t, device_padded_dataset_view<int8_t, int64_t>>&& cagra_index,
-  device_vpq_dataset_view<half, int64_t> dataset)
-  -> index<int8_t, uint32_t, device_vpq_dataset_view<half, int64_t>>;
+  cuvs::preprocessing::quantize::pq::device_vpq_dataset_view<half, int64_t> dataset)
+  -> index<int8_t,
+           uint32_t,
+           cuvs::preprocessing::quantize::pq::device_vpq_dataset_view<half, int64_t>>;
 auto update_dataset(
   raft::resources const& res,
   index<uint8_t, uint32_t, device_padded_dataset_view<uint8_t, int64_t>>&& cagra_index,
-  device_vpq_dataset_view<half, int64_t> dataset)
-  -> index<uint8_t, uint32_t, device_vpq_dataset_view<half, int64_t>>;
-
-auto update_dataset(raft::resources const& res,
-                    index<float, uint32_t, device_vpq_dataset_view<half, int64_t>>&& cagra_index,
-                    device_padded_dataset_view<float, int64_t> dataset)
-  -> index<float, uint32_t, device_padded_dataset_view<float, int64_t>>;
-auto update_dataset(raft::resources const& res,
-                    index<half, uint32_t, device_vpq_dataset_view<half, int64_t>>&& cagra_index,
-                    device_padded_dataset_view<half, int64_t> dataset)
-  -> index<half, uint32_t, device_padded_dataset_view<half, int64_t>>;
-auto update_dataset(raft::resources const& res,
-                    index<int8_t, uint32_t, device_vpq_dataset_view<half, int64_t>>&& cagra_index,
-                    device_padded_dataset_view<int8_t, int64_t> dataset)
-  -> index<int8_t, uint32_t, device_padded_dataset_view<int8_t, int64_t>>;
-auto update_dataset(raft::resources const& res,
-                    index<uint8_t, uint32_t, device_vpq_dataset_view<half, int64_t>>&& cagra_index,
-                    device_padded_dataset_view<uint8_t, int64_t> dataset)
-  -> index<uint8_t, uint32_t, device_padded_dataset_view<uint8_t, int64_t>>;
-
-auto update_dataset(raft::resources const& res,
-                    index<float, uint32_t, device_vpq_dataset_view<half, int64_t>>&& cagra_index,
-                    device_vpq_dataset_view<half, int64_t> dataset)
-  -> index<float, uint32_t, device_vpq_dataset_view<half, int64_t>>;
-auto update_dataset(raft::resources const& res,
-                    index<half, uint32_t, device_vpq_dataset_view<half, int64_t>>&& cagra_index,
-                    device_vpq_dataset_view<half, int64_t> dataset)
-  -> index<half, uint32_t, device_vpq_dataset_view<half, int64_t>>;
-auto update_dataset(raft::resources const& res,
-                    index<int8_t, uint32_t, device_vpq_dataset_view<half, int64_t>>&& cagra_index,
-                    device_vpq_dataset_view<half, int64_t> dataset)
-  -> index<int8_t, uint32_t, device_vpq_dataset_view<half, int64_t>>;
-auto update_dataset(raft::resources const& res,
-                    index<uint8_t, uint32_t, device_vpq_dataset_view<half, int64_t>>&& cagra_index,
-                    device_vpq_dataset_view<half, int64_t> dataset)
-  -> index<uint8_t, uint32_t, device_vpq_dataset_view<half, int64_t>>;
-
-auto update_dataset(raft::resources const& res,
-                    index<float, uint32_t, device_bbq_dataset_view<float, int64_t>>&& cagra_index,
-                    device_padded_dataset_view<float, int64_t> dataset)
-  -> index<float, uint32_t, device_padded_dataset_view<float, int64_t>>;
-
-auto update_dataset(raft::resources const& res,
-                    index<half, uint32_t, device_bbq_dataset_view<half, int64_t>>&& cagra_index,
-                    device_padded_dataset_view<half, int64_t> dataset)
-  -> index<half, uint32_t, device_padded_dataset_view<half, int64_t>>;
-
-auto update_dataset(raft::resources const& res,
-                    index<int8_t, uint32_t, device_bbq_dataset_view<int8_t, int64_t>>&& cagra_index,
-                    device_padded_dataset_view<int8_t, int64_t> dataset)
-  -> index<int8_t, uint32_t, device_padded_dataset_view<int8_t, int64_t>>;
+  cuvs::preprocessing::quantize::pq::device_vpq_dataset_view<half, int64_t> dataset)
+  -> index<uint8_t,
+           uint32_t,
+           cuvs::preprocessing::quantize::pq::device_vpq_dataset_view<half, int64_t>>;
 
 auto update_dataset(
   raft::resources const& res,
-  index<uint8_t, uint32_t, device_bbq_dataset_view<uint8_t, int64_t>>&& cagra_index,
+  index<float,
+        uint32_t,
+        cuvs::preprocessing::quantize::pq::device_vpq_dataset_view<half, int64_t>>&& cagra_index,
+  device_padded_dataset_view<float, int64_t> dataset)
+  -> index<float, uint32_t, device_padded_dataset_view<float, int64_t>>;
+auto update_dataset(
+  raft::resources const& res,
+  index<half, uint32_t, cuvs::preprocessing::quantize::pq::device_vpq_dataset_view<half, int64_t>>&&
+    cagra_index,
+  device_padded_dataset_view<half, int64_t> dataset)
+  -> index<half, uint32_t, device_padded_dataset_view<half, int64_t>>;
+auto update_dataset(
+  raft::resources const& res,
+  index<int8_t,
+        uint32_t,
+        cuvs::preprocessing::quantize::pq::device_vpq_dataset_view<half, int64_t>>&& cagra_index,
+  device_padded_dataset_view<int8_t, int64_t> dataset)
+  -> index<int8_t, uint32_t, device_padded_dataset_view<int8_t, int64_t>>;
+auto update_dataset(
+  raft::resources const& res,
+  index<uint8_t,
+        uint32_t,
+        cuvs::preprocessing::quantize::pq::device_vpq_dataset_view<half, int64_t>>&& cagra_index,
   device_padded_dataset_view<uint8_t, int64_t> dataset)
   -> index<uint8_t, uint32_t, device_padded_dataset_view<uint8_t, int64_t>>;
 
-auto update_dataset(raft::resources const& res,
-                    index<float, uint32_t, device_bbq_dataset_view<float, int64_t>>&& cagra_index,
-                    device_vpq_dataset_view<half, int64_t> dataset)
-  -> index<float, uint32_t, device_vpq_dataset_view<half, int64_t>>;
-
-auto update_dataset(raft::resources const& res,
-                    index<half, uint32_t, device_bbq_dataset_view<half, int64_t>>&& cagra_index,
-                    device_vpq_dataset_view<half, int64_t> dataset)
-  -> index<half, uint32_t, device_vpq_dataset_view<half, int64_t>>;
-
-auto update_dataset(raft::resources const& res,
-                    index<int8_t, uint32_t, device_bbq_dataset_view<int8_t, int64_t>>&& cagra_index,
-                    device_vpq_dataset_view<half, int64_t> dataset)
-  -> index<int8_t, uint32_t, device_vpq_dataset_view<half, int64_t>>;
+auto update_dataset(
+  raft::resources const& res,
+  index<float,
+        uint32_t,
+        cuvs::preprocessing::quantize::pq::device_vpq_dataset_view<half, int64_t>>&& cagra_index,
+  cuvs::preprocessing::quantize::pq::device_vpq_dataset_view<half, int64_t> dataset)
+  -> index<float,
+           uint32_t,
+           cuvs::preprocessing::quantize::pq::device_vpq_dataset_view<half, int64_t>>;
+auto update_dataset(
+  raft::resources const& res,
+  index<half, uint32_t, cuvs::preprocessing::quantize::pq::device_vpq_dataset_view<half, int64_t>>&&
+    cagra_index,
+  cuvs::preprocessing::quantize::pq::device_vpq_dataset_view<half, int64_t> dataset)
+  -> index<half,
+           uint32_t,
+           cuvs::preprocessing::quantize::pq::device_vpq_dataset_view<half, int64_t>>;
+auto update_dataset(
+  raft::resources const& res,
+  index<int8_t,
+        uint32_t,
+        cuvs::preprocessing::quantize::pq::device_vpq_dataset_view<half, int64_t>>&& cagra_index,
+  cuvs::preprocessing::quantize::pq::device_vpq_dataset_view<half, int64_t> dataset)
+  -> index<int8_t,
+           uint32_t,
+           cuvs::preprocessing::quantize::pq::device_vpq_dataset_view<half, int64_t>>;
+auto update_dataset(
+  raft::resources const& res,
+  index<uint8_t,
+        uint32_t,
+        cuvs::preprocessing::quantize::pq::device_vpq_dataset_view<half, int64_t>>&& cagra_index,
+  cuvs::preprocessing::quantize::pq::device_vpq_dataset_view<half, int64_t> dataset)
+  -> index<uint8_t,
+           uint32_t,
+           cuvs::preprocessing::quantize::pq::device_vpq_dataset_view<half, int64_t>>;
 
 auto update_dataset(
   raft::resources const& res,
-  index<uint8_t, uint32_t, device_bbq_dataset_view<uint8_t, int64_t>>&& cagra_index,
-  device_vpq_dataset_view<half, int64_t> dataset)
-  -> index<uint8_t, uint32_t, device_vpq_dataset_view<half, int64_t>>;
+  index<float,
+        uint32_t,
+        cuvs::preprocessing::quantize::bbq::device_bbq_dataset_view<float, int64_t>>&& cagra_index,
+  device_padded_dataset_view<float, int64_t> dataset)
+  -> index<float, uint32_t, device_padded_dataset_view<float, int64_t>>;
+
+auto update_dataset(
+  raft::resources const& res,
+  index<half,
+        uint32_t,
+        cuvs::preprocessing::quantize::bbq::device_bbq_dataset_view<half, int64_t>>&& cagra_index,
+  device_padded_dataset_view<half, int64_t> dataset)
+  -> index<half, uint32_t, device_padded_dataset_view<half, int64_t>>;
+
+auto update_dataset(
+  raft::resources const& res,
+  index<int8_t,
+        uint32_t,
+        cuvs::preprocessing::quantize::bbq::device_bbq_dataset_view<int8_t, int64_t>>&& cagra_index,
+  device_padded_dataset_view<int8_t, int64_t> dataset)
+  -> index<int8_t, uint32_t, device_padded_dataset_view<int8_t, int64_t>>;
+
+auto update_dataset(
+  raft::resources const& res,
+  index<uint8_t,
+        uint32_t,
+        cuvs::preprocessing::quantize::bbq::device_bbq_dataset_view<uint8_t, int64_t>>&&
+    cagra_index,
+  device_padded_dataset_view<uint8_t, int64_t> dataset)
+  -> index<uint8_t, uint32_t, device_padded_dataset_view<uint8_t, int64_t>>;
+
+auto update_dataset(
+  raft::resources const& res,
+  index<float,
+        uint32_t,
+        cuvs::preprocessing::quantize::bbq::device_bbq_dataset_view<float, int64_t>>&& cagra_index,
+  cuvs::preprocessing::quantize::pq::device_vpq_dataset_view<half, int64_t> dataset)
+  -> index<float,
+           uint32_t,
+           cuvs::preprocessing::quantize::pq::device_vpq_dataset_view<half, int64_t>>;
+
+auto update_dataset(
+  raft::resources const& res,
+  index<half,
+        uint32_t,
+        cuvs::preprocessing::quantize::bbq::device_bbq_dataset_view<half, int64_t>>&& cagra_index,
+  cuvs::preprocessing::quantize::pq::device_vpq_dataset_view<half, int64_t> dataset)
+  -> index<half,
+           uint32_t,
+           cuvs::preprocessing::quantize::pq::device_vpq_dataset_view<half, int64_t>>;
+
+auto update_dataset(
+  raft::resources const& res,
+  index<int8_t,
+        uint32_t,
+        cuvs::preprocessing::quantize::bbq::device_bbq_dataset_view<int8_t, int64_t>>&& cagra_index,
+  cuvs::preprocessing::quantize::pq::device_vpq_dataset_view<half, int64_t> dataset)
+  -> index<int8_t,
+           uint32_t,
+           cuvs::preprocessing::quantize::pq::device_vpq_dataset_view<half, int64_t>>;
+
+auto update_dataset(
+  raft::resources const& res,
+  index<uint8_t,
+        uint32_t,
+        cuvs::preprocessing::quantize::bbq::device_bbq_dataset_view<uint8_t, int64_t>>&&
+    cagra_index,
+  cuvs::preprocessing::quantize::pq::device_vpq_dataset_view<half, int64_t> dataset)
+  -> index<uint8_t,
+           uint32_t,
+           cuvs::preprocessing::quantize::pq::device_vpq_dataset_view<half, int64_t>>;
 
 }  // namespace cagra
 }  // namespace neighbors

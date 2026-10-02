@@ -677,7 +677,7 @@ index<T, IdxT> build(
     // process in batches
     const uint32_t n_rows = dataset.extent(0);
 
-    using vpq_owning_t = cuvs::neighbors::device_vpq_dataset<float, int64_t>;
+    using vpq_owning_t = cuvs::preprocessing::quantize::pq::device_vpq_dataset<float, int64_t>;
     auto quantizer     = cuvs::preprocessing::quantize::pq::quantizer<float>(
       pq_params,
       vpq_owning_t(raft::make_device_matrix<uint8_t, int64_t, raft::row_major>(res, 0, 0),

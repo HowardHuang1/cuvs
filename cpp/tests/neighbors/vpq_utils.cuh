@@ -5,6 +5,7 @@
 #pragma once
 
 #include <cuvs/neighbors/common.hpp>
+#include <cuvs/preprocessing/quantize/pq.hpp>
 #include <raft/core/device_mdspan.hpp>
 #include <raft/util/integer_utils.hpp>
 
@@ -45,9 +46,10 @@ __global__ void decode_vpq_dataset_kernel(data_t* const decoded_dataset_ptr,
 }
 
 template <class data_t, class math_t>
-void decode_vpq_dataset(raft::device_matrix_view<data_t, int64_t> decoded_dataset,
-                        const cuvs::neighbors::device_vpq_dataset<math_t, int64_t>& vpq_dataset,
-                        cudaStream_t cuda_stream)
+void decode_vpq_dataset(
+  raft::device_matrix_view<data_t, int64_t> decoded_dataset,
+  const cuvs::preprocessing::quantize::pq::device_vpq_dataset<math_t, int64_t>& vpq_dataset,
+  cudaStream_t cuda_stream)
 {
   const auto dataset_size = decoded_dataset.extent(0);
   auto const data_view    = vpq_dataset.as_matrix_view();

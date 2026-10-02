@@ -83,8 +83,8 @@ constexpr bool is_valid_serialized_dataset_kind(std::uint32_t raw)
  */
 template <typename DatasetViewT>
 inline constexpr bool is_graph_only_dataset_view_v =
-  cuvs::neighbors::is_vpq_dataset_view_v<DatasetViewT> ||
-  cuvs::neighbors::is_bbq_dataset_view_v<DatasetViewT>;
+  cuvs::preprocessing::quantize::pq::is_vpq_dataset_view_v<DatasetViewT> ||
+  cuvs::preprocessing::quantize::bbq::is_bbq_dataset_view_v<DatasetViewT>;
 
 inline constexpr char const* kGraphOnlyDatasetMessage =
   "CAGRA indexes with a quantized dataset store only the graph; serialize the quantized dataset "

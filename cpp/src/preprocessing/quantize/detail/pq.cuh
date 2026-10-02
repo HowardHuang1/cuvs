@@ -56,11 +56,11 @@ inline cuvs::distance::DistanceType get_kmeans_metric(
 }
 
 inline auto to_vpq_params(const cuvs::preprocessing::quantize::pq::params& params)
-  -> cuvs::neighbors::vpq_params
+  -> cuvs::preprocessing::quantize::pq::vpq_params
 {
   auto kmeans_type = is_balanced_kmeans(params) ? cuvs::cluster::kmeans::kmeans_type::KMeansBalanced
                                                 : cuvs::cluster::kmeans::kmeans_type::KMeans;
-  return cuvs::neighbors::vpq_params{
+  return cuvs::preprocessing::quantize::pq::vpq_params{
     .pq_bits                         = params.pq_bits,
     .pq_dim                          = params.pq_dim,
     .vq_n_centers                    = params.vq_n_centers,
@@ -192,7 +192,7 @@ quantizer<MathT> build(
     pq_code_book = cuvs::neighbors::detail::train_pq<MathT>(
       res, filled_params, dataset, raft::make_const_mdspan(vq_code_book.view()));
   }
-  using owning_t = cuvs::neighbors::device_vpq_dataset<MathT, int64_t>;
+  using owning_t = cuvs::preprocessing::quantize::pq::device_vpq_dataset<MathT, int64_t>;
   return {filled_params,
           owning_t(std::move(empty_codes), std::move(vq_code_book), std::move(pq_code_book))};
 }
@@ -370,7 +370,7 @@ void inverse_transform(
 template <typename NewMathT, typename OldMathT, typename IdxT>
 void vpq_convert_math_type(
   const raft::resources& res,
-  const cuvs::neighbors::device_vpq_dataset<OldMathT, IdxT>& src,
+  const cuvs::preprocessing::quantize::pq::device_vpq_dataset<OldMathT, IdxT>& src,
   raft::device_matrix_view<NewMathT, uint32_t, raft::row_major> dst_vq_code_book,
   raft::device_matrix_view<NewMathT, uint32_t, raft::row_major> dst_pq_code_book)
 {
@@ -385,7 +385,7 @@ void vpq_convert_math_type(
                     src_view.pq_code_book);
 }
 
-inline auto make_pq_params_from_vpq(const cuvs::neighbors::vpq_params& in_params,
+inline auto make_pq_params_from_vpq(const cuvs::preprocessing::quantize::pq::vpq_params& in_params,
                                     const uint64_t n_rows)
   -> cuvs::preprocessing::quantize::pq::params
 {
@@ -411,8 +411,9 @@ inline auto make_pq_params_from_vpq(const cuvs::neighbors::vpq_params& in_params
 
 template <typename DatasetT, typename MathT, typename IdxT>
 auto vpq_build(const raft::resources& res,
-               const cuvs::neighbors::vpq_params& params,
-               const DatasetT& dataset) -> cuvs::neighbors::device_vpq_dataset<MathT, IdxT>
+               const cuvs::preprocessing::quantize::pq::vpq_params& params,
+               const DatasetT& dataset)
+  -> cuvs::preprocessing::quantize::pq::device_vpq_dataset<MathT, IdxT>
 {
   using label_t = uint32_t;
   // Use a heuristic to impute missing parameters.
@@ -440,17 +441,18 @@ auto vpq_build(const raft::resources& res,
     codes.view(),
     true);
 
-  using owning_t = cuvs::neighbors::device_vpq_dataset<MathT, IdxT>;
+  using owning_t = cuvs::preprocessing::quantize::pq::device_vpq_dataset<MathT, IdxT>;
   return owning_t(std::move(codes), std::move(vq_code_book), std::move(pq_code_book));
 }
 
 template <typename DatasetT>
 auto vpq_build_half(const raft::resources& res,
-                    const cuvs::neighbors::vpq_params& params,
-                    const DatasetT& dataset) -> cuvs::neighbors::device_vpq_dataset<half, int64_t>
+                    const cuvs::preprocessing::quantize::pq::vpq_params& params,
+                    const DatasetT& dataset)
+  -> cuvs::preprocessing::quantize::pq::device_vpq_dataset<half, int64_t>
 {
   auto old_type         = vpq_build<decltype(dataset), float, int64_t>(res, params, dataset);
-  using new_owning_t    = cuvs::neighbors::device_vpq_dataset<half, int64_t>;
+  using new_owning_t    = cuvs::preprocessing::quantize::pq::device_vpq_dataset<half, int64_t>;
   auto const old_view   = old_type.as_matrix_view();
   auto new_vq_code_book = raft::make_device_mdarray<half>(res, old_view.vq_code_book.extents());
   auto new_pq_code_book = raft::make_device_mdarray<half>(res, old_view.pq_code_book.extents());

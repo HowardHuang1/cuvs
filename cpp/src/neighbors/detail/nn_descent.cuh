@@ -2477,7 +2477,8 @@ template <typename Data_t, typename Index_t>
 template <typename DistEpilogue_t>
 void GNND<Data_t, Index_t>::local_join(
   cudaStream_t stream,
-  cuvs::neighbors::device_bbq_dataset_view<std::remove_const_t<Data_t>, int64_t> dataset,
+  cuvs::preprocessing::quantize::bbq::device_bbq_dataset_view<std::remove_const_t<Data_t>, int64_t>
+    dataset,
   DistEpilogue_t dist_epilogue)
 {
   raft::matrix::fill(res, dists_buffer_.view(), std::numeric_limits<float>::max());
@@ -2860,7 +2861,8 @@ void GNND<Data_t, Index_t>::build(Data_t* data,
 template <typename Data_t, typename Index_t>
 template <typename DistEpilogue_t>
 void GNND<Data_t, Index_t>::build(
-  cuvs::neighbors::device_bbq_dataset_view<std::remove_const_t<Data_t>, int64_t> dataset,
+  cuvs::preprocessing::quantize::bbq::device_bbq_dataset_view<std::remove_const_t<Data_t>, int64_t>
+    dataset,
   Index_t* output_graph,
   bool return_distances,
   DistData_t* output_distances,
@@ -2980,7 +2982,7 @@ void GNND<Data_t, Index_t>::build(
 template <typename DataT, typename IdxT = uint32_t>
 void build(raft::resources const& res,
            const index_params& params,
-           cuvs::neighbors::device_bbq_dataset_view<DataT, int64_t> dataset,
+           cuvs::preprocessing::quantize::bbq::device_bbq_dataset_view<DataT, int64_t> dataset,
            index<IdxT>& idx)
 {
   RAFT_EXPECTS(dataset.data().quantizers.size() > 0, "BBQ dataset must not be empty.");
@@ -3113,9 +3115,10 @@ void build(raft::resources const& res,
 }
 
 template <typename DataT, typename IdxT = uint32_t>
-index<IdxT> build(raft::resources const& res,
-                  const index_params& params,
-                  cuvs::neighbors::device_bbq_dataset_view<DataT, int64_t> dataset)
+index<IdxT> build(
+  raft::resources const& res,
+  const index_params& params,
+  cuvs::preprocessing::quantize::bbq::device_bbq_dataset_view<DataT, int64_t> dataset)
 {
   size_t graph_degree = params.graph_degree;
   if (params.intermediate_graph_degree < graph_degree) {

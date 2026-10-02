@@ -2213,10 +2213,11 @@ void build_knn_graph(
 }
 
 template <typename DataT, typename IdxT>
-void build_knn_graph(raft::resources const& res,
-                     cuvs::neighbors::device_bbq_dataset_view<DataT, int64_t> dataset,
-                     raft::host_matrix_view<IdxT, int64_t, raft::row_major> knn_graph,
-                     cuvs::neighbors::nn_descent::index_params build_params)
+void build_knn_graph(
+  raft::resources const& res,
+  cuvs::preprocessing::quantize::bbq::device_bbq_dataset_view<DataT, int64_t> dataset,
+  raft::host_matrix_view<IdxT, int64_t, raft::row_major> knn_graph,
+  cuvs::neighbors::nn_descent::index_params build_params)
 {
   raft::common::nvtx::range<cuvs::common::nvtx::domain::cuvs> fun_scope(
     "cagra::build_knn_graph<NN-DESCENT,BBQ>(%zu, %zu, %u)",
@@ -2306,11 +2307,12 @@ __global__ void kern_reconstruct_vpq_queries(const uint8_t* encoded_data,
 }
 
 template <typename T, typename MathT, typename IdxT>
-void reconstruct_vpq_queries(raft::resources const& res,
-                             cuvs::neighbors::device_vpq_dataset_view<MathT, IdxT> const& vpq_view,
-                             uint64_t offset,
-                             uint32_t batch_size,
-                             raft::device_matrix_view<T, int64_t> output)
+void reconstruct_vpq_queries(
+  raft::resources const& res,
+  cuvs::preprocessing::quantize::pq::device_vpq_dataset_view<MathT, IdxT> const& vpq_view,
+  uint64_t offset,
+  uint32_t batch_size,
+  raft::device_matrix_view<T, int64_t> output)
 {
   auto const data_view     = vpq_view.as_matrix_view();
   const uint32_t dim       = vpq_view.dim();
@@ -2365,9 +2367,9 @@ auto search_and_optimize(
   size_t next_graph_degree,
   uint64_t max_chunk_size,
   bool guarantee_connectivity,
-  std::optional<raft::device_matrix_view<T, int64_t>> reconstructed_batch_queries    = std::nullopt,
-  std::optional<cuvs::neighbors::device_vpq_dataset_view<half, int64_t>> vpq_queries = std::nullopt)
-  -> raft::device_matrix<IdxT, int64_t>
+  std::optional<raft::device_matrix_view<T, int64_t>> reconstructed_batch_queries = std::nullopt,
+  std::optional<cuvs::preprocessing::quantize::pq::device_vpq_dataset_view<half, int64_t>>
+    vpq_queries = std::nullopt) -> raft::device_matrix<IdxT, int64_t>
 {
   auto stream                = raft::resource::get_cuda_stream(res);
   auto const curr_query_size = knn_graph.extent(0);
@@ -2450,7 +2452,7 @@ auto search_and_optimize(
 
 template <typename T, typename IdxT = uint32_t, typename DatasetViewT>
   requires(cuvs::neighbors::is_dense_row_major_device_dataset_view_v<DatasetViewT> ||
-           cuvs::neighbors::is_device_vpq_f16_dataset_view_v<DatasetViewT>)
+           cuvs::preprocessing::quantize::pq::is_device_vpq_f16_dataset_view_v<DatasetViewT>)
 auto iterative_build_graph(raft::resources const& res,
                            const index_params& params,
                            DatasetViewT const& dataset) -> raft::device_matrix<IdxT, int64_t>
@@ -2473,9 +2475,9 @@ auto iterative_build_graph(raft::resources const& res,
     raft::make_device_matrix_view<const T, int64_t>(static_cast<const T*>(nullptr), 0, 0);
   uint32_t logical_dim = dataset.dim();
   uint64_t final_graph_size;
-  auto vpq_dataset = cuvs::neighbors::device_vpq_dataset_view<half, int64_t>{};
+  auto vpq_dataset = cuvs::preprocessing::quantize::pq::device_vpq_dataset_view<half, int64_t>{};
 
-  if constexpr (cuvs::neighbors::is_device_vpq_f16_dataset_view_v<DatasetViewT>) {
+  if constexpr (cuvs::preprocessing::quantize::pq::is_device_vpq_f16_dataset_view_v<DatasetViewT>) {
     final_graph_size = static_cast<uint64_t>(dataset.n_rows());
     vpq_dataset      = dataset;
   } else {
@@ -2943,7 +2945,7 @@ auto build_from_device_matrix(raft::resources const& res,
  * the same graph.
  */
 template <typename T, typename IdxT, typename DatasetViewT>
-  requires cuvs::neighbors::is_device_bbq_dataset_view_v<DatasetViewT>
+  requires cuvs::preprocessing::quantize::bbq::is_device_bbq_dataset_view_v<DatasetViewT>
 auto build_from_bbq_dataset(raft::resources const& res,
                             const index_params& params,
                             DatasetViewT const& dataset)

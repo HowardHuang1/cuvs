@@ -47,14 +47,14 @@ struct vpq_descriptor_spec : public instance_spec<DataT, IndexT, DistanceT> {
   // (`is_vpq_dataset_view_v`, `DatasetT::value_type`), not an owning-only trait/typedef.
   template <typename DatasetT>
   constexpr static inline auto accepts_dataset()
-    -> std::enable_if_t<cuvs::neighbors::is_vpq_dataset_view_v<DatasetT>, bool>
+    -> std::enable_if_t<cuvs::preprocessing::quantize::pq::is_vpq_dataset_view_v<DatasetT>, bool>
   {
     return std::is_same_v<typename DatasetT::value_type, CodebookT>;
   }
 
   template <typename DatasetT>
   constexpr static inline auto accepts_dataset()
-    -> std::enable_if_t<!cuvs::neighbors::is_vpq_dataset_view_v<DatasetT>, bool>
+    -> std::enable_if_t<!cuvs::preprocessing::quantize::pq::is_vpq_dataset_view_v<DatasetT>, bool>
   {
     return false;
   }

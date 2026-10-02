@@ -13,23 +13,11 @@ _Source header: `cuvs/core/dataset.hpp`_
 
 Spec-based `dataset` / `dataset_view`.
 
-`dataset&lt;T,IdxT,SpecT&gt;` and `dataset_view&lt;T,IdxT,SpecT&gt;` are single generic templates that know nothing about any particular kind of dataset. They hold exactly one payload (`data_type` / `view_type`, chosen by the spec) and expose only what every dataset has: `n_rows()`, `dim()`, `as_matrix_view()`, `as_dataset_view()` and `data()`. Each is a one-line forward to one of the three spec functions `get_data_view()`, `get_n_rows()` and `get_dim()`. Anything else a kind needs (e.g. VPQ codebooks, BBQ quantizers) is state and methods of that kind's payload type, reached through `data()`; `dataset`/`dataset_view` never name or branch on it. `dataset` and `dataset_view` are deliberately two independent, non-inheriting types (no shared_ptr, no "sometimes owning" object): `dataset` holds the owning payload, `dataset_view` the corresponding non-owning payload.
+`dataset&lt;T,IdxT,SpecT&gt;` and `dataset_view&lt;T,IdxT,SpecT&gt;` are single generic templates that know nothing about any particular kind of dataset. They hold exactly one payload (`data_type` / `view_type`, chosen by the spec) and expose only what every dataset has: `n_rows()`, `dim()`, `as_matrix_view()`, `as_dataset_view()` and `data()`. Each is a one-line forward to one of the three spec functions `get_data_view()`, `get_n_rows()` and `get_dim()`. Anything else a kind needs (e.g. codebooks or quantizers of a compressed dataset) is state and methods of that kind's payload type, reached through `data()`; `dataset`/`dataset_view` never name or branch on it. Compressed kinds define their payloads and specs in their own headers (quantize/pq.hpp, quantize/bbq.hpp) as children of these two structs. `dataset` and `dataset_view` are deliberately two independent, non-inheriting types (no shared_ptr, no "sometimes owning" object): `dataset` holds the owning payload, `dataset_view` the corresponding non-owning payload.
 
 ```cpp
 template <typename T, typename IdxT, typename SpecT>
 struct dataset;
-```
-
-<a id="neighbors-vpq-dataset-spec"></a>
-### neighbors::vpq_dataset_spec
-
-`Accessor` drives both codebook and code residency, mirroring today's
-
-single-`Accessor`-per-VPQ-dataset design. The payload (`detail::vpq_owning_storage` / `detail::vpq_view_storage`) holds the encoded rows and the VQ/PQ codebooks.
-
-```cpp
-template <typename MathT, typename Accessor>
-struct vpq_dataset_spec;
 ```
 
 <a id="neighbors-dataset"></a>
@@ -59,32 +47,36 @@ struct dataset_view;
 <a id="neighbors-is-padded-dataset"></a>
 ### neighbors::is_padded_dataset
 
-Owning-side kind traits (mirror today's `is_padded_dataset_v`/`is_standard_dataset_v`/
-
-`is_vpq_dataset_v`, used for SFINAE overload selection in factory.cuh/compute_distance_vpq.hpp).
+Owning-side kind traits (true for both `dataset&lt;...&gt;` and `dataset_view&lt;...&gt;` of that kind).
 
 ```cpp
 template <typename DatasetT>
 struct is_padded_dataset;
 ```
 
-<a id="neighbors-dataset-view-kind-of"></a>
-### neighbors::dataset_view_kind_of
+<a id="neighbors-is-dataset-view"></a>
+### neighbors::is_dataset_view
 
-Primary template returns `unknown` so traits safely return `false` for non-dataset-view types.
+True for any `dataset_view&lt;...&gt;` specialization. Evaluates to `false` (never a hard error) for
+
+everything else, e.g. a plain mdspan passed to a deprecated `build(matrix_view)` overload.
 
 ```cpp
 template <typename V>
-struct dataset_view_kind_of {
-  static constexpr dataset_view_kind value;
-};
+struct is_dataset_view;
 ```
 
-**Fields**
+<a id="neighbors-dataset-view-has-spec"></a>
+### neighbors::dataset_view_has_spec
 
-| Name | Type | Description |
-| --- | --- | --- |
-| `value` | `static constexpr dataset_view_kind` |  |
+True when `V` is a `dataset_view` whose spec satisfies the predicate `SpecPred&lt;SpecT&gt;::value`.
+
+This is how a kind that lives outside this header classifies its own views.
+
+```cpp
+template <typename V, template <typename> typename SpecPred>
+struct dataset_view_has_spec;
+```
 
 <a id="neighbors-dataset-view-is-device-accessible"></a>
 ### neighbors::dataset_view_is_device_accessible
@@ -99,9 +91,9 @@ struct dataset_view_is_device_accessible;
 <a id="neighbors-with-accessor"></a>
 ### neighbors::with_accessor
 
-Generic accessor retargeting while preserving the dataset tag/layout and value/index types:
+Generic accessor retargeting while preserving the spec kind and value/index types:
 
-`dataset&lt;T, IdxT, SpecT&lt;..., OldAccessor&gt;&gt;      -&gt; dataset&lt;T, IdxT, SpecT&lt;..., NewAccessor&gt;&gt;` `dataset_view&lt;T, IdxT, SpecT&lt;..., OldAccessor&gt;&gt; -&gt; dataset_view&lt;T, IdxT, SpecT&lt;..., NewAccessor&gt;&gt;`
+`dataset&lt;T, IdxT, SpecT&lt;..., OldAccessor&gt;&gt;      -&gt; dataset&lt;T, IdxT, SpecT&lt;..., NewAccessor&gt;&gt;` `dataset_view&lt;T, IdxT, SpecT&lt;..., OldAccessor&gt;&gt; -&gt; dataset_view&lt;T, IdxT, SpecT&lt;..., NewAccessor&gt;&gt;` Every spec provides `rebind_accessor&lt;NewAccessor&gt;` for this, so this header does not need to know about any particular kind.
 
 ```cpp
 template <typename DatasetLikeT, typename NewAccessor>

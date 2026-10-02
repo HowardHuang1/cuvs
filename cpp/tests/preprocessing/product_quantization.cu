@@ -322,7 +322,7 @@ TEST(ProductQuantizationTestF, MakeVpqDatasetFromHost)
     dataset.data_handle()[i] = static_cast<float>(i % 31) / 31.0f;
   }
 
-  cuvs::neighbors::vpq_params params{
+  cuvs::preprocessing::quantize::pq::vpq_params params{
     .pq_bits = 4, .pq_dim = 4, .vq_n_centers = 1, .kmeans_n_iters = 2};
   auto vpq = make_vpq_dataset(handle, params, raft::make_const_mdspan(dataset.view()));
   raft::resource::sync_stream(handle);
@@ -355,7 +355,7 @@ TEST(ProductQuantizationTestF, MakeVpqDatasetFromPaddedView)
     raft::make_device_matrix_view<const float, int64_t>(device_rows.data_handle(), n_rows, stride),
     dim);
 
-  cuvs::neighbors::vpq_params params{
+  cuvs::preprocessing::quantize::pq::vpq_params params{
     .pq_bits = 4, .pq_dim = 4, .vq_n_centers = 1, .kmeans_n_iters = 2};
   auto vpq = make_vpq_dataset(handle, params, padded);
   raft::resource::sync_stream(handle);

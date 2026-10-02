@@ -65,7 +65,7 @@ class AnnCagraBbqTest : public ::testing::TestWithParam<AnnCagraBbqInputs> {
 
  protected:
   /** Quantize the float database on the host and upload the codes. */
-  auto quantize_database() -> cuvs::neighbors::device_bbq_dataset<float, int64_t>
+  auto quantize_database() -> cuvs::preprocessing::quantize::bbq::device_bbq_dataset<float, int64_t>
   {
     std::vector<float> host_data(static_cast<size_t>(ps.n_rows) * ps.dim);
     raft::update_host(host_data.data(), database.data(), host_data.size(), stream_);
