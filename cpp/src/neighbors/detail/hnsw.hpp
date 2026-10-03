@@ -3004,7 +3004,7 @@ std::unique_ptr<index<T>> build(raft::resources const& res,
 
   // Public HNSW API uses host_matrix_view; CAGRA build expects a padded dataset view.
   // Host build stores only the graph; vectors are passed separately to from_cagra below.
-  cuvs::neighbors::host_padded_dataset_view<T, int64_t> host_padded_view(
+  cuvs::core::host_padded_dataset_view<T, int64_t> host_padded_view(
     dataset, static_cast<uint32_t>(dataset.extent(1)));
   auto ace_host_index = cuvs::neighbors::cagra::build(res, cagra_params, host_padded_view);
 

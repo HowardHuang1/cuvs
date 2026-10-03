@@ -133,7 +133,7 @@ struct vpq_dataset_spec;
 <a id="preprocessing-quantize-pq-is-vpq-spec"></a>
 ### preprocessing::quantize::pq::is_vpq_spec
 
-Spec predicate for `cuvs::neighbors::dataset_view_has_spec_v`.
+Spec predicate for `cuvs::core::dataset_view_has_spec_v`.
 
 ```cpp
 template <typename SpecT>
@@ -341,7 +341,7 @@ vpq_params const& params,
 SrcT const& src) -> device_vpq_dataset<half, int64_t>;
 ```
 
-Accepts either a row-major mdspan with `value_type`, `extent`, `stride`, and `data_handle` (same pattern as `cuvs::neighbors::make_device_padded_dataset`), or any cuVS dense dataset / dataset view exposing `view`, `dim` and `stride`, in which case the logical `dim()` is quantized and the row padding is skipped. The rows may be device-accessible or host-resident. Device-accessible rows (device, managed or pinned) with tight row-major storage (logical stride equals dimension) are passed through to training as they are; a wider row pitch triggers a contiguous dense copy first. Host-resident rows are subsampled for training and encoded in bounded batches, so the dense dataset is never staged on the device in full; they must be tightly packed. Empty sources are rejected. The element type must be `float`, `half`, `int8_t` or `uint8_t`.
+Accepts either a row-major mdspan with `value_type`, `extent`, `stride`, and `data_handle` (same pattern as `cuvs::core::make_device_padded_dataset`), or any cuVS dense dataset / dataset view exposing `view`, `dim` and `stride`, in which case the logical `dim()` is quantized and the row padding is skipped. The rows may be device-accessible or host-resident. Device-accessible rows (device, managed or pinned) with tight row-major storage (logical stride equals dimension) are passed through to training as they are; a wider row pitch triggers a contiguous dense copy first. Host-resident rows are subsampled for training and encoded in bounded batches, so the dense dataset is never staged on the device in full; they must be tightly packed. Empty sources are rejected. The element type must be `float`, `half`, `int8_t` or `uint8_t`.
 
 Typical **CAGRA-Q** usage: compress the source rows, then build the graph directly from the VPQ dataset (the metric must be `L2Expanded`). Keep the `device_vpq_dataset` alive because the index holds a non-owning view of it.
 

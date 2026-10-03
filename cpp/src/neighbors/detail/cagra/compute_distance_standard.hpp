@@ -28,7 +28,7 @@ struct standard_descriptor_spec : public instance_spec<DataT, IndexT, DistanceT>
   template <typename DatasetT>
   constexpr static inline bool accepts_dataset()
   {
-    return cuvs::neighbors::is_padded_dataset_view_v<DatasetT>;
+    return cuvs::core::is_padded_dataset_view_v<DatasetT>;
   }
 
   template <typename DatasetT>

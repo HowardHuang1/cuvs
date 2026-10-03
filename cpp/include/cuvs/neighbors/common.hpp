@@ -642,10 +642,9 @@ struct iface {
   std::optional<AnnIndexType> index_;
   /** Used by CAGRA when deserializing an index that contains a dataset; keeps it alive for the
    * view. */
-  std::unique_ptr<cuvs::neighbors::device_padded_dataset<T, int64_t>> cagra_owned_padded_dataset_;
+  std::unique_ptr<cuvs::core::device_padded_dataset<T, int64_t>> cagra_owned_padded_dataset_;
   /** Used by CAGRA standard-layout paths to keep deserialized/attached dataset views alive. */
-  std::unique_ptr<cuvs::neighbors::device_standard_dataset<T, int64_t>>
-    cagra_owned_standard_dataset_;
+  std::unique_ptr<cuvs::core::device_standard_dataset<T, int64_t>> cagra_owned_standard_dataset_;
   std::shared_ptr<std::mutex> mutex_;
 };
 

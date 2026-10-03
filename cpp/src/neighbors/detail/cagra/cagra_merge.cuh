@@ -37,7 +37,7 @@
 
 namespace cuvs::neighbors::cagra::detail {
 
-template <class T, class IdxT, cuvs::neighbors::ann_dataset_view DatasetViewT>
+template <class T, class IdxT, cuvs::core::ann_dataset_view DatasetViewT>
 int64_t merged_dataset_size(
   raft::resources const& handle,
   std::vector<cuvs::neighbors::cagra::index<T, IdxT, DatasetViewT>*> const& indices,
@@ -59,7 +59,7 @@ int64_t merged_dataset_size(
   return merged_rows;
 }
 
-template <class T, class IdxT, cuvs::neighbors::ann_dataset_view DatasetViewT>
+template <class T, class IdxT, cuvs::core::ann_dataset_view DatasetViewT>
 cuvs::neighbors::cagra::index<T, IdxT, DatasetViewT> merge_rebuild(
   raft::resources const& handle,
   const cagra::index_params& params,
@@ -84,8 +84,7 @@ cuvs::neighbors::cagra::index<T, IdxT, DatasetViewT> merge_rebuild(
     RAFT_EXPECTS(index != nullptr,
                  "Null pointer detected in 'indices'. Ensure all elements are valid before usage.");
     auto const& dataset = index->dataset();
-    if constexpr (cuvs::neighbors::is_dense_row_major_dataset_view_v<
-                    std::decay_t<decltype(dataset)>>) {
+    if constexpr (cuvs::core::is_dense_row_major_dataset_view_v<std::decay_t<decltype(dataset)>>) {
       RAFT_EXPECTS(
         dataset.n_rows() != 0,
         "cagra::merge only supports an index to which the dataset is attached. Please check if "
@@ -133,7 +132,7 @@ cuvs::neighbors::cagra::index<T, IdxT, DatasetViewT> merge_rebuild(
       const T* src_ptr   = nullptr;
       std::size_t n_rows = 0;
       auto const& v      = index->dataset();
-      if constexpr (cuvs::neighbors::is_dense_row_major_dataset_view_v<std::decay_t<decltype(v)>>) {
+      if constexpr (cuvs::core::is_dense_row_major_dataset_view_v<std::decay_t<decltype(v)>>) {
         src_ptr = v.as_matrix_view().data_handle();
         n_rows  = static_cast<std::size_t>(v.n_rows());
       } else {
@@ -215,7 +214,7 @@ struct fastener_preflight_result {
 };
 
 /** Validate every input and option without mutating anything. */
-template <typename T, typename IdxT, cuvs::neighbors::ann_dataset_view DatasetViewT>
+template <typename T, typename IdxT, cuvs::core::ann_dataset_view DatasetViewT>
 auto preflight_fastener(
   raft::resources const& handle,
   cagra::index_params const& params,
@@ -236,7 +235,7 @@ auto preflight_fastener(
   }
   // Fastener reads the dataset densely per row with an explicit stride, so it needs a dense
   // device view; VPQ and host views are rejected here rather than deep inside a kernel.
-  if constexpr (!cuvs::neighbors::is_dense_row_major_device_dataset_view_v<DatasetViewT>) {
+  if constexpr (!cuvs::core::is_dense_row_major_device_dataset_view_v<DatasetViewT>) {
     return reject("only dense row-major device datasets are supported");
   }
   if (indices.size() < 2) { return reject("at least two input indices are required"); }
@@ -371,7 +370,7 @@ auto preflight_fastener(
 /** Copy every input dataset into its row range of the caller-supplied merged dataset. Both sides
  *  carry a row pitch: the inputs share one stride (enforced by preflight) and the destination uses
  *  the merged dataset's own stride. */
-template <typename T, typename IdxT, cuvs::neighbors::ann_dataset_view DatasetViewT>
+template <typename T, typename IdxT, cuvs::core::ann_dataset_view DatasetViewT>
 void copy_input_datasets(
   raft::resources const& handle,
   std::vector<cuvs::neighbors::cagra::index<T, IdxT, DatasetViewT>*> const& indices,
@@ -392,7 +391,7 @@ void copy_input_datasets(
   }
 }
 
-template <typename T, typename IdxT, cuvs::neighbors::ann_dataset_view DatasetViewT>
+template <typename T, typename IdxT, cuvs::core::ann_dataset_view DatasetViewT>
 auto merge_fastener(raft::resources const& handle,
                     cagra::index_params const& params,
                     cagra::merge_params const& merge_params,
@@ -487,7 +486,7 @@ auto merge_fastener(raft::resources const& handle,
   return merged_index;
 }
 
-template <class T, class IdxT, cuvs::neighbors::ann_dataset_view DatasetViewT>
+template <class T, class IdxT, cuvs::core::ann_dataset_view DatasetViewT>
 auto merge(raft::resources const& handle,
            cagra::index_params const& params,
            std::vector<cuvs::neighbors::cagra::index<T, IdxT, DatasetViewT>*>& indices,
@@ -540,7 +539,7 @@ auto merge(raft::resources const& handle,
 }
 
 /** AUTO-algorithm convenience overload matching the base `merge` signature. */
-template <class T, class IdxT, cuvs::neighbors::ann_dataset_view DatasetViewT>
+template <class T, class IdxT, cuvs::core::ann_dataset_view DatasetViewT>
 auto merge(raft::resources const& handle,
            cagra::index_params const& params,
            std::vector<cuvs::neighbors::cagra::index<T, IdxT, DatasetViewT>*>& indices,

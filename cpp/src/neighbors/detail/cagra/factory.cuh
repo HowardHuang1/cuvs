@@ -98,8 +98,8 @@ auto make_key(const cagra::search_params& params,
               const DatasetT& dataset,
               cuvs::distance::DistanceType metric,
               const void* dataset_norms)
-  -> std::enable_if_t<cuvs::neighbors::is_padded_dataset_v<DatasetT> ||
-                        cuvs::neighbors::is_standard_dataset_v<DatasetT>,
+  -> std::enable_if_t<cuvs::core::is_padded_dataset_v<DatasetT> ||
+                        cuvs::core::is_standard_dataset_v<DatasetT>,
                       key>
 {
   auto const data_view = dataset.as_matrix_view();

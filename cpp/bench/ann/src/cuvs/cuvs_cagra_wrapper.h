@@ -85,11 +85,11 @@ template <typename T, typename SrcT>
 auto make_padded_view(const raft::resources& res,
                       SrcT src,
                       raft::device_matrix<T, int64_t, raft::row_major>& buffer)
-  -> cuvs::neighbors::device_padded_dataset_view<T, int64_t>
+  -> cuvs::core::device_padded_dataset_view<T, int64_t>
 {
   if constexpr (SrcT::accessor_type::is_device_accessible) {
-    if (cuvs::neighbors::matrix_row_width_matches_cagra_required(src)) {
-      return cuvs::neighbors::make_device_padded_dataset_view(res, src);
+    if (cuvs::core::matrix_row_width_matches_cagra_required(src)) {
+      return cuvs::core::make_device_padded_dataset_view(res, src);
     }
   }
   cuvs::neighbors::cagra::detail::copy_with_padding(res, buffer, src);
@@ -303,7 +303,7 @@ void cuvs_cagra<T, IdxT>::build(const T* dataset, size_t nrow)
       // (and dispatches to ACE when it is configured), so the dataset is not uploaded here at all.
       // The single device copy needed for search is made later, by set_search_param.
       host_index_ = std::make_shared<host_index_type>(cuvs::neighbors::cagra::build(
-        handle_, host_params, cuvs::neighbors::make_host_standard_dataset_view(dataset_view_host)));
+        handle_, host_params, cuvs::core::make_host_standard_dataset_view(dataset_view_host)));
       index_ =
         std::make_shared<index_type>(detail::to_graph_only_index<T, IdxT>(handle_, *host_index_));
       // The graph moved into the index along with the file descriptors; nothing views the host
@@ -349,7 +349,7 @@ void cuvs_cagra<T, IdxT>::build(const T* dataset, size_t nrow)
           // As in the single-split case: graph only, the rows are uploaded by set_search_dataset.
           sub_host_indices_.push_back(
             std::make_shared<host_index_type>(cuvs::neighbors::cagra::build(
-              handle_, host_params, cuvs::neighbors::make_host_standard_dataset_view(sub_host))));
+              handle_, host_params, cuvs::core::make_host_standard_dataset_view(sub_host))));
           sub_index = detail::to_graph_only_index<T, IdxT>(handle_, *sub_host_indices_.back());
           if (sub_index.graph_fd().has_value()) { sub_host_indices_.pop_back(); }
         } else {
@@ -371,10 +371,10 @@ void cuvs_cagra<T, IdxT>::build(const T* dataset, size_t nrow)
       for (auto* index : indices) {
         merged_rows += static_cast<int64_t>(index->size());
       }
-      auto const stride = static_cast<int64_t>(
-        cuvs::neighbors::cagra_required_row_width<T>(static_cast<uint32_t>(dim_)));
+      auto const stride =
+        static_cast<int64_t>(cuvs::core::cagra_required_row_width<T>(static_cast<uint32_t>(dim_)));
       *dataset_                = raft::make_device_matrix<T, int64_t>(handle_, merged_rows, stride);
-      auto merged_dataset_view = cuvs::neighbors::device_padded_dataset_view<T, int64_t>(
+      auto merged_dataset_view = cuvs::core::device_padded_dataset_view<T, int64_t>(
         raft::make_const_mdspan(dataset_->view()), static_cast<uint32_t>(dim_));
       index_ =
         std::make_shared<index_type>(cuvs::neighbors::cagra::merge(handle_,
@@ -419,7 +419,7 @@ void cuvs_cagra<T, IdxT>::compress_dataset(const T* dataset, size_t nrow)
     handle_, parse_metric_type(metric_), vpq_dataset_->as_dataset_view(), index_->graph());
 
   // Search runs on the compressed rows and the graph, so release the dense copy of the dataset.
-  cuvs::neighbors::device_padded_dataset_view<T, int64_t> empty_dv(
+  cuvs::core::device_padded_dataset_view<T, int64_t> empty_dv(
     raft::make_device_matrix_view(static_cast<T const*>(nullptr), 0, this->dim_), this->dim_);
   *index_   = cuvs::neighbors::cagra::update_dataset(handle_, std::move(*index_), empty_dv);
   *dataset_ = raft::make_device_matrix<T, int64_t>(handle_, 0, 0);
@@ -486,7 +486,7 @@ void cuvs_cagra<T, IdxT>::set_search_param(const search_param_base& param,
 
     // First free up existing memory
     *dataset_ = raft::make_device_matrix<T, int64_t>(handle_, 0, 0);
-    cuvs::neighbors::device_padded_dataset_view<T, int64_t> empty_dv(
+    cuvs::core::device_padded_dataset_view<T, int64_t> empty_dv(
       raft::make_device_matrix_view(static_cast<T const*>(nullptr), 0, this->dim_), this->dim_);
     *index_ = cuvs::neighbors::cagra::update_dataset(handle_, std::move(*index_), empty_dv);
 
@@ -497,7 +497,7 @@ void cuvs_cagra<T, IdxT>::set_search_param(const search_param_base& param,
     auto mr = get_mr(dataset_mem_);
     cuvs::neighbors::cagra::detail::copy_with_padding(handle_, *dataset_, *input_dataset_v_, mr);
 
-    cuvs::neighbors::device_padded_dataset_view<T, int64_t> dv(
+    cuvs::core::device_padded_dataset_view<T, int64_t> dv(
       raft::make_device_matrix_view(
         dataset_->data_handle(), dataset_->extent(0), dataset_->extent(1)),
       this->dim_);

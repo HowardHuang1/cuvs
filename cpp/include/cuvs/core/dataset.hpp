@@ -32,7 +32,7 @@
 #include <utility>
 
 namespace CUVS_EXPORT cuvs {
-namespace neighbors {
+namespace core {
 
 /**
  * @brief Spec-based `dataset` / `dataset_view`.
@@ -947,5 +947,5 @@ auto make_host_standard_dataset_view(SrcT const& src)
     host_standard_dataset_view<value_type, index_type>>(src, static_cast<uint32_t>(src.extent(1)));
 }
 
-}  // namespace neighbors
+}  // namespace core
 }  // namespace CUVS_EXPORT cuvs

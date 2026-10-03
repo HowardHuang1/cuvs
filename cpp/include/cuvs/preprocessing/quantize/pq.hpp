@@ -201,16 +201,16 @@ struct vpq_params {
 };
 
 // -----------------------------------------------------------------------------
-// VPQ dataset: a child of `cuvs::neighbors::dataset` / `dataset_view`. All VPQ-specific state
+// VPQ dataset: a child of `cuvs::core::dataset` / `dataset_view`. All VPQ-specific state
 // (codebooks) and methods live in the payload types below; `dataset` itself knows nothing of them.
 // -----------------------------------------------------------------------------
 
 namespace detail {
 
 // The accessor aliases are shared with every dataset kind and live next to `dataset`.
-using cuvs::neighbors::detail::dataset_view_accessor_for_owning;
-using cuvs::neighbors::detail::device_owning_accessor;
-using cuvs::neighbors::detail::host_owning_accessor;
+using cuvs::core::detail::dataset_view_accessor_for_owning;
+using cuvs::core::detail::device_owning_accessor;
+using cuvs::core::detail::host_owning_accessor;
 
 template <typename MathT, typename IdxT, typename Accessor>
 using vpq_vq_book_matrix =
@@ -367,22 +367,22 @@ struct vpq_dataset_spec {
 };
 
 template <typename DataT, typename IdxT>
-using device_vpq_dataset = cuvs::neighbors::
-  dataset<DataT, IdxT, vpq_dataset_spec<DataT, detail::device_owning_accessor<DataT>>>;
+using device_vpq_dataset =
+  cuvs::core::dataset<DataT, IdxT, vpq_dataset_spec<DataT, detail::device_owning_accessor<DataT>>>;
 
 template <typename DataT, typename IdxT>
-using device_vpq_dataset_view = cuvs::neighbors::
+using device_vpq_dataset_view = cuvs::core::
   dataset_view<DataT, IdxT, vpq_dataset_spec<DataT, detail::device_owning_accessor<DataT>>>;
 
 template <typename DataT, typename IdxT>
-using host_vpq_dataset = cuvs::neighbors::
-  dataset<DataT, IdxT, vpq_dataset_spec<DataT, detail::host_owning_accessor<DataT>>>;
+using host_vpq_dataset =
+  cuvs::core::dataset<DataT, IdxT, vpq_dataset_spec<DataT, detail::host_owning_accessor<DataT>>>;
 
 template <typename DataT, typename IdxT>
-using host_vpq_dataset_view = cuvs::neighbors::
+using host_vpq_dataset_view = cuvs::core::
   dataset_view<DataT, IdxT, vpq_dataset_spec<DataT, detail::host_owning_accessor<DataT>>>;
 
-/** Spec predicate for `cuvs::neighbors::dataset_view_has_spec_v`. */
+/** Spec predicate for `cuvs::core::dataset_view_has_spec_v`. */
 template <typename SpecT>
 struct is_vpq_spec : std::false_type {};
 template <typename MathT, typename Accessor>
@@ -403,7 +403,7 @@ using vpq_spec_math_type_t = typename vpq_spec_math_type<SpecT>::type;
 template <typename DatasetT>
 struct is_vpq_dataset : std::false_type {};
 template <typename T, typename IdxT, typename SpecT>
-struct is_vpq_dataset<cuvs::neighbors::dataset<T, IdxT, SpecT>>
+struct is_vpq_dataset<cuvs::core::dataset<T, IdxT, SpecT>>
   : std::bool_constant<is_vpq_spec_v<SpecT>> {};
 template <typename DatasetT>
 inline constexpr bool is_vpq_dataset_v = is_vpq_dataset<DatasetT>::value;
@@ -413,21 +413,19 @@ template <typename V, typename MathT>
 struct is_vpq_dataset_view_with_math : std::false_type {};
 template <typename T, typename IdxT, typename VpqMathT, typename Accessor, typename MathT>
 struct is_vpq_dataset_view_with_math<
-  cuvs::neighbors::dataset_view<T, IdxT, vpq_dataset_spec<VpqMathT, Accessor>>,
+  cuvs::core::dataset_view<T, IdxT, vpq_dataset_spec<VpqMathT, Accessor>>,
   MathT> : std::is_same<VpqMathT, MathT> {};
 template <typename V, typename MathT>
 inline constexpr bool is_vpq_dataset_view_with_math_v =
-  is_vpq_dataset_view_with_math<cuvs::neighbors::dataset_view_type_t<V>, MathT>::value;
+  is_vpq_dataset_view_with_math<cuvs::core::dataset_view_type_t<V>, MathT>::value;
 
 template <typename V>
 inline constexpr bool is_device_vpq_f16_dataset_view_v =
-  is_vpq_dataset_view_with_math_v<V, half> &&
-  cuvs::neighbors::dataset_view_is_device_accessible_v<V>;
+  is_vpq_dataset_view_with_math_v<V, half> && cuvs::core::dataset_view_is_device_accessible_v<V>;
 
 template <typename V>
 inline constexpr bool is_host_vpq_f16_dataset_view_v =
-  is_vpq_dataset_view_with_math_v<V, half> &&
-  !cuvs::neighbors::dataset_view_is_device_accessible_v<V>;
+  is_vpq_dataset_view_with_math_v<V, half> && !cuvs::core::dataset_view_is_device_accessible_v<V>;
 
 template <typename V>
 inline constexpr bool is_vpq_f16_dataset_view_v =
@@ -435,13 +433,11 @@ inline constexpr bool is_vpq_f16_dataset_view_v =
 
 template <typename V>
 inline constexpr bool is_device_vpq_f32_dataset_view_v =
-  is_vpq_dataset_view_with_math_v<V, float> &&
-  cuvs::neighbors::dataset_view_is_device_accessible_v<V>;
+  is_vpq_dataset_view_with_math_v<V, float> && cuvs::core::dataset_view_is_device_accessible_v<V>;
 
 template <typename V>
 inline constexpr bool is_host_vpq_f32_dataset_view_v =
-  is_vpq_dataset_view_with_math_v<V, float> &&
-  !cuvs::neighbors::dataset_view_is_device_accessible_v<V>;
+  is_vpq_dataset_view_with_math_v<V, float> && !cuvs::core::dataset_view_is_device_accessible_v<V>;
 
 template <typename V>
 inline constexpr bool is_vpq_f32_dataset_view_v =
@@ -591,7 +587,7 @@ namespace detail {
  * @brief Train VPQ storage (codebooks + encoded rows) from a row-major mdspan/mdarray/dataset.
  *
  * Accepts either a row-major mdspan with `value_type`, `extent`, `stride`, and `data_handle` (same
- * pattern as `cuvs::neighbors::make_device_padded_dataset`), or any cuVS dense dataset / dataset
+ * pattern as `cuvs::core::make_device_padded_dataset`), or any cuVS dense dataset / dataset
  * view exposing `view`, `dim` and `stride`, in which case the logical `dim()` is quantized and the
  * row padding is skipped. The rows may be device-accessible or host-resident. Device-accessible
  * rows (device, managed or pinned) with tight row-major storage (logical stride equals dimension)

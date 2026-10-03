@@ -47,7 +47,7 @@ namespace {
  * Heap-allocated bundle for the C API: owns only `cagra::index`.
  * Lives behind `cuvsCagraIndex::addr` via `sg_cagra_c_api_index_box`.
  */
-template <typename T, cuvs::neighbors::ann_dataset_view DatasetViewT>
+template <typename T, cuvs::core::ann_dataset_view DatasetViewT>
 struct cuvs_cagra_c_api_index_lifetime_holder {
   cuvs::neighbors::cagra::index<T, uint32_t, DatasetViewT> idx;
 };
@@ -66,18 +66,18 @@ struct sg_cagra_c_api_index_box {
   cuvs::neighbors::c_api::detail::owner_record owner_rec;
 };
 
-template <cuvs::neighbors::ann_dataset_view DatasetViewT>
+template <cuvs::core::ann_dataset_view DatasetViewT>
 constexpr auto sg_cagra_index_layout_from_view()
 {
-  if constexpr (cuvs::neighbors::is_device_standard_dataset_view_v<DatasetViewT>) {
+  if constexpr (cuvs::core::is_device_standard_dataset_view_v<DatasetViewT>) {
     return sg_cagra_c_api_index_box::dataset_layout::device_standard;
-  } else if constexpr (cuvs::neighbors::is_device_padded_dataset_view_v<DatasetViewT>) {
+  } else if constexpr (cuvs::core::is_device_padded_dataset_view_v<DatasetViewT>) {
     return sg_cagra_c_api_index_box::dataset_layout::device_padded;
   } else if constexpr (cuvs::preprocessing::quantize::pq::is_device_vpq_dataset_view_v<DatasetViewT>) {
     return sg_cagra_c_api_index_box::dataset_layout::device_vpq;
   } else if constexpr (cuvs::preprocessing::quantize::bbq::is_device_bbq_dataset_view_v<DatasetViewT>) {
     return sg_cagra_c_api_index_box::dataset_layout::device_bbq;
-  } else if constexpr (cuvs::neighbors::is_host_standard_dataset_view_v<DatasetViewT>) {
+  } else if constexpr (cuvs::core::is_host_standard_dataset_view_v<DatasetViewT>) {
     return sg_cagra_c_api_index_box::dataset_layout::host_standard;
   } else {
     return sg_cagra_c_api_index_box::dataset_layout::host_padded;
@@ -151,7 +151,7 @@ static void with_index_by_layout(sg_cagra_c_api_index_box* box,
 template <typename T>
 static void destroy_typed_addr(void* ptr);
 
-template <typename T, cuvs::neighbors::ann_dataset_view DatasetViewT>
+template <typename T, cuvs::core::ann_dataset_view DatasetViewT>
 static void merge_indices_for_layout(
   raft::resources* res_ptr,
   cuvs::neighbors::cagra::index_params const& params_cpp,
@@ -166,7 +166,7 @@ static void merge_indices_for_layout(
                "cuvsCagraMerge: merged dataset handle must be empty");
 
   constexpr auto output_layout =
-    cuvs::neighbors::is_padded_dataset_view_v<DatasetViewT> ? CUVS_DATASET_LAYOUT_PADDED
+    cuvs::core::is_padded_dataset_view_v<DatasetViewT> ? CUVS_DATASET_LAYOUT_PADDED
                                                             : CUVS_DATASET_LAYOUT_STANDARD;
 
   int64_t merged_row_count = 0;
@@ -183,7 +183,7 @@ static void merge_indices_for_layout(
 
     try {
       auto matrix = raft::make_device_matrix<T, int64_t>(*res_ptr, final_row_count, stride);
-      using owner_t = cuvs::neighbors::owning_dataset_for_view_t<DatasetViewT>;
+      using owner_t = cuvs::core::owning_dataset_for_view_t<DatasetViewT>;
       auto owner    = std::make_unique<owner_t>(std::move(matrix), dim);
       auto view     = owner->as_dataset_view();
       auto merged_idx =
@@ -213,10 +213,10 @@ static void merge_indices_for_layout(
     }
 
     using host_view_t = std::conditional_t<
-      cuvs::neighbors::is_padded_dataset_view_v<DatasetViewT>,
-      cuvs::neighbors::host_padded_dataset_view<T, int64_t>,
-      cuvs::neighbors::host_standard_dataset_view<T, int64_t>>;
-    using host_owner_t = cuvs::neighbors::owning_dataset_for_view_t<host_view_t>;
+      cuvs::core::is_padded_dataset_view_v<DatasetViewT>,
+      cuvs::core::host_padded_dataset_view<T, int64_t>,
+      cuvs::core::host_standard_dataset_view<T, int64_t>>;
+    using host_owner_t = cuvs::core::owning_dataset_for_view_t<host_view_t>;
 
     auto matrix = raft::make_host_matrix<T, int64_t>(final_row_count, stride);
     std::fill_n(matrix.data_handle(), static_cast<std::size_t>(matrix.size()), T{});
@@ -268,7 +268,7 @@ static void merge_indices_for_layout(
   }
 }
 
-template <typename T, cuvs::neighbors::ann_dataset_view DatasetViewT>
+template <typename T, cuvs::core::ann_dataset_view DatasetViewT>
 static auto convert_opaque_indices_to_concrete_types(cuvsCagraIndex_t* indices, size_t num_indices)
   -> std::vector<cuvs::neighbors::cagra::index<T, uint32_t, DatasetViewT>*>
 {
@@ -296,14 +296,14 @@ static void with_dataset_view_for_layout(raft::resources* res_ptr,
     if (cuvs::core::is_dlpack_device_compatible(dataset)) {
       using mdspan_type = raft::device_matrix_view<T const, int64_t, raft::row_major>;
       auto mds = cuvs::core::from_dlpack<mdspan_type>(dataset_tensor);
-      auto ds_view = cuvs::neighbors::make_device_padded_dataset_view(*res_ptr, mds);
+      auto ds_view = cuvs::core::make_device_padded_dataset_view(*res_ptr, mds);
       fn(ds_view);
       return;
     } else if (cuvs::core::is_dlpack_host_compatible(dataset)) {
       if constexpr (!AllowHost) { RAFT_FAIL("%s", host_not_allowed_err); }
       using mdspan_type = raft::host_matrix_view<T const, int64_t, raft::row_major>;
       auto mds = cuvs::core::from_dlpack<mdspan_type>(dataset_tensor);
-      auto ds_view = cuvs::neighbors::make_host_padded_dataset_view(mds);
+      auto ds_view = cuvs::core::make_host_padded_dataset_view(mds);
       fn(ds_view);
       return;
     }
@@ -311,14 +311,14 @@ static void with_dataset_view_for_layout(raft::resources* res_ptr,
     if (cuvs::core::is_dlpack_device_compatible(dataset)) {
       using mdspan_type = raft::device_matrix_view<T const, int64_t, raft::row_major>;
       auto mds = cuvs::core::from_dlpack<mdspan_type>(dataset_tensor);
-      auto ds_view = cuvs::neighbors::make_device_standard_dataset_view(mds);
+      auto ds_view = cuvs::core::make_device_standard_dataset_view(mds);
       fn(ds_view);
       return;
     } else if (cuvs::core::is_dlpack_host_compatible(dataset)) {
       if constexpr (!AllowHost) { RAFT_FAIL("%s", host_not_allowed_err); }
       using mdspan_type = raft::host_matrix_view<T const, int64_t, raft::row_major>;
       auto mds = cuvs::core::from_dlpack<mdspan_type>(dataset_tensor);
-      auto ds_view = cuvs::neighbors::make_host_standard_dataset_view(mds);
+      auto ds_view = cuvs::core::make_host_standard_dataset_view(mds);
       fn(ds_view);
       return;
     }
@@ -328,7 +328,7 @@ static void with_dataset_view_for_layout(raft::resources* res_ptr,
   RAFT_FAIL("%s: dataset must have host- or device-compatible memory", err_prefix);
 }
 
-template <typename T, cuvs::neighbors::ann_dataset_view DatasetViewT>
+template <typename T, cuvs::core::ann_dataset_view DatasetViewT>
 static void compute_ivfpq_shape_from_indices(cuvsCagraIndex_t* indices,
                                              size_t num_indices,
                                              int64_t* total_size,
@@ -348,7 +348,7 @@ static void compute_ivfpq_shape_from_indices(cuvsCagraIndex_t* indices,
   }
 }
 
-template <typename T, cuvs::neighbors::ann_dataset_view DatasetViewT>
+template <typename T, cuvs::core::ann_dataset_view DatasetViewT>
 static auto make_sg_cagra_c_api_index_box(
   cuvs_cagra_c_api_index_lifetime_holder<T, DatasetViewT>* holder)
   -> std::unique_ptr<sg_cagra_c_api_index_box>
@@ -359,7 +359,7 @@ static auto make_sg_cagra_c_api_index_box(
                              cuvs::neighbors::c_api::detail::make_owner_record(holder)});
 }
 
-template <typename T, cuvs::neighbors::ann_dataset_view DatasetViewT>
+template <typename T, cuvs::core::ann_dataset_view DatasetViewT>
 static void bind_index_lifetime_holder_to_C_index(
   cuvsCagraIndex_t out,
   DLDataType dtype,
@@ -370,7 +370,7 @@ static void bind_index_lifetime_holder_to_C_index(
   out->dtype = dtype;
 }
 
-template <typename T, cuvs::neighbors::ann_dataset_view DatasetViewT>
+template <typename T, cuvs::core::ann_dataset_view DatasetViewT>
 static void wrap_CPP_index_in_lifetime_holder_and_bind_to_C_index(
   cuvsCagraIndex_t out,
   DLDataType dtype,
@@ -546,19 +546,19 @@ static auto make_device_pq_dataset(raft::resources* res_ptr,
   const bool padded = dataset->layout == CUVS_DATASET_LAYOUT_PADDED;
   if (dataset->mem_type == CUVS_DATASET_MEM_TYPE_DEVICE) {
     if (padded) {
-      with_dataset_view<cuvs::neighbors::device_padded_dataset<T, int64_t>,
-                        cuvs::neighbors::device_padded_dataset_view<T, int64_t>>(dataset, make);
+      with_dataset_view<cuvs::core::device_padded_dataset<T, int64_t>,
+                        cuvs::core::device_padded_dataset_view<T, int64_t>>(dataset, make);
     } else {
-      with_dataset_view<cuvs::neighbors::device_standard_dataset<T, int64_t>,
-                        cuvs::neighbors::device_standard_dataset_view<T, int64_t>>(dataset, make);
+      with_dataset_view<cuvs::core::device_standard_dataset<T, int64_t>,
+                        cuvs::core::device_standard_dataset_view<T, int64_t>>(dataset, make);
     }
   } else if (dataset->mem_type == CUVS_DATASET_MEM_TYPE_HOST) {
     if (padded) {
-      with_dataset_view<cuvs::neighbors::host_padded_dataset<T, int64_t>,
-                        cuvs::neighbors::host_padded_dataset_view<T, int64_t>>(dataset, make);
+      with_dataset_view<cuvs::core::host_padded_dataset<T, int64_t>,
+                        cuvs::core::host_padded_dataset_view<T, int64_t>>(dataset, make);
     } else {
-      with_dataset_view<cuvs::neighbors::host_standard_dataset<T, int64_t>,
-                        cuvs::neighbors::host_standard_dataset_view<T, int64_t>>(dataset, make);
+      with_dataset_view<cuvs::core::host_standard_dataset<T, int64_t>,
+                        cuvs::core::host_standard_dataset_view<T, int64_t>>(dataset, make);
     }
   } else {
     RAFT_FAIL("cuvsDatasetMakePQ: invalid source dataset memory type");
@@ -572,16 +572,16 @@ static void make_device_padded_dataset(raft::resources* res_ptr,
                                        cuvsDataset_t* output_padded_dataset)
 {
   auto dataset = dataset_tensor->dl_tensor;
-  using owner_type = cuvs::neighbors::device_padded_dataset<T, int64_t>;
+  using owner_type = cuvs::core::device_padded_dataset<T, int64_t>;
   std::unique_ptr<owner_type> owner;
   if (cuvs::core::is_dlpack_device_compatible(dataset)) {
     using mdspan_type = raft::device_matrix_view<T const, int64_t, raft::row_major>;
     auto mds          = cuvs::core::from_dlpack<mdspan_type>(dataset_tensor);
-    owner             = cuvs::neighbors::make_device_padded_dataset(*res_ptr, mds);
+    owner             = cuvs::core::make_device_padded_dataset(*res_ptr, mds);
   } else if (cuvs::core::is_dlpack_host_compatible(dataset)) {
     using mdspan_type = raft::host_matrix_view<T const, int64_t, raft::row_major>;
     auto mds          = cuvs::core::from_dlpack<mdspan_type>(dataset_tensor);
-    owner             = cuvs::neighbors::make_device_padded_dataset(*res_ptr, mds);
+    owner             = cuvs::core::make_device_padded_dataset(*res_ptr, mds);
   } else {
     RAFT_FAIL("cuvsDatasetMakePadded: unsupported source tensor memory type");
   }
@@ -601,16 +601,16 @@ static void make_host_padded_dataset(raft::resources* res_ptr,
                                      cuvsDataset_t* output_padded_dataset)
 {
   auto dataset = dataset_tensor->dl_tensor;
-  using owner_type = cuvs::neighbors::host_padded_dataset<T, int64_t>;
+  using owner_type = cuvs::core::host_padded_dataset<T, int64_t>;
   std::unique_ptr<owner_type> owner;
   if (cuvs::core::is_dlpack_host_compatible(dataset)) {
     using mdspan_type = raft::host_matrix_view<T const, int64_t, raft::row_major>;
     auto mds          = cuvs::core::from_dlpack<mdspan_type>(dataset_tensor);
-    owner             = cuvs::neighbors::make_host_padded_dataset(*res_ptr, mds);
+    owner             = cuvs::core::make_host_padded_dataset(*res_ptr, mds);
   } else if (cuvs::core::is_dlpack_device_compatible(dataset)) {
     using mdspan_type = raft::device_matrix_view<T const, int64_t, raft::row_major>;
     auto mds          = cuvs::core::from_dlpack<mdspan_type>(dataset_tensor);
-    owner             = cuvs::neighbors::make_host_padded_dataset(*res_ptr, mds);
+    owner             = cuvs::core::make_host_padded_dataset(*res_ptr, mds);
   } else {
     RAFT_FAIL("cuvsDatasetMakePadded: unsupported source tensor memory type");
   }
@@ -637,7 +637,7 @@ static void make_device_padded_dataset_view(raft::resources* res_ptr,
   }
   using mdspan_type = raft::device_matrix_view<T const, int64_t, raft::row_major>;
   auto mds          = cuvs::core::from_dlpack<mdspan_type>(dataset_tensor);
-  auto ds_view      = cuvs::neighbors::make_device_padded_dataset_view(*res_ptr, mds);
+  auto ds_view      = cuvs::core::make_device_padded_dataset_view(*res_ptr, mds);
   auto* owned_view = new decltype(ds_view){ds_view};
   out->addr        = reinterpret_cast<uintptr_t>(owned_view);
   out->destroy_addr = &destroy_typed_addr<decltype(ds_view)>;
@@ -661,7 +661,7 @@ static void make_host_padded_dataset_view(raft::resources*,
   }
   using mdspan_type = raft::host_matrix_view<T const, int64_t, raft::row_major>;
   auto mds          = cuvs::core::from_dlpack<mdspan_type>(dataset_tensor);
-  auto ds_view      = cuvs::neighbors::make_host_padded_dataset_view(mds);
+  auto ds_view      = cuvs::core::make_host_padded_dataset_view(mds);
   auto* owned_view = new decltype(ds_view){ds_view};
   out->addr        = reinterpret_cast<uintptr_t>(owned_view);
   out->destroy_addr = &destroy_typed_addr<decltype(ds_view)>;
@@ -685,7 +685,7 @@ static void make_device_standard_dataset_view(raft::resources*,
   }
   using mdspan_type = raft::device_matrix_view<T const, int64_t, raft::row_major>;
   auto mds          = cuvs::core::from_dlpack<mdspan_type>(dataset_tensor);
-  auto ds_view      = cuvs::neighbors::make_device_standard_dataset_view(mds);
+  auto ds_view      = cuvs::core::make_device_standard_dataset_view(mds);
   auto* owned_view = new decltype(ds_view){ds_view};
   out->addr        = reinterpret_cast<uintptr_t>(owned_view);
   out->destroy_addr = &destroy_typed_addr<decltype(ds_view)>;
@@ -709,7 +709,7 @@ static void make_host_standard_dataset_view(raft::resources*,
   }
   using mdspan_type = raft::host_matrix_view<T const, int64_t, raft::row_major>;
   auto mds          = cuvs::core::from_dlpack<mdspan_type>(dataset_tensor);
-  auto ds_view      = cuvs::neighbors::make_host_standard_dataset_view(mds);
+  auto ds_view      = cuvs::core::make_host_standard_dataset_view(mds);
   auto* owned_view = new decltype(ds_view){ds_view};
   out->addr        = reinterpret_cast<uintptr_t>(owned_view);
   out->destroy_addr = &destroy_typed_addr<decltype(ds_view)>;
@@ -755,8 +755,8 @@ static void update_dataset(raft::resources* res_ptr,
   if (dataset->layout == CUVS_DATASET_LAYOUT_PQ) {
     with_dataset_view<device_vpq_owner_t, device_vpq_view_t>(dataset, rebind);
   } else {
-    using owner_t = cuvs::neighbors::device_padded_dataset<T, int64_t>;
-    using view_t  = cuvs::neighbors::device_padded_dataset_view<T, int64_t>;
+    using owner_t = cuvs::core::device_padded_dataset<T, int64_t>;
+    using view_t  = cuvs::core::device_padded_dataset_view<T, int64_t>;
     with_dataset_view<owner_t, view_t>(dataset, rebind);
   }
 }
@@ -864,8 +864,8 @@ void _from_args(cuvsResources_t res,
   if (cuvs::core::is_dlpack_device_compatible(dataset)) {
     using mdspan_type = raft::device_matrix_view<T const, int64_t, raft::row_major>;
     auto mds          = cuvs::core::from_dlpack<mdspan_type>(dataset_tensor);
-    if (cuvs::neighbors::matrix_row_width_matches_cagra_required(mds)) {
-      auto dataset_view = cuvs::neighbors::make_device_padded_dataset_view(*res_ptr, mds);
+    if (cuvs::core::matrix_row_width_matches_cagra_required(mds)) {
+      auto dataset_view = cuvs::core::make_device_padded_dataset_view(*res_ptr, mds);
       auto* raw         = new cuvs::neighbors::cagra::device_padded_index<T, uint32_t>(
         *res_ptr, metric);
       *raw =
@@ -873,10 +873,10 @@ void _from_args(cuvsResources_t res,
       update_graph_from_dlpack(raw);
       wrap_CPP_index_in_lifetime_holder_and_bind_to_C_index<
         T,
-        cuvs::neighbors::device_padded_dataset_view<T, int64_t>>(
+        cuvs::core::device_padded_dataset_view<T, int64_t>>(
         output_index, output_index->dtype, raw);
     } else {
-      auto dataset_view = cuvs::neighbors::make_device_standard_dataset_view(mds);
+      auto dataset_view = cuvs::core::make_device_standard_dataset_view(mds);
       auto* raw         = new cuvs::neighbors::cagra::device_standard_index<T, uint32_t>(
         *res_ptr, metric);
       *raw =
@@ -884,7 +884,7 @@ void _from_args(cuvsResources_t res,
       update_graph_from_dlpack(raw);
       wrap_CPP_index_in_lifetime_holder_and_bind_to_C_index<
         T,
-        cuvs::neighbors::device_standard_dataset_view<T, int64_t>>(
+        cuvs::core::device_standard_dataset_view<T, int64_t>>(
         output_index, output_index->dtype, raw);
     }
   } else if (cuvs::core::is_dlpack_host_compatible(dataset)) {
@@ -929,8 +929,8 @@ void _extend(cuvsResources_t res,
       if constexpr (!idx_is_padded) {
         RAFT_FAIL("cuvsCagraExtend: only device_padded indices are extendable");
       } else {
-        using out_owner_t = cuvs::neighbors::device_padded_dataset<T, int64_t>;
-        using out_view_t  = cuvs::neighbors::device_padded_dataset_view<T, int64_t>;
+        using out_owner_t = cuvs::core::device_padded_dataset<T, int64_t>;
+        using out_view_t  = cuvs::core::device_padded_dataset_view<T, int64_t>;
         with_dataset_view<out_owner_t, out_view_t>(extended_dataset, [&](auto& out_dataset) {
           cuvs::neighbors::cagra::extend(
             *res_ptr, extend_params, out_dataset, new_start_row, idx);
@@ -1212,34 +1212,34 @@ void dispatch_serialized_dataset_kind(
   switch (kind) {
     case serialized_kind::device_padded:
       fn.template operator()<
-          cuvs::neighbors::device_padded_dataset_view<T, int64_t>>();
+          cuvs::core::device_padded_dataset_view<T, int64_t>>();
       break;
     case serialized_kind::device_standard:
       fn.template operator()<
-          cuvs::neighbors::device_standard_dataset_view<T, int64_t>>();
+          cuvs::core::device_standard_dataset_view<T, int64_t>>();
       break;
     case serialized_kind::host_padded:
       fn.template operator()<
-          cuvs::neighbors::host_padded_dataset_view<T, int64_t>>();
+          cuvs::core::host_padded_dataset_view<T, int64_t>>();
       break;
     case serialized_kind::host_standard:
       fn.template operator()<
-          cuvs::neighbors::host_standard_dataset_view<T, int64_t>>();
+          cuvs::core::host_standard_dataset_view<T, int64_t>>();
       break;
     case serialized_kind::none:
       fn.template operator()<
-          cuvs::neighbors::device_padded_dataset_view<T, int64_t>>();
+          cuvs::core::device_padded_dataset_view<T, int64_t>>();
       break;
   }
 }
 
-template <typename T, cuvs::neighbors::ann_dataset_view ViewT>
+template <typename T, cuvs::core::ann_dataset_view ViewT>
 void _deserialize(cuvsResources_t res, const char *filename,
                   cuvsCagraIndex_t output_index, DLDataType dtype,
                   bool include_dataset, cuvsDataset_t *out_dataset) {
   auto res_ptr = reinterpret_cast<raft::resources *>(res);
   using view_t = ViewT;
-  using owner_dataset_t = cuvs::neighbors::owning_dataset_for_view_t<view_t>;
+  using owner_dataset_t = cuvs::core::owning_dataset_for_view_t<view_t>;
   using holder_t = cuvs_cagra_c_api_index_lifetime_holder<T, view_t>;
 
   auto holder = std::make_unique<holder_t>(
@@ -1262,11 +1262,11 @@ void _deserialize(cuvsResources_t res, const char *filename,
     dataset_handle->destroy_addr = &destroy_typed_addr<owner_dataset_t>;
     dataset_handle->dtype = dtype;
     dataset_handle->mem_type =
-        cuvs::neighbors::is_device_dataset_view_v<view_t>
+        cuvs::core::is_device_dataset_view_v<view_t>
             ? CUVS_DATASET_MEM_TYPE_DEVICE
             : CUVS_DATASET_MEM_TYPE_HOST;
     dataset_handle->layout =
-        cuvs::neighbors::is_padded_dataset_view_v<view_t>
+        cuvs::core::is_padded_dataset_view_v<view_t>
             ? CUVS_DATASET_LAYOUT_PADDED
             : CUVS_DATASET_LAYOUT_STANDARD;
     dataset_handle->is_owning = true;
@@ -1340,10 +1340,10 @@ void _merge(cuvsResources_t res,
   }
   if (params.build_algo == cuvsCagraGraphBuildAlgo::IVF_PQ) {
     if (layout == sg_cagra_c_api_index_box::dataset_layout::device_padded) {
-      compute_ivfpq_shape_from_indices<T, cuvs::neighbors::device_padded_dataset_view<T, int64_t>>(
+      compute_ivfpq_shape_from_indices<T, cuvs::core::device_padded_dataset_view<T, int64_t>>(
         indices, num_indices, &total_size, &dim);
     } else {
-      compute_ivfpq_shape_from_indices<T, cuvs::neighbors::device_standard_dataset_view<T, int64_t>>(
+      compute_ivfpq_shape_from_indices<T, cuvs::core::device_standard_dataset_view<T, int64_t>>(
         indices, num_indices, &total_size, &dim);
     }
   }
@@ -1355,15 +1355,15 @@ void _merge(cuvsResources_t res,
                           dim);
   if (layout == sg_cagra_c_api_index_box::dataset_layout::device_padded) {
     auto index_ptrs =
-      convert_opaque_indices_to_concrete_types<T, cuvs::neighbors::device_padded_dataset_view<T, int64_t>>(
+      convert_opaque_indices_to_concrete_types<T, cuvs::core::device_padded_dataset_view<T, int64_t>>(
         indices, num_indices);
-    merge_indices_for_layout<T, cuvs::neighbors::device_padded_dataset_view<T, int64_t>>(
+    merge_indices_for_layout<T, cuvs::core::device_padded_dataset_view<T, int64_t>>(
       res_ptr, params_cpp, index_ptrs, filter, merge_params, merged_dataset, output_index);
   } else {
     auto index_ptrs =
-      convert_opaque_indices_to_concrete_types<T, cuvs::neighbors::device_standard_dataset_view<T, int64_t>>(
+      convert_opaque_indices_to_concrete_types<T, cuvs::core::device_standard_dataset_view<T, int64_t>>(
         indices, num_indices);
-    merge_indices_for_layout<T, cuvs::neighbors::device_standard_dataset_view<T, int64_t>>(
+    merge_indices_for_layout<T, cuvs::core::device_standard_dataset_view<T, int64_t>>(
       res_ptr, params_cpp, index_ptrs, filter, merge_params, merged_dataset, output_index);
   }
 }
@@ -1892,7 +1892,7 @@ extern "C" cuvsError_t cuvsCagraUpdateDataset(cuvsResources_t res,
  * Build from an already-constructed C++ dataset view. `DatasetViewT` selects the
  * `cuvs::neighbors::cagra::build` overload, and therefore the resulting index type.
  */
-template <typename T, cuvs::neighbors::ann_dataset_view DatasetViewT>
+template <typename T, cuvs::core::ann_dataset_view DatasetViewT>
 static void build_index_from_dataset_view(raft::resources* res_ptr,
                                           cuvsCagraIndexParams_t params,
                                           DatasetViewT const& ds_view,
@@ -1933,28 +1933,28 @@ static void build_dispatch_on_mem_type_and_layout(raft::resources* res_ptr,
 
   if (dataset->mem_type == CUVS_DATASET_MEM_TYPE_DEVICE) {
     if (is_padded) {
-      using owner_t = cuvs::neighbors::device_padded_dataset<T, int64_t>;
-      using view_t = cuvs::neighbors::device_padded_dataset_view<T, int64_t>;
+      using owner_t = cuvs::core::device_padded_dataset<T, int64_t>;
+      using view_t = cuvs::core::device_padded_dataset_view<T, int64_t>;
       with_dataset_view<owner_t, view_t>(dataset, [&](auto const& view) {
         build_index_from_dataset_view<T>(res_ptr, params, view, index);
       });
     } else {
-      using owner_t = cuvs::neighbors::device_standard_dataset<T, int64_t>;
-      using view_t = cuvs::neighbors::device_standard_dataset_view<T, int64_t>;
+      using owner_t = cuvs::core::device_standard_dataset<T, int64_t>;
+      using view_t = cuvs::core::device_standard_dataset_view<T, int64_t>;
       with_dataset_view<owner_t, view_t>(dataset, [&](auto const& view) {
         build_index_from_dataset_view<T>(res_ptr, params, view, index);
       });
     }
   } else if (dataset->mem_type == CUVS_DATASET_MEM_TYPE_HOST) {
     if (is_padded) {
-      using owner_t = cuvs::neighbors::host_padded_dataset<T, int64_t>;
-      using view_t = cuvs::neighbors::host_padded_dataset_view<T, int64_t>;
+      using owner_t = cuvs::core::host_padded_dataset<T, int64_t>;
+      using view_t = cuvs::core::host_padded_dataset_view<T, int64_t>;
       with_dataset_view<owner_t, view_t>(dataset, [&](auto const& view) {
         build_index_from_dataset_view<T>(res_ptr, params, view, index);
       });
     } else {
-      using owner_t = cuvs::neighbors::host_standard_dataset<T, int64_t>;
-      using view_t = cuvs::neighbors::host_standard_dataset_view<T, int64_t>;
+      using owner_t = cuvs::core::host_standard_dataset<T, int64_t>;
+      using view_t = cuvs::core::host_standard_dataset_view<T, int64_t>;
       with_dataset_view<owner_t, view_t>(dataset, [&](auto const& view) {
         build_index_from_dataset_view<T>(res_ptr, params, view, index);
       });
@@ -2433,7 +2433,7 @@ extern "C" cuvsError_t cuvsCagraDeserializeGraph(cuvsResources_t res,
                  "cuvsCagraDeserializeGraph: null index handle");
     auto const header = read_serialized_header(res, filename);
     dispatch_serialized_dtype(header.dtype, [&]<typename T>() {
-      using view_t = cuvs::neighbors::device_padded_dataset_view<T, int64_t>;
+      using view_t = cuvs::core::device_padded_dataset_view<T, int64_t>;
       _deserialize<T, view_t>(
           res, filename, index, header.dtype, false, nullptr);
     });

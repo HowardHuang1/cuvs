@@ -169,7 +169,7 @@ struct bbq_dataset_spec;
 <a id="preprocessing-quantize-bbq-is-bbq-spec"></a>
 ### preprocessing::quantize::bbq::is_bbq_spec
 
-Spec predicate for `cuvs::neighbors::dataset_view_has_spec_v`.
+Spec predicate for `cuvs::core::dataset_view_has_spec_v`.
 
 ```cpp
 template <typename SpecT>

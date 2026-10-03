@@ -245,7 +245,7 @@ void resolve_dequant_factors(
 namespace preprocessing::quantize::bbq {
 
 // -----------------------------------------------------------------------------
-// BBQ dataset: a child of `cuvs::neighbors::dataset` / `dataset_view`. The quantizers and the
+// BBQ dataset: a child of `cuvs::core::dataset` / `dataset_view`. The quantizers and the
 // methods that manage them live in the payload types below; `dataset` itself knows nothing of them.
 // -----------------------------------------------------------------------------
 
@@ -378,16 +378,14 @@ struct bbq_dataset_spec {
 };
 
 template <typename DataT, typename IdxT>
-using device_bbq_dataset = cuvs::neighbors::
-  dataset<DataT, IdxT, bbq_dataset_spec<cuvs::neighbors::detail::device_owning_accessor<DataT>>>;
+using device_bbq_dataset = cuvs::core::
+  dataset<DataT, IdxT, bbq_dataset_spec<cuvs::core::detail::device_owning_accessor<DataT>>>;
 
 template <typename DataT, typename IdxT>
-using device_bbq_dataset_view = cuvs::neighbors::dataset_view<
-  DataT,
-  IdxT,
-  bbq_dataset_spec<cuvs::neighbors::detail::device_owning_accessor<DataT>>>;
+using device_bbq_dataset_view = cuvs::core::
+  dataset_view<DataT, IdxT, bbq_dataset_spec<cuvs::core::detail::device_owning_accessor<DataT>>>;
 
-/** Spec predicate for `cuvs::neighbors::dataset_view_has_spec_v`. */
+/** Spec predicate for `cuvs::core::dataset_view_has_spec_v`. */
 template <typename SpecT>
 struct is_bbq_spec : std::false_type {};
 template <typename Accessor>
@@ -400,7 +398,7 @@ template <typename DatasetT>
 struct is_bbq_dataset : std::false_type {};
 
 template <typename DataT, typename IdxT, typename SpecT>
-struct is_bbq_dataset<cuvs::neighbors::dataset<DataT, IdxT, SpecT>>
+struct is_bbq_dataset<cuvs::core::dataset<DataT, IdxT, SpecT>>
   : std::bool_constant<is_bbq_spec_v<SpecT>> {};
 
 template <typename DatasetT>
@@ -408,13 +406,13 @@ inline constexpr bool is_bbq_dataset_v = is_bbq_dataset<DatasetT>::value;
 
 template <typename V>
 inline constexpr bool is_device_bbq_dataset_view_v =
-  cuvs::neighbors::dataset_view_has_spec_v<V, is_bbq_spec> &&
-  cuvs::neighbors::dataset_view_is_device_accessible_v<V>;
+  cuvs::core::dataset_view_has_spec_v<V, is_bbq_spec> &&
+  cuvs::core::dataset_view_is_device_accessible_v<V>;
 
 template <typename V>
 inline constexpr bool is_host_bbq_dataset_view_v =
-  cuvs::neighbors::dataset_view_has_spec_v<V, is_bbq_spec> &&
-  !cuvs::neighbors::dataset_view_is_device_accessible_v<V>;
+  cuvs::core::dataset_view_has_spec_v<V, is_bbq_spec> &&
+  !cuvs::core::dataset_view_is_device_accessible_v<V>;
 
 template <typename V>
 inline constexpr bool is_bbq_dataset_view_v =

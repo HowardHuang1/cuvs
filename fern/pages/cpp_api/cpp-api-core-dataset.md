@@ -8,8 +8,8 @@ _Source header: `cuvs/core/dataset.hpp`_
 
 ## Types
 
-<a id="neighbors-dataset"></a>
-### neighbors::dataset
+<a id="core-dataset"></a>
+### core::dataset
 
 Spec-based `dataset` / `dataset_view`.
 
@@ -20,8 +20,8 @@ template <typename T, typename IdxT, typename SpecT>
 struct dataset;
 ```
 
-<a id="neighbors-dataset"></a>
-### neighbors::dataset
+<a id="core-dataset"></a>
+### core::dataset
 
 Owning dataset: value-held payload (no shared_ptr -- exclusive ownership). Every member is a
 
@@ -32,8 +32,8 @@ template <typename T, typename IdxT, typename SpecT>
 struct dataset;
 ```
 
-<a id="neighbors-dataset-view"></a>
-### neighbors::dataset_view
+<a id="core-dataset-view"></a>
+### core::dataset_view
 
 Non-owning dataset view: holds only the view-shaped payload. Deliberately not derived from
 
@@ -44,8 +44,8 @@ template <typename T, typename IdxT, typename SpecT>
 struct dataset_view;
 ```
 
-<a id="neighbors-is-padded-dataset"></a>
-### neighbors::is_padded_dataset
+<a id="core-is-padded-dataset"></a>
+### core::is_padded_dataset
 
 Owning-side kind traits (true for both `dataset&lt;...&gt;` and `dataset_view&lt;...&gt;` of that kind).
 
@@ -54,8 +54,8 @@ template <typename DatasetT>
 struct is_padded_dataset;
 ```
 
-<a id="neighbors-is-dataset-view"></a>
-### neighbors::is_dataset_view
+<a id="core-is-dataset-view"></a>
+### core::is_dataset_view
 
 True for any `dataset_view&lt;...&gt;` specialization. Evaluates to `false` (never a hard error) for
 
@@ -66,8 +66,8 @@ template <typename V>
 struct is_dataset_view;
 ```
 
-<a id="neighbors-dataset-view-has-spec"></a>
-### neighbors::dataset_view_has_spec
+<a id="core-dataset-view-has-spec"></a>
+### core::dataset_view_has_spec
 
 True when `V` is a `dataset_view` whose spec satisfies the predicate `SpecPred&lt;SpecT&gt;::value`.
 
@@ -78,8 +78,8 @@ template <typename V, template <typename> typename SpecPred>
 struct dataset_view_has_spec;
 ```
 
-<a id="neighbors-dataset-view-is-device-accessible"></a>
-### neighbors::dataset_view_is_device_accessible
+<a id="core-dataset-view-is-device-accessible"></a>
+### core::dataset_view_is_device_accessible
 
 True when the dataset view accessor is device-accessible.
 
@@ -88,8 +88,8 @@ template <typename V>
 struct dataset_view_is_device_accessible;
 ```
 
-<a id="neighbors-with-accessor"></a>
-### neighbors::with_accessor
+<a id="core-with-accessor"></a>
+### core::with_accessor
 
 Generic accessor retargeting while preserving the spec kind and value/index types:
 
@@ -100,8 +100,8 @@ template <typename DatasetLikeT, typename NewAccessor>
 struct with_accessor;
 ```
 
-<a id="neighbors-to-device-accessor"></a>
-### neighbors::to_device_accessor
+<a id="core-to-device-accessor"></a>
+### core::to_device_accessor
 
 Map any host accessor to its device counterpart (same payload policy).
 
@@ -110,8 +110,8 @@ template <typename Accessor>
 struct to_device_accessor;
 ```
 
-<a id="neighbors-device-counterpart"></a>
-### neighbors::device_counterpart
+<a id="core-device-counterpart"></a>
+### core::device_counterpart
 
 Maps a host dataset view type to its device-resident counterpart.
 

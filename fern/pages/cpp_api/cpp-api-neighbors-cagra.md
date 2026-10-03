@@ -220,7 +220,8 @@ The index stores the dataset and a kNN graph in device memory.
 ```cpp
 template <typename T,
 typename IdxT,
-ann_dataset_view DatasetViewT = device_padded_dataset_view<T, int64_t>>
+cuvs::core::ann_dataset_view DatasetViewT =
+cuvs::core::device_padded_dataset_view<T, int64_t>>
 struct index;
 ```
 
@@ -410,7 +411,7 @@ Construct a graph-only index with a zero-row dataset view placeholder.
 ```cpp
 explicit index(raft::resources const& res,
 cuvs::distance::DistanceType metric = cuvs::distance::DistanceType::L2Expanded)
-requires(cuvs::neighbors::ann_dataset_view<DatasetViewT, int64_t>)
+requires(cuvs::core::ann_dataset_view<DatasetViewT, int64_t>)
 : cuvs::neighbors::index(),;
 ```
 
@@ -672,7 +673,7 @@ Build from a device padded dataset view (`float`).
 ```cpp
 auto build(raft::resources const& res,
 const cuvs::neighbors::cagra::index_params& params,
-cuvs::neighbors::device_padded_dataset_view<float, int64_t> const& dataset)
+cuvs::core::device_padded_dataset_view<float, int64_t> const& dataset)
 -> cuvs::neighbors::cagra::device_padded_index<float, uint32_t>;
 ```
 
@@ -682,7 +683,7 @@ cuvs::neighbors::device_padded_dataset_view<float, int64_t> const& dataset)
 | --- | --- | --- | --- |
 | `res` | in | `raft::resources const&` | raft resources |
 | `params` | in | `const cuvs::neighbors::cagra::index_params&` | CAGRA index build parameters |
-| `dataset` | in | `cuvs::neighbors::device_padded_dataset_view<float, int64_t> const&` | device padded dataset view [n_rows, dim] |
+| `dataset` | in | `cuvs::core::device_padded_dataset_view<float, int64_t> const&` | device padded dataset view [n_rows, dim] |
 
 **Returns**
 
@@ -697,7 +698,7 @@ Build from a device standard dataset view (`float`).
 ```cpp
 auto build(raft::resources const& res,
 const cuvs::neighbors::cagra::index_params& params,
-cuvs::neighbors::device_standard_dataset_view<float, int64_t> const& dataset)
+cuvs::core::device_standard_dataset_view<float, int64_t> const& dataset)
 -> cuvs::neighbors::cagra::device_standard_index<float, uint32_t>;
 ```
 
@@ -707,7 +708,7 @@ cuvs::neighbors::device_standard_dataset_view<float, int64_t> const& dataset)
 | --- | --- | --- | --- |
 | `res` | in | `raft::resources const&` | raft resources |
 | `params` | in | `const cuvs::neighbors::cagra::index_params&` | CAGRA index build parameters |
-| `dataset` | in | `cuvs::neighbors::device_standard_dataset_view<float, int64_t> const&` | device standard dataset view [n_rows, dim] |
+| `dataset` | in | `cuvs::core::device_standard_dataset_view<float, int64_t> const&` | device standard dataset view [n_rows, dim] |
 
 **Returns**
 
@@ -722,7 +723,7 @@ Build from a host padded dataset view (`float`).
 ```cpp
 auto build(raft::resources const& res,
 const cuvs::neighbors::cagra::index_params& params,
-cuvs::neighbors::host_padded_dataset_view<float, int64_t> const& dataset)
+cuvs::core::host_padded_dataset_view<float, int64_t> const& dataset)
 -> cuvs::neighbors::cagra::host_padded_index<float, uint32_t>;
 ```
 
@@ -732,7 +733,7 @@ cuvs::neighbors::host_padded_dataset_view<float, int64_t> const& dataset)
 | --- | --- | --- | --- |
 | `res` | in | `raft::resources const&` | raft resources |
 | `params` | in | `const cuvs::neighbors::cagra::index_params&` | CAGRA index build parameters |
-| `dataset` | in | `cuvs::neighbors::host_padded_dataset_view<float, int64_t> const&` | host padded dataset view [n_rows, dim] |
+| `dataset` | in | `cuvs::core::host_padded_dataset_view<float, int64_t> const&` | host padded dataset view [n_rows, dim] |
 
 **Returns**
 
@@ -747,7 +748,7 @@ Build from a host standard dataset view (`float`).
 ```cpp
 auto build(raft::resources const& res,
 const cuvs::neighbors::cagra::index_params& params,
-cuvs::neighbors::host_standard_dataset_view<float, int64_t> const& dataset)
+cuvs::core::host_standard_dataset_view<float, int64_t> const& dataset)
 -> cuvs::neighbors::cagra::host_standard_index<float, uint32_t>;
 ```
 
@@ -757,7 +758,7 @@ cuvs::neighbors::host_standard_dataset_view<float, int64_t> const& dataset)
 | --- | --- | --- | --- |
 | `res` | in | `raft::resources const&` | raft resources |
 | `params` | in | `const cuvs::neighbors::cagra::index_params&` | CAGRA index build parameters |
-| `dataset` | in | `cuvs::neighbors::host_standard_dataset_view<float, int64_t> const&` | host standard dataset view [n_rows, dim] |
+| `dataset` | in | `cuvs::core::host_standard_dataset_view<float, int64_t> const&` | host standard dataset view [n_rows, dim] |
 
 **Returns**
 
@@ -772,7 +773,7 @@ Build from a device padded dataset view (`half`).
 ```cpp
 auto build(raft::resources const& res,
 const cuvs::neighbors::cagra::index_params& params,
-cuvs::neighbors::device_padded_dataset_view<half, int64_t> const& dataset)
+cuvs::core::device_padded_dataset_view<half, int64_t> const& dataset)
 -> cuvs::neighbors::cagra::device_padded_index<half, uint32_t>;
 ```
 
@@ -782,7 +783,7 @@ cuvs::neighbors::device_padded_dataset_view<half, int64_t> const& dataset)
 | --- | --- | --- | --- |
 | `res` | in | `raft::resources const&` | raft resources |
 | `params` | in | `const cuvs::neighbors::cagra::index_params&` | CAGRA index build parameters |
-| `dataset` | in | `cuvs::neighbors::device_padded_dataset_view<half, int64_t> const&` | device padded dataset view [n_rows, dim] |
+| `dataset` | in | `cuvs::core::device_padded_dataset_view<half, int64_t> const&` | device padded dataset view [n_rows, dim] |
 
 **Returns**
 
@@ -797,7 +798,7 @@ Build from a device standard dataset view (`half`).
 ```cpp
 auto build(raft::resources const& res,
 const cuvs::neighbors::cagra::index_params& params,
-cuvs::neighbors::device_standard_dataset_view<half, int64_t> const& dataset)
+cuvs::core::device_standard_dataset_view<half, int64_t> const& dataset)
 -> cuvs::neighbors::cagra::device_standard_index<half, uint32_t>;
 ```
 
@@ -807,7 +808,7 @@ cuvs::neighbors::device_standard_dataset_view<half, int64_t> const& dataset)
 | --- | --- | --- | --- |
 | `res` | in | `raft::resources const&` | raft resources |
 | `params` | in | `const cuvs::neighbors::cagra::index_params&` | CAGRA index build parameters |
-| `dataset` | in | `cuvs::neighbors::device_standard_dataset_view<half, int64_t> const&` | device standard dataset view [n_rows, dim] |
+| `dataset` | in | `cuvs::core::device_standard_dataset_view<half, int64_t> const&` | device standard dataset view [n_rows, dim] |
 
 **Returns**
 
@@ -822,7 +823,7 @@ Build from a host padded dataset view (`half`).
 ```cpp
 auto build(raft::resources const& res,
 const cuvs::neighbors::cagra::index_params& params,
-cuvs::neighbors::host_padded_dataset_view<half, int64_t> const& dataset)
+cuvs::core::host_padded_dataset_view<half, int64_t> const& dataset)
 -> cuvs::neighbors::cagra::host_padded_index<half, uint32_t>;
 ```
 
@@ -832,7 +833,7 @@ cuvs::neighbors::host_padded_dataset_view<half, int64_t> const& dataset)
 | --- | --- | --- | --- |
 | `res` | in | `raft::resources const&` | raft resources |
 | `params` | in | `const cuvs::neighbors::cagra::index_params&` | CAGRA index build parameters |
-| `dataset` | in | `cuvs::neighbors::host_padded_dataset_view<half, int64_t> const&` | host padded dataset view [n_rows, dim] |
+| `dataset` | in | `cuvs::core::host_padded_dataset_view<half, int64_t> const&` | host padded dataset view [n_rows, dim] |
 
 **Returns**
 
@@ -847,7 +848,7 @@ Build from a host standard dataset view (`half`).
 ```cpp
 auto build(raft::resources const& res,
 const cuvs::neighbors::cagra::index_params& params,
-cuvs::neighbors::host_standard_dataset_view<half, int64_t> const& dataset)
+cuvs::core::host_standard_dataset_view<half, int64_t> const& dataset)
 -> cuvs::neighbors::cagra::host_standard_index<half, uint32_t>;
 ```
 
@@ -857,7 +858,7 @@ cuvs::neighbors::host_standard_dataset_view<half, int64_t> const& dataset)
 | --- | --- | --- | --- |
 | `res` | in | `raft::resources const&` | raft resources |
 | `params` | in | `const cuvs::neighbors::cagra::index_params&` | CAGRA index build parameters |
-| `dataset` | in | `cuvs::neighbors::host_standard_dataset_view<half, int64_t> const&` | host standard dataset view [n_rows, dim] |
+| `dataset` | in | `cuvs::core::host_standard_dataset_view<half, int64_t> const&` | host standard dataset view [n_rows, dim] |
 
 **Returns**
 
@@ -872,7 +873,7 @@ Build from a device padded dataset view (`int8_t`).
 ```cpp
 auto build(raft::resources const& res,
 const cuvs::neighbors::cagra::index_params& params,
-cuvs::neighbors::device_padded_dataset_view<int8_t, int64_t> const& dataset)
+cuvs::core::device_padded_dataset_view<int8_t, int64_t> const& dataset)
 -> cuvs::neighbors::cagra::device_padded_index<int8_t, uint32_t>;
 ```
 
@@ -882,7 +883,7 @@ cuvs::neighbors::device_padded_dataset_view<int8_t, int64_t> const& dataset)
 | --- | --- | --- | --- |
 | `res` | in | `raft::resources const&` | raft resources |
 | `params` | in | `const cuvs::neighbors::cagra::index_params&` | CAGRA index build parameters |
-| `dataset` | in | `cuvs::neighbors::device_padded_dataset_view<int8_t, int64_t> const&` | device padded dataset view [n_rows, dim] |
+| `dataset` | in | `cuvs::core::device_padded_dataset_view<int8_t, int64_t> const&` | device padded dataset view [n_rows, dim] |
 
 **Returns**
 
@@ -897,7 +898,7 @@ Build from a device standard dataset view (`int8_t`).
 ```cpp
 auto build(raft::resources const& res,
 const cuvs::neighbors::cagra::index_params& params,
-cuvs::neighbors::device_standard_dataset_view<int8_t, int64_t> const& dataset)
+cuvs::core::device_standard_dataset_view<int8_t, int64_t> const& dataset)
 -> cuvs::neighbors::cagra::device_standard_index<int8_t, uint32_t>;
 ```
 
@@ -907,7 +908,7 @@ cuvs::neighbors::device_standard_dataset_view<int8_t, int64_t> const& dataset)
 | --- | --- | --- | --- |
 | `res` | in | `raft::resources const&` | raft resources |
 | `params` | in | `const cuvs::neighbors::cagra::index_params&` | CAGRA index build parameters |
-| `dataset` | in | `cuvs::neighbors::device_standard_dataset_view<int8_t, int64_t> const&` | device standard dataset view [n_rows, dim] |
+| `dataset` | in | `cuvs::core::device_standard_dataset_view<int8_t, int64_t> const&` | device standard dataset view [n_rows, dim] |
 
 **Returns**
 
@@ -922,7 +923,7 @@ Build from a host padded dataset view (`int8_t`).
 ```cpp
 auto build(raft::resources const& res,
 const cuvs::neighbors::cagra::index_params& params,
-cuvs::neighbors::host_padded_dataset_view<int8_t, int64_t> const& dataset)
+cuvs::core::host_padded_dataset_view<int8_t, int64_t> const& dataset)
 -> cuvs::neighbors::cagra::host_padded_index<int8_t, uint32_t>;
 ```
 
@@ -932,7 +933,7 @@ cuvs::neighbors::host_padded_dataset_view<int8_t, int64_t> const& dataset)
 | --- | --- | --- | --- |
 | `res` | in | `raft::resources const&` | raft resources |
 | `params` | in | `const cuvs::neighbors::cagra::index_params&` | CAGRA index build parameters |
-| `dataset` | in | `cuvs::neighbors::host_padded_dataset_view<int8_t, int64_t> const&` | host padded dataset view [n_rows, dim] |
+| `dataset` | in | `cuvs::core::host_padded_dataset_view<int8_t, int64_t> const&` | host padded dataset view [n_rows, dim] |
 
 **Returns**
 
@@ -947,7 +948,7 @@ Build from a host standard dataset view (`int8_t`).
 ```cpp
 auto build(raft::resources const& res,
 const cuvs::neighbors::cagra::index_params& params,
-cuvs::neighbors::host_standard_dataset_view<int8_t, int64_t> const& dataset)
+cuvs::core::host_standard_dataset_view<int8_t, int64_t> const& dataset)
 -> cuvs::neighbors::cagra::host_standard_index<int8_t, uint32_t>;
 ```
 
@@ -957,7 +958,7 @@ cuvs::neighbors::host_standard_dataset_view<int8_t, int64_t> const& dataset)
 | --- | --- | --- | --- |
 | `res` | in | `raft::resources const&` | raft resources |
 | `params` | in | `const cuvs::neighbors::cagra::index_params&` | CAGRA index build parameters |
-| `dataset` | in | `cuvs::neighbors::host_standard_dataset_view<int8_t, int64_t> const&` | host standard dataset view [n_rows, dim] |
+| `dataset` | in | `cuvs::core::host_standard_dataset_view<int8_t, int64_t> const&` | host standard dataset view [n_rows, dim] |
 
 **Returns**
 
@@ -972,7 +973,7 @@ Build from a device padded dataset view (`uint8_t`).
 ```cpp
 auto build(raft::resources const& res,
 const cuvs::neighbors::cagra::index_params& params,
-cuvs::neighbors::device_padded_dataset_view<uint8_t, int64_t> const& dataset)
+cuvs::core::device_padded_dataset_view<uint8_t, int64_t> const& dataset)
 -> cuvs::neighbors::cagra::device_padded_index<uint8_t, uint32_t>;
 ```
 
@@ -982,7 +983,7 @@ cuvs::neighbors::device_padded_dataset_view<uint8_t, int64_t> const& dataset)
 | --- | --- | --- | --- |
 | `res` | in | `raft::resources const&` | raft resources |
 | `params` | in | `const cuvs::neighbors::cagra::index_params&` | CAGRA index build parameters |
-| `dataset` | in | `cuvs::neighbors::device_padded_dataset_view<uint8_t, int64_t> const&` | device padded dataset view [n_rows, dim] |
+| `dataset` | in | `cuvs::core::device_padded_dataset_view<uint8_t, int64_t> const&` | device padded dataset view [n_rows, dim] |
 
 **Returns**
 
@@ -997,7 +998,7 @@ Build from a device standard dataset view (`uint8_t`).
 ```cpp
 auto build(raft::resources const& res,
 const cuvs::neighbors::cagra::index_params& params,
-cuvs::neighbors::device_standard_dataset_view<uint8_t, int64_t> const& dataset)
+cuvs::core::device_standard_dataset_view<uint8_t, int64_t> const& dataset)
 -> cuvs::neighbors::cagra::device_standard_index<uint8_t, uint32_t>;
 ```
 
@@ -1007,7 +1008,7 @@ cuvs::neighbors::device_standard_dataset_view<uint8_t, int64_t> const& dataset)
 | --- | --- | --- | --- |
 | `res` | in | `raft::resources const&` | raft resources |
 | `params` | in | `const cuvs::neighbors::cagra::index_params&` | CAGRA index build parameters |
-| `dataset` | in | `cuvs::neighbors::device_standard_dataset_view<uint8_t, int64_t> const&` | device standard dataset view [n_rows, dim] |
+| `dataset` | in | `cuvs::core::device_standard_dataset_view<uint8_t, int64_t> const&` | device standard dataset view [n_rows, dim] |
 
 **Returns**
 
@@ -1022,7 +1023,7 @@ Build from a host padded dataset view (`uint8_t`).
 ```cpp
 auto build(raft::resources const& res,
 const cuvs::neighbors::cagra::index_params& params,
-cuvs::neighbors::host_padded_dataset_view<uint8_t, int64_t> const& dataset)
+cuvs::core::host_padded_dataset_view<uint8_t, int64_t> const& dataset)
 -> cuvs::neighbors::cagra::host_padded_index<uint8_t, uint32_t>;
 ```
 
@@ -1032,7 +1033,7 @@ cuvs::neighbors::host_padded_dataset_view<uint8_t, int64_t> const& dataset)
 | --- | --- | --- | --- |
 | `res` | in | `raft::resources const&` | raft resources |
 | `params` | in | `const cuvs::neighbors::cagra::index_params&` | CAGRA index build parameters |
-| `dataset` | in | `cuvs::neighbors::host_padded_dataset_view<uint8_t, int64_t> const&` | host padded dataset view [n_rows, dim] |
+| `dataset` | in | `cuvs::core::host_padded_dataset_view<uint8_t, int64_t> const&` | host padded dataset view [n_rows, dim] |
 
 **Returns**
 
@@ -1047,7 +1048,7 @@ Build from a host standard dataset view (`uint8_t`).
 ```cpp
 auto build(raft::resources const& res,
 const cuvs::neighbors::cagra::index_params& params,
-cuvs::neighbors::host_standard_dataset_view<uint8_t, int64_t> const& dataset)
+cuvs::core::host_standard_dataset_view<uint8_t, int64_t> const& dataset)
 -> cuvs::neighbors::cagra::host_standard_index<uint8_t, uint32_t>;
 ```
 
@@ -1057,7 +1058,7 @@ cuvs::neighbors::host_standard_dataset_view<uint8_t, int64_t> const& dataset)
 | --- | --- | --- | --- |
 | `res` | in | `raft::resources const&` | raft resources |
 | `params` | in | `const cuvs::neighbors::cagra::index_params&` | CAGRA index build parameters |
-| `dataset` | in | `cuvs::neighbors::host_standard_dataset_view<uint8_t, int64_t> const&` | host standard dataset view [n_rows, dim] |
+| `dataset` | in | `cuvs::core::host_standard_dataset_view<uint8_t, int64_t> const&` | host standard dataset view [n_rows, dim] |
 
 **Returns**
 
@@ -1177,7 +1178,7 @@ Add new vectors to a CAGRA index
 ```cpp
 void extend(raft::resources const& handle,
 const cagra::extend_params& params,
-cuvs::neighbors::device_padded_dataset_view<float, int64_t> extended_dataset,
+cuvs::core::device_padded_dataset_view<float, int64_t> extended_dataset,
 int64_t new_start_row,
 cuvs::neighbors::cagra::device_padded_index<float, uint32_t>& idx);
 ```
@@ -1195,7 +1196,7 @@ Usage example:
 | --- | --- | --- | --- |
 | `handle` | in | `raft::resources const&` | raft resources |
 | `params` | in | [`const cagra::extend_params&`](/api-reference/cpp-api-neighbors-cagra#neighbors-cagra-extend-params) | extend params |
-| `extended_dataset` | in | `cuvs::neighbors::device_padded_dataset_view<float, int64_t>` | caller-owned device-padded view already containing old \|\| new rows |
+| `extended_dataset` | in | `cuvs::core::device_padded_dataset_view<float, int64_t>` | caller-owned device-padded view already containing old \|\| new rows |
 | `new_start_row` | in | `int64_t` | row index where the additional vectors begin (must equal `idx.size()`) |
 | `idx` | in,out | `cuvs::neighbors::cagra::device_padded_index<float, uint32_t>&` | CAGRA index; graph is extended and dataset view is rebound |
 
@@ -1210,7 +1211,7 @@ Add new vectors to a CAGRA index. See the float overload for the full contract.
 ```cpp
 void extend(raft::resources const& handle,
 const cagra::extend_params& params,
-cuvs::neighbors::device_padded_dataset_view<half, int64_t> extended_dataset,
+cuvs::core::device_padded_dataset_view<half, int64_t> extended_dataset,
 int64_t new_start_row,
 cuvs::neighbors::cagra::device_padded_index<half, uint32_t>& idx);
 ```
@@ -1221,7 +1222,7 @@ cuvs::neighbors::cagra::device_padded_index<half, uint32_t>& idx);
 | --- | --- | --- | --- |
 | `handle` |  | `raft::resources const&` |  |
 | `params` |  | [`const cagra::extend_params&`](/api-reference/cpp-api-neighbors-cagra#neighbors-cagra-extend-params) |  |
-| `extended_dataset` |  | `cuvs::neighbors::device_padded_dataset_view<half, int64_t>` |  |
+| `extended_dataset` |  | `cuvs::core::device_padded_dataset_view<half, int64_t>` |  |
 | `new_start_row` |  | `int64_t` |  |
 | `idx` |  | `cuvs::neighbors::cagra::device_padded_index<half, uint32_t>&` |  |
 
@@ -1236,7 +1237,7 @@ Add new vectors to a CAGRA index. See the float overload for the full contract.
 ```cpp
 void extend(raft::resources const& handle,
 const cagra::extend_params& params,
-cuvs::neighbors::device_padded_dataset_view<int8_t, int64_t> extended_dataset,
+cuvs::core::device_padded_dataset_view<int8_t, int64_t> extended_dataset,
 int64_t new_start_row,
 cuvs::neighbors::cagra::device_padded_index<int8_t, uint32_t>& idx);
 ```
@@ -1247,7 +1248,7 @@ cuvs::neighbors::cagra::device_padded_index<int8_t, uint32_t>& idx);
 | --- | --- | --- | --- |
 | `handle` |  | `raft::resources const&` |  |
 | `params` |  | [`const cagra::extend_params&`](/api-reference/cpp-api-neighbors-cagra#neighbors-cagra-extend-params) |  |
-| `extended_dataset` |  | `cuvs::neighbors::device_padded_dataset_view<int8_t, int64_t>` |  |
+| `extended_dataset` |  | `cuvs::core::device_padded_dataset_view<int8_t, int64_t>` |  |
 | `new_start_row` |  | `int64_t` |  |
 | `idx` |  | `cuvs::neighbors::cagra::device_padded_index<int8_t, uint32_t>&` |  |
 
@@ -1262,7 +1263,7 @@ Add new vectors to a CAGRA index. See the float overload for the full contract.
 ```cpp
 void extend(raft::resources const& handle,
 const cagra::extend_params& params,
-cuvs::neighbors::device_padded_dataset_view<uint8_t, int64_t> extended_dataset,
+cuvs::core::device_padded_dataset_view<uint8_t, int64_t> extended_dataset,
 int64_t new_start_row,
 cuvs::neighbors::cagra::device_padded_index<uint8_t, uint32_t>& idx);
 ```
@@ -1273,7 +1274,7 @@ cuvs::neighbors::cagra::device_padded_index<uint8_t, uint32_t>& idx);
 | --- | --- | --- | --- |
 | `handle` |  | `raft::resources const&` |  |
 | `params` |  | [`const cagra::extend_params&`](/api-reference/cpp-api-neighbors-cagra#neighbors-cagra-extend-params) |  |
-| `extended_dataset` |  | `cuvs::neighbors::device_padded_dataset_view<uint8_t, int64_t>` |  |
+| `extended_dataset` |  | `cuvs::core::device_padded_dataset_view<uint8_t, int64_t>` |  |
 | `new_start_row` |  | `int64_t` |  |
 | `idx` |  | `cuvs::neighbors::cagra::device_padded_index<uint8_t, uint32_t>&` |  |
 
@@ -1345,7 +1346,7 @@ void deserialize(
 raft::resources const& handle,
 const std::string& filename,
 cuvs::neighbors::cagra::device_padded_index<float>* index,
-std::unique_ptr<cuvs::neighbors::device_padded_dataset<float, int64_t>>* out_dataset = nullptr);
+std::unique_ptr<cuvs::core::device_padded_dataset<float, int64_t>>* out_dataset = nullptr);
 ```
 
 Experimental, both the API and the serialization format are subject to change.
@@ -1357,7 +1358,7 @@ Experimental, both the API and the serialization format are subject to change.
 | `handle` | in | `raft::resources const&` | the raft handle |
 | `filename` | in | `const std::string&` | the name of the file that stores the index |
 | `index` | out | `cuvs::neighbors::cagra::device_padded_index<float>*` | the cagra index |
-| `out_dataset` | out | `std::unique_ptr<cuvs::neighbors::device_padded_dataset<float, int64_t>>*` | if non-null, on success may be set to an owned deserialized dataset when the file includes dataset data; may be left unchanged otherwise. Optional; pass nullptr to ignore.<br />Default: `nullptr`. |
+| `out_dataset` | out | `std::unique_ptr<cuvs::core::device_padded_dataset<float, int64_t>>*` | if non-null, on success may be set to an owned deserialized dataset when the file includes dataset data; may be left unchanged otherwise. Optional; pass nullptr to ignore.<br />Default: `nullptr`. |
 
 **Returns**
 
@@ -1398,7 +1399,7 @@ void deserialize(
 raft::resources const& handle,
 std::istream& is,
 cuvs::neighbors::cagra::device_padded_index<float>* index,
-std::unique_ptr<cuvs::neighbors::device_padded_dataset<float, int64_t>>* out_dataset = nullptr);
+std::unique_ptr<cuvs::core::device_padded_dataset<float, int64_t>>* out_dataset = nullptr);
 ```
 
 Experimental, both the API and the serialization format are subject to change.
@@ -1410,7 +1411,7 @@ Experimental, both the API and the serialization format are subject to change.
 | `handle` | in | `raft::resources const&` | the raft handle |
 | `is` | in | `std::istream&` | input stream |
 | `index` | out | `cuvs::neighbors::cagra::device_padded_index<float>*` | the cagra index |
-| `out_dataset` | out | `std::unique_ptr<cuvs::neighbors::device_padded_dataset<float, int64_t>>*` | if non-null, on success may be set to an owned deserialized dataset when the stream includes dataset data; may be left unchanged otherwise. Optional; pass nullptr to ignore.<br />Default: `nullptr`. |
+| `out_dataset` | out | `std::unique_ptr<cuvs::core::device_padded_dataset<float, int64_t>>*` | if non-null, on success may be set to an owned deserialized dataset when the stream includes dataset data; may be left unchanged otherwise. Optional; pass nullptr to ignore.<br />Default: `nullptr`. |
 
 **Returns**
 
@@ -1451,7 +1452,7 @@ void deserialize(
 raft::resources const& handle,
 const std::string& filename,
 cuvs::neighbors::cagra::device_padded_index<half>* index,
-std::unique_ptr<cuvs::neighbors::device_padded_dataset<half, int64_t>>* out_dataset = nullptr);
+std::unique_ptr<cuvs::core::device_padded_dataset<half, int64_t>>* out_dataset = nullptr);
 ```
 
 Experimental, both the API and the serialization format are subject to change.
@@ -1463,7 +1464,7 @@ Experimental, both the API and the serialization format are subject to change.
 | `handle` | in | `raft::resources const&` | the raft handle |
 | `filename` | in | `const std::string&` | the name of the file that stores the index |
 | `index` | out | `cuvs::neighbors::cagra::device_padded_index<half>*` | the cagra index |
-| `out_dataset` | out | `std::unique_ptr<cuvs::neighbors::device_padded_dataset<half, int64_t>>*` | if non-null, on success may be set to an owned deserialized dataset when the file includes dataset data; may be left unchanged otherwise. Optional; pass nullptr to ignore.<br />Default: `nullptr`. |
+| `out_dataset` | out | `std::unique_ptr<cuvs::core::device_padded_dataset<half, int64_t>>*` | if non-null, on success may be set to an owned deserialized dataset when the file includes dataset data; may be left unchanged otherwise. Optional; pass nullptr to ignore.<br />Default: `nullptr`. |
 
 **Returns**
 
@@ -1504,7 +1505,7 @@ void deserialize(
 raft::resources const& handle,
 std::istream& is,
 cuvs::neighbors::cagra::device_padded_index<half>* index,
-std::unique_ptr<cuvs::neighbors::device_padded_dataset<half, int64_t>>* out_dataset = nullptr);
+std::unique_ptr<cuvs::core::device_padded_dataset<half, int64_t>>* out_dataset = nullptr);
 ```
 
 Experimental, both the API and the serialization format are subject to change.
@@ -1516,7 +1517,7 @@ Experimental, both the API and the serialization format are subject to change.
 | `handle` | in | `raft::resources const&` | the raft handle |
 | `is` | in | `std::istream&` | input stream |
 | `index` | out | `cuvs::neighbors::cagra::device_padded_index<half>*` | the cagra index |
-| `out_dataset` | out | `std::unique_ptr<cuvs::neighbors::device_padded_dataset<half, int64_t>>*` | if non-null, on success may be set to an owned deserialized dataset when the stream includes dataset data; may be left unchanged otherwise. Optional; pass nullptr to ignore.<br />Default: `nullptr`. |
+| `out_dataset` | out | `std::unique_ptr<cuvs::core::device_padded_dataset<half, int64_t>>*` | if non-null, on success may be set to an owned deserialized dataset when the stream includes dataset data; may be left unchanged otherwise. Optional; pass nullptr to ignore.<br />Default: `nullptr`. |
 
 **Returns**
 
@@ -1557,7 +1558,7 @@ void deserialize(
 raft::resources const& handle,
 const std::string& filename,
 cuvs::neighbors::cagra::device_padded_index<int8_t>* index,
-std::unique_ptr<cuvs::neighbors::device_padded_dataset<int8_t, int64_t>>* out_dataset = nullptr);
+std::unique_ptr<cuvs::core::device_padded_dataset<int8_t, int64_t>>* out_dataset = nullptr);
 ```
 
 Experimental, both the API and the serialization format are subject to change.
@@ -1569,7 +1570,7 @@ Experimental, both the API and the serialization format are subject to change.
 | `handle` | in | `raft::resources const&` | the raft handle |
 | `filename` | in | `const std::string&` | the name of the file that stores the index |
 | `index` | out | `cuvs::neighbors::cagra::device_padded_index<int8_t>*` | the cagra index |
-| `out_dataset` | out | `std::unique_ptr<cuvs::neighbors::device_padded_dataset<int8_t, int64_t>>*` | if non-null, on success may be set to an owned deserialized dataset when the file includes dataset data; may be left unchanged otherwise. Optional; pass nullptr to ignore.<br />Default: `nullptr`. |
+| `out_dataset` | out | `std::unique_ptr<cuvs::core::device_padded_dataset<int8_t, int64_t>>*` | if non-null, on success may be set to an owned deserialized dataset when the file includes dataset data; may be left unchanged otherwise. Optional; pass nullptr to ignore.<br />Default: `nullptr`. |
 
 **Returns**
 
@@ -1610,7 +1611,7 @@ void deserialize(
 raft::resources const& handle,
 std::istream& is,
 cuvs::neighbors::cagra::device_padded_index<int8_t>* index,
-std::unique_ptr<cuvs::neighbors::device_padded_dataset<int8_t, int64_t>>* out_dataset = nullptr);
+std::unique_ptr<cuvs::core::device_padded_dataset<int8_t, int64_t>>* out_dataset = nullptr);
 ```
 
 Experimental, both the API and the serialization format are subject to change.
@@ -1622,7 +1623,7 @@ Experimental, both the API and the serialization format are subject to change.
 | `handle` | in | `raft::resources const&` | the raft handle |
 | `is` | in | `std::istream&` | input stream |
 | `index` | out | `cuvs::neighbors::cagra::device_padded_index<int8_t>*` | the cagra index |
-| `out_dataset` | out | `std::unique_ptr<cuvs::neighbors::device_padded_dataset<int8_t, int64_t>>*` | if non-null, on success may be set to an owned deserialized dataset when the stream includes dataset data; may be left unchanged otherwise. Optional; pass nullptr to ignore.<br />Default: `nullptr`. |
+| `out_dataset` | out | `std::unique_ptr<cuvs::core::device_padded_dataset<int8_t, int64_t>>*` | if non-null, on success may be set to an owned deserialized dataset when the stream includes dataset data; may be left unchanged otherwise. Optional; pass nullptr to ignore.<br />Default: `nullptr`. |
 
 **Returns**
 
@@ -1663,7 +1664,7 @@ void deserialize(
 raft::resources const& handle,
 const std::string& filename,
 cuvs::neighbors::cagra::device_padded_index<uint8_t>* index,
-std::unique_ptr<cuvs::neighbors::device_padded_dataset<uint8_t, int64_t>>* out_dataset = nullptr);
+std::unique_ptr<cuvs::core::device_padded_dataset<uint8_t, int64_t>>* out_dataset = nullptr);
 ```
 
 Experimental, both the API and the serialization format are subject to change.
@@ -1675,7 +1676,7 @@ Experimental, both the API and the serialization format are subject to change.
 | `handle` | in | `raft::resources const&` | the raft handle |
 | `filename` | in | `const std::string&` | the name of the file that stores the index |
 | `index` | out | `cuvs::neighbors::cagra::device_padded_index<uint8_t>*` | the cagra index |
-| `out_dataset` | out | `std::unique_ptr<cuvs::neighbors::device_padded_dataset<uint8_t, int64_t>>*` | if non-null, on success may be set to an owned deserialized dataset when the file includes dataset data; may be left unchanged otherwise. Optional; pass nullptr to ignore.<br />Default: `nullptr`. |
+| `out_dataset` | out | `std::unique_ptr<cuvs::core::device_padded_dataset<uint8_t, int64_t>>*` | if non-null, on success may be set to an owned deserialized dataset when the file includes dataset data; may be left unchanged otherwise. Optional; pass nullptr to ignore.<br />Default: `nullptr`. |
 
 **Returns**
 
@@ -1716,7 +1717,7 @@ void deserialize(
 raft::resources const& handle,
 std::istream& is,
 cuvs::neighbors::cagra::device_padded_index<uint8_t>* index,
-std::unique_ptr<cuvs::neighbors::device_padded_dataset<uint8_t, int64_t>>* out_dataset = nullptr);
+std::unique_ptr<cuvs::core::device_padded_dataset<uint8_t, int64_t>>* out_dataset = nullptr);
 ```
 
 Experimental, both the API and the serialization format are subject to change.
@@ -1728,7 +1729,7 @@ Experimental, both the API and the serialization format are subject to change.
 | `handle` | in | `raft::resources const&` | the raft handle |
 | `is` | in | `std::istream&` | input stream |
 | `index` | out | `cuvs::neighbors::cagra::device_padded_index<uint8_t>*` | the cagra index |
-| `out_dataset` | out | `std::unique_ptr<cuvs::neighbors::device_padded_dataset<uint8_t, int64_t>>*` | if non-null, on success may be set to an owned deserialized dataset when the stream includes dataset data; may be left unchanged otherwise. Optional; pass nullptr to ignore.<br />Default: `nullptr`. |
+| `out_dataset` | out | `std::unique_ptr<cuvs::core::device_padded_dataset<uint8_t, int64_t>>*` | if non-null, on success may be set to an owned deserialized dataset when the stream includes dataset data; may be left unchanged otherwise. Optional; pass nullptr to ignore.<br />Default: `nullptr`. |
 
 **Returns**
 
@@ -2093,7 +2094,7 @@ void deserialize(
 raft::resources const& handle,
 const std::string& filename,
 cuvs::neighbors::cagra::host_padded_index<float>* index,
-std::unique_ptr<cuvs::neighbors::host_padded_dataset<float, int64_t>>* out_dataset = nullptr);
+std::unique_ptr<cuvs::core::host_padded_dataset<float, int64_t>>* out_dataset = nullptr);
 ```
 
 **Parameters**
@@ -2103,7 +2104,7 @@ std::unique_ptr<cuvs::neighbors::host_padded_dataset<float, int64_t>>* out_datas
 | `handle` |  | `raft::resources const&` |  |
 | `filename` |  | `const std::string&` |  |
 | `index` |  | `cuvs::neighbors::cagra::host_padded_index<float>*` |  |
-| `out_dataset` |  | `std::unique_ptr<cuvs::neighbors::host_padded_dataset<float, int64_t>>*` | Default: `nullptr`. |
+| `out_dataset` |  | `std::unique_ptr<cuvs::core::host_padded_dataset<float, int64_t>>*` | Default: `nullptr`. |
 
 **Returns**
 
@@ -2116,7 +2117,7 @@ void deserialize(
 raft::resources const& handle,
 const std::string& filename,
 cuvs::neighbors::cagra::host_standard_index<float>* index,
-std::unique_ptr<cuvs::neighbors::host_standard_dataset<float, int64_t>>* out_dataset = nullptr);
+std::unique_ptr<cuvs::core::host_standard_dataset<float, int64_t>>* out_dataset = nullptr);
 ```
 
 **Parameters**
@@ -2126,7 +2127,7 @@ std::unique_ptr<cuvs::neighbors::host_standard_dataset<float, int64_t>>* out_dat
 | `handle` |  | `raft::resources const&` |  |
 | `filename` |  | `const std::string&` |  |
 | `index` |  | `cuvs::neighbors::cagra::host_standard_index<float>*` |  |
-| `out_dataset` |  | `std::unique_ptr<cuvs::neighbors::host_standard_dataset<float, int64_t>>*` | Default: `nullptr`. |
+| `out_dataset` |  | `std::unique_ptr<cuvs::core::host_standard_dataset<float, int64_t>>*` | Default: `nullptr`. |
 
 **Returns**
 
@@ -2139,7 +2140,7 @@ void deserialize(
 raft::resources const& handle,
 const std::string& filename,
 cuvs::neighbors::cagra::host_padded_index<half>* index,
-std::unique_ptr<cuvs::neighbors::host_padded_dataset<half, int64_t>>* out_dataset = nullptr);
+std::unique_ptr<cuvs::core::host_padded_dataset<half, int64_t>>* out_dataset = nullptr);
 ```
 
 **Parameters**
@@ -2149,7 +2150,7 @@ std::unique_ptr<cuvs::neighbors::host_padded_dataset<half, int64_t>>* out_datase
 | `handle` |  | `raft::resources const&` |  |
 | `filename` |  | `const std::string&` |  |
 | `index` |  | `cuvs::neighbors::cagra::host_padded_index<half>*` |  |
-| `out_dataset` |  | `std::unique_ptr<cuvs::neighbors::host_padded_dataset<half, int64_t>>*` | Default: `nullptr`. |
+| `out_dataset` |  | `std::unique_ptr<cuvs::core::host_padded_dataset<half, int64_t>>*` | Default: `nullptr`. |
 
 **Returns**
 
@@ -2162,7 +2163,7 @@ void deserialize(
 raft::resources const& handle,
 const std::string& filename,
 cuvs::neighbors::cagra::host_standard_index<half>* index,
-std::unique_ptr<cuvs::neighbors::host_standard_dataset<half, int64_t>>* out_dataset = nullptr);
+std::unique_ptr<cuvs::core::host_standard_dataset<half, int64_t>>* out_dataset = nullptr);
 ```
 
 **Parameters**
@@ -2172,7 +2173,7 @@ std::unique_ptr<cuvs::neighbors::host_standard_dataset<half, int64_t>>* out_data
 | `handle` |  | `raft::resources const&` |  |
 | `filename` |  | `const std::string&` |  |
 | `index` |  | `cuvs::neighbors::cagra::host_standard_index<half>*` |  |
-| `out_dataset` |  | `std::unique_ptr<cuvs::neighbors::host_standard_dataset<half, int64_t>>*` | Default: `nullptr`. |
+| `out_dataset` |  | `std::unique_ptr<cuvs::core::host_standard_dataset<half, int64_t>>*` | Default: `nullptr`. |
 
 **Returns**
 
@@ -2185,7 +2186,7 @@ void deserialize(
 raft::resources const& handle,
 const std::string& filename,
 cuvs::neighbors::cagra::host_padded_index<int8_t>* index,
-std::unique_ptr<cuvs::neighbors::host_padded_dataset<int8_t, int64_t>>* out_dataset = nullptr);
+std::unique_ptr<cuvs::core::host_padded_dataset<int8_t, int64_t>>* out_dataset = nullptr);
 ```
 
 **Parameters**
@@ -2195,7 +2196,7 @@ std::unique_ptr<cuvs::neighbors::host_padded_dataset<int8_t, int64_t>>* out_data
 | `handle` |  | `raft::resources const&` |  |
 | `filename` |  | `const std::string&` |  |
 | `index` |  | `cuvs::neighbors::cagra::host_padded_index<int8_t>*` |  |
-| `out_dataset` |  | `std::unique_ptr<cuvs::neighbors::host_padded_dataset<int8_t, int64_t>>*` | Default: `nullptr`. |
+| `out_dataset` |  | `std::unique_ptr<cuvs::core::host_padded_dataset<int8_t, int64_t>>*` | Default: `nullptr`. |
 
 **Returns**
 
@@ -2208,7 +2209,7 @@ void deserialize(
 raft::resources const& handle,
 const std::string& filename,
 cuvs::neighbors::cagra::host_standard_index<int8_t>* index,
-std::unique_ptr<cuvs::neighbors::host_standard_dataset<int8_t, int64_t>>* out_dataset = nullptr);
+std::unique_ptr<cuvs::core::host_standard_dataset<int8_t, int64_t>>* out_dataset = nullptr);
 ```
 
 **Parameters**
@@ -2218,7 +2219,7 @@ std::unique_ptr<cuvs::neighbors::host_standard_dataset<int8_t, int64_t>>* out_da
 | `handle` |  | `raft::resources const&` |  |
 | `filename` |  | `const std::string&` |  |
 | `index` |  | `cuvs::neighbors::cagra::host_standard_index<int8_t>*` |  |
-| `out_dataset` |  | `std::unique_ptr<cuvs::neighbors::host_standard_dataset<int8_t, int64_t>>*` | Default: `nullptr`. |
+| `out_dataset` |  | `std::unique_ptr<cuvs::core::host_standard_dataset<int8_t, int64_t>>*` | Default: `nullptr`. |
 
 **Returns**
 
@@ -2231,7 +2232,7 @@ void deserialize(
 raft::resources const& handle,
 const std::string& filename,
 cuvs::neighbors::cagra::host_padded_index<uint8_t>* index,
-std::unique_ptr<cuvs::neighbors::host_padded_dataset<uint8_t, int64_t>>* out_dataset = nullptr);
+std::unique_ptr<cuvs::core::host_padded_dataset<uint8_t, int64_t>>* out_dataset = nullptr);
 ```
 
 **Parameters**
@@ -2241,7 +2242,7 @@ std::unique_ptr<cuvs::neighbors::host_padded_dataset<uint8_t, int64_t>>* out_dat
 | `handle` |  | `raft::resources const&` |  |
 | `filename` |  | `const std::string&` |  |
 | `index` |  | `cuvs::neighbors::cagra::host_padded_index<uint8_t>*` |  |
-| `out_dataset` |  | `std::unique_ptr<cuvs::neighbors::host_padded_dataset<uint8_t, int64_t>>*` | Default: `nullptr`. |
+| `out_dataset` |  | `std::unique_ptr<cuvs::core::host_padded_dataset<uint8_t, int64_t>>*` | Default: `nullptr`. |
 
 **Returns**
 
@@ -2254,7 +2255,7 @@ void deserialize(
 raft::resources const& handle,
 const std::string& filename,
 cuvs::neighbors::cagra::host_standard_index<uint8_t>* index,
-std::unique_ptr<cuvs::neighbors::host_standard_dataset<uint8_t, int64_t>>* out_dataset = nullptr);
+std::unique_ptr<cuvs::core::host_standard_dataset<uint8_t, int64_t>>* out_dataset = nullptr);
 ```
 
 **Parameters**
@@ -2264,7 +2265,7 @@ std::unique_ptr<cuvs::neighbors::host_standard_dataset<uint8_t, int64_t>>* out_d
 | `handle` |  | `raft::resources const&` |  |
 | `filename` |  | `const std::string&` |  |
 | `index` |  | `cuvs::neighbors::cagra::host_standard_index<uint8_t>*` |  |
-| `out_dataset` |  | `std::unique_ptr<cuvs::neighbors::host_standard_dataset<uint8_t, int64_t>>*` | Default: `nullptr`. |
+| `out_dataset` |  | `std::unique_ptr<cuvs::core::host_standard_dataset<uint8_t, int64_t>>*` | Default: `nullptr`. |
 
 **Returns**
 
