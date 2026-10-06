@@ -61,31 +61,32 @@ struct vpq_descriptor_spec : public instance_spec<DataT, IndexT, DistanceT> {
 
   template <typename DatasetT>
   static auto init(const cagra::search_params& params,
-                   const DatasetT& dataset,
+                   const DatasetT& dataset_view,
                    cuvs::distance::DistanceType metric,
                    const DistanceT* dataset_norms = nullptr) -> host_type
   {
-    auto const data_view = dataset.as_matrix_view();
+    auto const& vpq_view = dataset_view.data();
     return init_(params,
-                 data_view.data_handle(),
-                 static_cast<uint32_t>(data_view.extent(1)),
-                 data_view.vq_code_book.data_handle(),
-                 data_view.pq_code_book.data_handle(),
-                 IndexT(dataset.n_rows()),
-                 dataset.dim());
+                 vpq_view.data_handle(),
+                 static_cast<uint32_t>(vpq_view.extent(1)),
+                 vpq_view.vq_code_book.data_handle(),
+                 vpq_view.pq_code_book.data_handle(),
+                 IndexT(dataset_view.n_rows()),
+                 dataset_view.dim());
   }
 
   template <typename DatasetT>
   static auto priority(const cagra::search_params& params,
-                       const DatasetT& dataset,
+                       const DatasetT& dataset_view,
                        cuvs::distance::DistanceType metric) -> double
   {
     // If explicit team_size is specified and doesn't match the instance, discard it
     if (params.team_size != 0 && TeamSize != params.team_size) { return -1.0; }
     if (cuvs::distance::DistanceType::L2Expanded != metric) { return -1.0; }
     // Match codebook params
-    if (dataset.data().pq_bits() != PqBits) { return -1.0; }
-    if (dataset.data().pq_len() != PqLen) { return -1.0; }
+    auto const& vpq_view = dataset_view.data();
+    if (vpq_view.pq_bits() != PqBits) { return -1.0; }
+    if (vpq_view.pq_len() != PqLen) { return -1.0; }
     if (select_supported_vpq_smem_dtype(params) != SmemDType) { return -1.0; }
     // Keep auto-selection on the tuned VPQ diagonal while allowing explicit team_size requests to
     // use the expanded team_size / dataset_block_dim grid.
@@ -96,8 +97,8 @@ struct vpq_descriptor_spec : public instance_spec<DataT, IndexT, DistanceT> {
     // Otherwise, favor the closest dataset dimensionality.
     constexpr std::uint32_t preferred_load_elmes_per_thread =
       16; /*magic number that is good based on experiments.*/
-    return 1.0 / (0.1 + std::abs(double(dataset.dim()) - double(DatasetBlockDim))) * TeamSize +
-           1.0 / (0.1 + std::abs(double(dataset.dim()) / TeamSize / PqLen -
+    return 1.0 / (0.1 + std::abs(double(dataset_view.dim()) - double(DatasetBlockDim))) * TeamSize +
+           1.0 / (0.1 + std::abs(double(dataset_view.dim()) / TeamSize / PqLen -
                                  preferred_load_elmes_per_thread));
   }
 

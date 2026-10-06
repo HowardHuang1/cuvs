@@ -295,7 +295,7 @@ template <typename DatasetViewT>
   requires(!cuvs::core::is_empty_dataset_view_v<DatasetViewT> &&
            (cuvs::core::is_device_dataset_view_v<DatasetViewT> ||
             cuvs::core::is_host_dataset_view_v<DatasetViewT>))
-auto build(raft::resources const& res, const index_params& params, DatasetViewT const& dataset)
+auto build(raft::resources const& res, const index_params& params, DatasetViewT const& dataset_view)
   -> cuvs::neighbors::cagra::cagra_index_t<DatasetViewT>
 {
   using index_type = cuvs::neighbors::cagra::cagra_index_t<DatasetViewT>;
@@ -306,7 +306,7 @@ auto build(raft::resources const& res, const index_params& params, DatasetViewT 
   // non-searchable until the type-changing update_dataset(...) supplies a device-padded dataset.
   if constexpr (cuvs::preprocessing::quantize::bbq::is_device_bbq_dataset_view_v<DatasetViewT>) {
     return cuvs::neighbors::cagra::detail::build_from_bbq_dataset<T, IdxT, DatasetViewT>(
-      res, params, dataset);
+      res, params, dataset_view);
   } else if constexpr (cuvs::preprocessing::quantize::pq::is_device_vpq_dataset_view_v<
                          DatasetViewT>) {
     auto effective_params = params;
@@ -319,39 +319,41 @@ auto build(raft::resources const& res, const index_params& params, DatasetViewT 
                  "cagra::build: a VPQ dataset requires iterative_search_params graph construction");
     RAFT_EXPECTS(effective_params.metric == cuvs::distance::DistanceType::L2Expanded,
                  "cagra::build: a VPQ dataset supports only L2Expanded distance");
-    RAFT_EXPECTS(dataset.n_rows() > 0, "cagra::build: VPQ dataset must not be empty");
-    RAFT_EXPECTS(dataset.data().pq_bits() == 8,
+    RAFT_EXPECTS(dataset_view.n_rows() > 0, "cagra::build: VPQ dataset must not be empty");
+    auto const& vpq_view = dataset_view.data();
+    RAFT_EXPECTS(vpq_view.pq_bits() == 8,
                  "cagra::build: VPQ dataset requires pq_bits == 8, got %u",
-                 dataset.data().pq_bits());
-    auto const pq_len = dataset.data().pq_len();
+                 vpq_view.pq_bits());
+    auto const pq_len = vpq_view.pq_len();
     RAFT_EXPECTS(pq_len == 2 || pq_len == 4 || pq_len == 8,
                  "cagra::build: VPQ dataset requires pq_len in {2, 4, 8}, got %u",
                  pq_len);
 
     detail::check_graph_degree<T, IdxT>(effective_params.intermediate_graph_degree,
                                         effective_params.graph_degree,
-                                        static_cast<size_t>(dataset.n_rows()));
-    auto cagra_graph = detail::iterative_build_graph<T, IdxT>(res, effective_params, dataset);
+                                        static_cast<size_t>(dataset_view.n_rows()));
+    auto cagra_graph = detail::iterative_build_graph<T, IdxT>(res, effective_params, dataset_view);
 
     index_type idx(res, effective_params.metric);
     idx.update_graph(res, std::move(cagra_graph));
     if (effective_params.attach_dataset_on_build) {
-      idx = cuvs::neighbors::cagra::update_dataset(res, std::move(idx), dataset);
+      idx = cuvs::neighbors::cagra::update_dataset(res, std::move(idx), dataset_view);
     }
     return idx;
   } else if constexpr (cuvs::core::is_dense_row_major_device_dataset_view_v<DatasetViewT>) {
     auto idx = cuvs::neighbors::cagra::detail::build_from_device_matrix<T, IdxT, DatasetViewT>(
-      res, params, dataset);
+      res, params, dataset_view);
     if (params.attach_dataset_on_build) {
-      idx = cuvs::neighbors::cagra::update_dataset(res, std::move(idx), dataset);
+      idx = cuvs::neighbors::cagra::update_dataset(res, std::move(idx), dataset_view);
     }
     return idx;
   } else {
     if (std::holds_alternative<graph_build_params::ace_params>(params.graph_build_params)) {
-      return cuvs::neighbors::cagra::detail::build_ace<T, IdxT, DatasetViewT>(res, params, dataset);
+      return cuvs::neighbors::cagra::detail::build_ace<T, IdxT, DatasetViewT>(
+        res, params, dataset_view);
     }
     return cuvs::neighbors::cagra::detail::build_from_host_matrix<T, IdxT, DatasetViewT>(
-      res, params, dataset);
+      res, params, dataset_view);
   }
 }
 

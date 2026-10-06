@@ -92,21 +92,21 @@ struct key {
 };
 
 // `DatasetT` here is the non-owning dataset_view passed in by the search path, so all state comes
-// off the view's own `as_matrix_view()`, not owning-only members.
+// off the view's own `as_matrix_view()`/`data()`, not owning-only members.
 template <typename DatasetT>
 auto make_key(const cagra::search_params& params,
-              const DatasetT& dataset,
+              const DatasetT& dataset_view,
               cuvs::distance::DistanceType metric,
               const void* dataset_norms)
   -> std::enable_if_t<cuvs::core::is_padded_dataset_v<DatasetT> ||
                         cuvs::core::is_standard_dataset_v<DatasetT>,
                       key>
 {
-  auto const data_view = dataset.as_matrix_view();
+  auto const data_view = dataset_view.as_matrix_view();
   return key{reinterpret_cast<uint64_t>(data_view.data_handle()),
              reinterpret_cast<uint64_t>(dataset_norms),
-             uint64_t(dataset.n_rows()),
-             dataset.dim(),
+             uint64_t(dataset_view.n_rows()),
+             dataset_view.dim(),
              data_view.stride(),
              uint32_t(params.team_size),
              uint32_t(metric),
@@ -115,17 +115,17 @@ auto make_key(const cagra::search_params& params,
 
 template <typename DatasetT>
 auto make_key(const cagra::search_params& params,
-              const DatasetT& dataset,
+              const DatasetT& dataset_view,
               cuvs::distance::DistanceType metric,
               const void* dataset_norms)
   -> std::enable_if_t<cuvs::preprocessing::quantize::pq::is_vpq_dataset_view_v<DatasetT>, key>
 {
-  auto const data_view = dataset.as_matrix_view();
-  return key{reinterpret_cast<uint64_t>(data_view.data_handle()),
+  auto const& vpq_view = dataset_view.data();
+  return key{reinterpret_cast<uint64_t>(vpq_view.data_handle()),
              reinterpret_cast<uint64_t>(dataset_norms),
-             uint64_t(dataset.n_rows()),
-             dataset.dim(),
-             uint32_t(reinterpret_cast<uint64_t>(data_view.pq_code_book.data_handle()) >> 6),
+             uint64_t(dataset_view.n_rows()),
+             dataset_view.dim(),
+             uint32_t(reinterpret_cast<uint64_t>(vpq_view.pq_code_book.data_handle()) >> 6),
              uint32_t(params.team_size),
              uint32_t(metric),
              uint32_t(params.smem_dtype)};

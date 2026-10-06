@@ -208,13 +208,8 @@ struct vpq_params {
 namespace detail {
 
 // The accessor aliases are shared with every dataset kind and live next to `dataset`.
-using cuvs::core::detail::dataset_view_accessor_for_owning;
 using cuvs::core::detail::device_owning_accessor;
 using cuvs::core::detail::host_owning_accessor;
-
-template <typename MathT, typename IdxT, typename Accessor>
-using vpq_vq_book_matrix =
-  raft::mdarray<MathT, raft::matrix_extent<uint32_t>, raft::row_major, Accessor>;
 
 // VPQ codes are always uint8_t regardless of MathT, so retarget the owning accessor's element
 // type instead of re-deriving a device/host matrix; residency is still driven by Accessor.
@@ -223,11 +218,20 @@ using owning_accessor_with_value_type = std::conditional_t<Accessor::is_device_a
                                                            device_owning_accessor<NewT>,
                                                            host_owning_accessor<NewT>>;
 
+// The two matrix types of a VPQ dataset. Both are owning (`mdarray`); the non-owning form of each
+// is its `const_view_type`, which the view payload below uses directly.
+
+/** Encoded rows (`uint8_t`): each row holds the VQ code followed by the PQ codes. Owning. */
 template <typename IdxT, typename Accessor>
 using vpq_data_matrix = raft::mdarray<uint8_t,
                                       raft::matrix_extent<IdxT>,
                                       raft::row_major,
                                       owning_accessor_with_value_type<uint8_t, Accessor>>;
+
+/** A codebook (used for both the VQ and the PQ codebook). Owning. */
+template <typename MathT, typename IdxT, typename Accessor>
+using vpq_codebook_matrix =
+  raft::mdarray<MathT, raft::matrix_extent<uint32_t>, raft::row_major, Accessor>;
 
 /** Read-only helpers derived from the codebook shapes; shared by the owning and view payloads.
  * `Derived` provides `vq_code_book`, `pq_code_book` and the codes' `extent(r)`. */
@@ -281,53 +285,37 @@ struct vpq_codebook_helpers {
   }
 };
 
-/** Owning VPQ payload: the encoded rows (it *is* the `uint8_t` codes mdarray) plus the VQ and PQ
- * codebooks. `Accessor` drives both codebook and code residency. */
-template <typename MathT, typename IdxT, typename Accessor>
-struct vpq_owning_storage : public vpq_data_matrix<IdxT, Accessor>,
-                            public vpq_codebook_helpers<vpq_owning_storage<MathT, IdxT, Accessor>> {
-  using codes_type   = vpq_data_matrix<IdxT, Accessor>;
-  using vq_book_type = vpq_vq_book_matrix<MathT, IdxT, Accessor>;
-  using pq_book_type = vpq_vq_book_matrix<MathT, IdxT, Accessor>;
+/** The VPQ payload, defined once. `CodesT` is the encoded-rows matrix and `BookT` the type of each
+ * codebook: raft `mdarray`s for an owning dataset, `mdspan`s for a non-owning view. The payload
+ * *is* the `uint8_t` codes matrix (it derives from `CodesT`) and additionally holds the VQ and PQ
+ * codebooks, so `vq_code_book`, `pq_code_book` and the helpers below mean the same thing in both
+ * forms and only the ownership of the arrays differs. Use the aliases below rather than naming
+ * this template directly. */
+template <typename CodesT, typename BookT>
+struct vpq_storage : public CodesT, public vpq_codebook_helpers<vpq_storage<CodesT, BookT>> {
+  BookT vq_code_book;
+  BookT pq_code_book;
 
-  vq_book_type vq_code_book;
-  pq_book_type pq_code_book;
+  // Only usable when every member is default-constructible, i.e. for the view form.
+  vpq_storage() noexcept = default;
 
-  vpq_owning_storage(codes_type&& codes, vq_book_type&& vq_codes, pq_book_type&& pq_codes) noexcept
-    : codes_type{std::move(codes)},
-      vq_code_book{std::move(vq_codes)},
-      pq_code_book{std::move(pq_codes)}
+  vpq_storage(CodesT&& codes, BookT&& vq_codes, BookT&& pq_codes) noexcept
+    : CodesT(std::move(codes)), vq_code_book(std::move(vq_codes)), pq_code_book(std::move(pq_codes))
   {
   }
 };
 
-/** Non-owning VPQ payload: a view of the encoded rows plus views of the VQ and PQ codebooks. */
+/** Owning VPQ payload: `mdarray` codes and codebooks. `Accessor` drives both codebook and code
+ * residency. */
 template <typename MathT, typename IdxT, typename Accessor>
-struct vpq_view_storage : public raft::mdspan<const uint8_t,
-                                              raft::matrix_extent<IdxT>,
-                                              raft::row_major,
-                                              dataset_view_accessor_for_owning<uint8_t, Accessor>>,
-                          public vpq_codebook_helpers<vpq_view_storage<MathT, IdxT, Accessor>> {
-  using codes_view_type = raft::mdspan<const uint8_t,
-                                       raft::matrix_extent<IdxT>,
-                                       raft::row_major,
-                                       dataset_view_accessor_for_owning<uint8_t, Accessor>>;
-  using vq_book_view_type =
-    typename vpq_owning_storage<MathT, IdxT, Accessor>::vq_book_type::const_view_type;
-  using pq_book_view_type =
-    typename vpq_owning_storage<MathT, IdxT, Accessor>::pq_book_type::const_view_type;
+using vpq_owning_storage =
+  vpq_storage<vpq_data_matrix<IdxT, Accessor>, vpq_codebook_matrix<MathT, IdxT, Accessor>>;
 
-  vq_book_view_type vq_code_book;
-  pq_book_view_type pq_code_book;
-
-  vpq_view_storage() noexcept = default;
-  vpq_view_storage(codes_view_type codes,
-                   vq_book_view_type vq_codes,
-                   pq_book_view_type pq_codes) noexcept
-    : codes_view_type(codes), vq_code_book(vq_codes), pq_code_book(pq_codes)
-  {
-  }
-};
+/** Non-owning VPQ payload: `mdspan` views of the codes and of both codebooks. */
+template <typename MathT, typename IdxT, typename Accessor>
+using vpq_view_storage =
+  vpq_storage<typename vpq_data_matrix<IdxT, Accessor>::const_view_type,
+              typename vpq_codebook_matrix<MathT, IdxT, Accessor>::const_view_type>;
 
 }  // namespace detail
 
