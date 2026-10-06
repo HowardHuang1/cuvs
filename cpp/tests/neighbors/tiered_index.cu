@@ -163,7 +163,7 @@ class ANNTieredIndexTest : public ::testing::TestWithParam<AnnTieredIndexInputs>
       if constexpr (std::is_same_v<UpstreamT, cagra::device_standard_index<float, uint32_t>>) {
         auto full_database_view = raft::make_device_matrix_view<const value_type, int64_t>(
           (const value_type*)database.data(), ps.n_rows, ps.dim);
-        if (cuvs::core::matrix_row_width_matches_cagra_required(full_database_view)) {
+        if (cuvs::core::matrix_has_padded_row_width(full_database_view)) {
           auto padded_view =
             cuvs::core::make_device_padded_dataset_view(handle_, full_database_view);
           auto attached_index = cuvs::neighbors::tiered_index::convert_standard_to_padded_index(

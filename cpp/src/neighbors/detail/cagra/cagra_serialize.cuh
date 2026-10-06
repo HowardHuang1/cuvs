@@ -53,7 +53,7 @@ inline constexpr bool is_host_cagra_hnsw_serialize_index_v =
 
 constexpr int serialization_version = cuvs::neighbors::cagra::cagra_serialization_version;
 
-template <cuvs::core::ann_dataset_view DatasetViewT>
+template <cuvs::core::dataset_like DatasetViewT>
 constexpr auto serialized_dataset_kind_for_view() -> cuvs::neighbors::cagra::serialized_dataset_kind
 {
   using kind = cuvs::neighbors::cagra::serialized_dataset_kind;
@@ -106,7 +106,7 @@ void serialize_index_mdspan(raft::resources const& res, std::ostream& os, Mdspan
  * @param[in] index_ CAGRA index
  *
  */
-template <typename T, typename IdxT, cuvs::core::ann_dataset_view DatasetViewT>
+template <typename T, typename IdxT, cuvs::core::dataset_like DatasetViewT>
 void serialize(raft::resources const& res,
                std::ostream& os,
                const cuvs::neighbors::cagra::index<T, IdxT, DatasetViewT>& index_,
@@ -167,7 +167,7 @@ void serialize(raft::resources const& res,
   if (has_source_indices) { serialize_index_mdspan(res, os, index_.source_indices().value()); }
 }
 
-template <typename T, typename IdxT, cuvs::core::ann_dataset_view DatasetViewT>
+template <typename T, typename IdxT, cuvs::core::dataset_like DatasetViewT>
 void serialize(raft::resources const& res,
                const std::string& filename,
                const cuvs::neighbors::cagra::index<T, IdxT, DatasetViewT>& index_,
@@ -540,7 +540,7 @@ void serialize_to_hnswlib(
  * @param[in] index_ CAGRA index
  *
  */
-template <typename T, typename IdxT, cuvs::core::ann_dataset_view DatasetViewT, typename Input>
+template <typename T, typename IdxT, cuvs::core::dataset_like DatasetViewT, typename Input>
 void deserialize_impl(
   raft::resources const& res,
   Input& input,
@@ -678,7 +678,7 @@ void deserialize_impl(
   }
 }
 
-template <typename T, typename IdxT, cuvs::core::ann_dataset_view DatasetViewT>
+template <typename T, typename IdxT, cuvs::core::dataset_like DatasetViewT>
 void deserialize(
   raft::resources const& res,
   std::istream& is,
@@ -688,7 +688,7 @@ void deserialize(
   deserialize_impl(res, is, index_, out_dataset);
 }
 
-template <typename T, typename IdxT, cuvs::core::ann_dataset_view DatasetViewT>
+template <typename T, typename IdxT, cuvs::core::dataset_like DatasetViewT>
 void deserialize(
   raft::resources const& res,
   const std::string& filename,

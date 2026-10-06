@@ -1616,7 +1616,7 @@ auto build_ace(raft::resources const& res, const index_params& params, DatasetVi
               auto sub_dataset_view = raft::make_const_mdspan(sub_dataset_tight.view());
               std::unique_ptr<cuvs::core::device_padded_dataset<T, int64_t>> sub_dataset_padded;
               auto sub_dataset_dev = [&]() {
-                if (cuvs::core::matrix_row_width_matches_cagra_required(sub_dataset_view)) {
+                if (cuvs::core::matrix_has_padded_row_width(sub_dataset_view)) {
                   return cuvs::core::make_device_padded_dataset_view(res, sub_dataset_view);
                 }
                 sub_dataset_padded = cuvs::core::make_device_padded_dataset(res, sub_dataset_view);
@@ -2479,13 +2479,13 @@ auto iterative_build_graph(raft::resources const& res,
     final_graph_size = static_cast<uint64_t>(dataset.n_rows());
     vpq_dataset      = dataset;
   } else {
-    auto const required_stride = cuvs::core::cagra_required_row_width<T>(dataset.dim());
+    auto const required_stride = cuvs::core::padded_row_width<T>(dataset.dim());
     auto const data_view       = dataset.as_matrix_view();
     RAFT_EXPECTS(data_view.stride() == required_stride,
                  "iterative CAGRA build requires a CAGRA-aligned device dataset "
                  "(stride %u, required %u). Pass a device_padded_dataset_view, or a "
                  "device_standard_dataset_view whose row width already matches "
-                 "cagra_required_row_width.",
+                 "padded_row_width.",
                  data_view.stride(),
                  required_stride);
     dev_dataset      = data_view;
@@ -2520,8 +2520,8 @@ auto iterative_build_graph(raft::resources const& res,
 
   std::optional<raft::device_matrix<T, int64_t>> reconstructed_batch_queries;
   if (vpq_dataset.n_rows() > 0) {
-    auto const query_stride_i64 = static_cast<int64_t>(
-      cuvs::core::cagra_required_row_width<T>(static_cast<uint32_t>(logical_dim)));
+    auto const query_stride_i64 =
+      static_cast<int64_t>(cuvs::core::padded_row_width<T>(static_cast<uint32_t>(logical_dim)));
     reconstructed_batch_queries.emplace(
       raft::make_device_matrix<T, int64_t>(res, chunk_i64, query_stride_i64));
     // Padding columns must be zero: search_main cosine post-process reduces over the full row

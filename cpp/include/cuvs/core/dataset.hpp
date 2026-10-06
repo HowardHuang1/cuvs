@@ -465,9 +465,11 @@ inline constexpr bool is_standard_dataset_v = is_standard_dataset<DatasetT>::val
 // Dataset view compile-time classification (replaces runtime std::variant dispatch).
 // -----------------------------------------------------------------------------
 
-/** Any non-owning dataset view exposing row count and logical dimension. */
+/** Any type that behaves like a dataset: it exposes a row count (`n_rows()`) and a logical
+ * dimension (`dim()`). This is a structural check, so owning datasets and dataset views both
+ * satisfy it. To ask whether a type is literally a `dataset_view<...>`, use `is_dataset_view_v`. */
 template <typename V, typename IdxT = int64_t>
-concept ann_dataset_view = requires(V const& v) {
+concept dataset_like = requires(V const& v) {
   { v.n_rows() } -> std::convertible_to<IdxT>;
   { v.dim() } -> std::convertible_to<uint32_t>;
 };
@@ -622,34 +624,34 @@ inline constexpr bool compatible_host_device_dataset_views_v =
   is_host_dataset_view_v<HostViewT> && is_device_dataset_view_v<DeviceViewT> &&
   std::is_same_v<device_counterpart_t<HostViewT>, dataset_view_type_t<DeviceViewT>>;
 
-/** True for device padded or standard views accepted by dense graph build. */
+/** True for device padded or standard (dense row-major) dataset views. */
 template <typename V>
 inline constexpr bool is_dense_row_major_device_dataset_view_v =
   is_device_padded_dataset_view_v<V> || is_device_standard_dataset_view_v<V>;
 
-/** True for host or device padded/standard views (dense graph build). */
+/** True for host or device padded or standard (dense row-major) dataset views. */
 template <typename V>
 inline constexpr bool is_dense_row_major_dataset_view_v =
   is_padded_dataset_view_v<V> || is_standard_dataset_view_v<V>;
 
-/** Element type `T` for `cagra::build(res, params, dataset_view)` (deduced, not a template arg).
- * Trivial under the Spec design: every `dataset_view<T,IdxT,SpecT>` already carries `T` directly.
- */
+/** Element type `T` of a dataset view, deduced from the view. Trivial under the Spec design: every
+ * `dataset_view<T,IdxT,SpecT>` already carries `T` directly. */
 template <typename V>
-using cagra_view_element_type_t = typename dataset_view_type_t<V>::value_type;
+using dataset_view_value_t = typename dataset_view_type_t<V>::value_type;
 
 // -----------------------------------------------------------------------------
-// CAGRA row width in elements (same for make_device_padded_dataset* and index layout checks).
+// Padded row width in elements (shared by the make_*_padded_dataset* factories and row-width
+// checks).
 // -----------------------------------------------------------------------------
 
 /**
- * @brief Required row width in elements for CAGRA: minimum leading dimension (LDA) per row for the
- *        default per-row byte alignment (16 bytes, combined with `sizeof` element type), given
- *        `logical_columns` feature columns.
+ * @brief Minimum row width in elements (the leading dimension) for `logical_columns` feature
+ *        columns, such that each row occupies a whole multiple of `align_bytes` bytes (default 16,
+ *        combined with `sizeof` of the element type).
  */
-[[nodiscard]] inline uint32_t cagra_required_row_width(uint32_t logical_columns,
-                                                       std::size_t sizeof_value,
-                                                       uint32_t align_bytes = 16)
+[[nodiscard]] inline uint32_t padded_row_width(uint32_t logical_columns,
+                                               std::size_t sizeof_value,
+                                               uint32_t align_bytes = 16)
 {
   return static_cast<uint32_t>(
     raft::round_up_safe<std::size_t>(static_cast<std::size_t>(logical_columns) * sizeof_value,
@@ -658,10 +660,9 @@ using cagra_view_element_type_t = typename dataset_view_type_t<V>::value_type;
 }
 
 template <typename ValueT>
-[[nodiscard]] inline uint32_t cagra_required_row_width(uint32_t logical_columns,
-                                                       uint32_t align_bytes = 16)
+[[nodiscard]] inline uint32_t padded_row_width(uint32_t logical_columns, uint32_t align_bytes = 16)
 {
-  return cagra_required_row_width(logical_columns, sizeof(ValueT), align_bytes);
+  return padded_row_width(logical_columns, sizeof(ValueT), align_bytes);
 }
 
 /** Actual row width in elements (leading dimension) of a 2D row-major matrix view. */
@@ -678,26 +679,26 @@ template <typename T, typename I, typename L>
 }
 
 /**
- * @brief True if the matrix's row width in elements matches `cagra_required_row_width` for
- *        `m.extent(1)` and element type `T` (CAGRA row layout is satisfied for this view).
+ * @brief True if the matrix's row width in elements equals `padded_row_width` for `m.extent(1)`
+ *        and element type `T`, i.e. its rows are already padded.
  */
 template <typename T, typename I, typename L>
-[[nodiscard]] inline bool matrix_row_width_matches_cagra_required(
-  raft::device_matrix_view<T, I, L> m, uint32_t align_bytes = 16)
+[[nodiscard]] inline bool matrix_has_padded_row_width(raft::device_matrix_view<T, I, L> m,
+                                                      uint32_t align_bytes = 16)
 {
   using value_type = std::remove_const_t<T>;
   const uint32_t need =
-    cagra_required_row_width<value_type>(static_cast<uint32_t>(m.extent(1)), align_bytes);
+    padded_row_width<value_type>(static_cast<uint32_t>(m.extent(1)), align_bytes);
   return matrix_actual_row_width(m) == need;
 }
 
 template <typename T, typename I, typename L>
-[[nodiscard]] inline bool matrix_row_width_matches_cagra_required(raft::host_matrix_view<T, I, L> m,
-                                                                  uint32_t align_bytes = 16)
+[[nodiscard]] inline bool matrix_has_padded_row_width(raft::host_matrix_view<T, I, L> m,
+                                                      uint32_t align_bytes = 16)
 {
   using value_type = std::remove_const_t<T>;
   const uint32_t need =
-    cagra_required_row_width<value_type>(static_cast<uint32_t>(m.extent(1)), align_bytes);
+    padded_row_width<value_type>(static_cast<uint32_t>(m.extent(1)), align_bytes);
   return matrix_actual_row_width(m) == need;
 }
 
@@ -837,7 +838,7 @@ auto make_device_padded_dataset_view(const raft::resources& res,
   using value_type = typename SrcT::value_type;
   using index_type = typename SrcT::index_type;
   uint32_t required_stride =
-    cagra_required_row_width<value_type>(static_cast<uint32_t>(src.extent(1)), align_bytes);
+    padded_row_width<value_type>(static_cast<uint32_t>(src.extent(1)), align_bytes);
   RAFT_EXPECTS(
     detail::mdspan_row_stride_elements(src) == required_stride,
     "make_device_padded_dataset_view: stride is incorrect (required stride for alignment). "
@@ -857,7 +858,7 @@ auto make_device_padded_dataset(const raft::resources& res,
   using value_type               = typename SrcT::value_type;
   using index_type               = typename SrcT::index_type;
   uint32_t const logical_dim     = static_cast<uint32_t>(src.extent(1));
-  uint32_t const required_stride = cagra_required_row_width<value_type>(logical_dim, align_bytes);
+  uint32_t const required_stride = padded_row_width<value_type>(logical_dim, align_bytes);
   return detail::make_device_dense_row_major_dataset_from_src<
     device_padded_dataset<value_type, index_type>,
     value_type,
@@ -871,7 +872,7 @@ auto make_host_padded_dataset_view(SrcT const& src, uint32_t align_bytes = 16)
   using value_type = typename SrcT::value_type;
   using index_type = typename SrcT::index_type;
   uint32_t required_stride =
-    cagra_required_row_width<value_type>(static_cast<uint32_t>(src.extent(1)), align_bytes);
+    padded_row_width<value_type>(static_cast<uint32_t>(src.extent(1)), align_bytes);
   RAFT_EXPECTS(
     detail::mdspan_row_stride_elements(src) == required_stride,
     "make_host_padded_dataset_view: stride is incorrect (required stride for alignment). "
@@ -891,7 +892,7 @@ auto make_host_padded_dataset(const raft::resources& res,
   using value_type               = typename SrcT::value_type;
   using index_type               = typename SrcT::index_type;
   uint32_t const logical_dim     = static_cast<uint32_t>(src.extent(1));
-  uint32_t const required_stride = cagra_required_row_width<value_type>(logical_dim, align_bytes);
+  uint32_t const required_stride = padded_row_width<value_type>(logical_dim, align_bytes);
   return detail::make_host_dense_row_major_dataset_from_src<
     host_padded_dataset<value_type, index_type>,
     value_type,
@@ -914,8 +915,7 @@ auto make_device_standard_dataset_view(SrcT const& src)
 /**
  * @brief Create an owning device standard dataset with explicit row layout.
  *
- * Internal use only: the sole call site today is
- * `cuvs::neighbors::detail::deserialize_standard()` in `dataset_serialize.hpp`, which must pass
+ * Internal use only: the sole caller today deserializes a dataset from disk and must pass
  * wire-format `(logical_dim, stride)` because the deserialized host buffer is tight `[n_rows x
  * dim]` while the on-disk stride may be larger. Do not call from user code; prefer
  * `make_device_standard_dataset_view()` when wrapping existing correctly-strided storage.

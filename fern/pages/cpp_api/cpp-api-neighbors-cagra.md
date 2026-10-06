@@ -220,7 +220,7 @@ The index stores the dataset and a kNN graph in device memory.
 ```cpp
 template <typename T,
 typename IdxT,
-cuvs::core::ann_dataset_view DatasetViewT =
+cuvs::core::dataset_like DatasetViewT =
 cuvs::core::device_padded_dataset_view<T, int64_t>>
 struct index;
 ```
@@ -411,7 +411,7 @@ Construct a graph-only index with a zero-row dataset view placeholder.
 ```cpp
 explicit index(raft::resources const& res,
 cuvs::distance::DistanceType metric = cuvs::distance::DistanceType::L2Expanded)
-requires(cuvs::core::ann_dataset_view<DatasetViewT, int64_t>)
+requires(cuvs::core::dataset_like<DatasetViewT, int64_t>)
 : cuvs::neighbors::index(),;
 ```
 

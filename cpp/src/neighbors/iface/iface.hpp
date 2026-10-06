@@ -33,7 +33,7 @@ bool dataset_mdspan_uses_padded_device_view(
 {
   using value_type = T;
   uint32_t const required_stride =
-    cuvs::core::cagra_required_row_width<value_type>(static_cast<uint32_t>(mds.extent(1)));
+    cuvs::core::padded_row_width<value_type>(static_cast<uint32_t>(mds.extent(1)));
   uint32_t const src_stride =
     mds.stride(0) > 0 ? static_cast<uint32_t>(mds.stride(0)) : static_cast<uint32_t>(mds.extent(1));
   cudaPointerAttributes a{};

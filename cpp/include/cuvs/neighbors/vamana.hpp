@@ -204,7 +204,7 @@ struct index : cuvs::neighbors::index {
         dataset.stride(0) > 0 ? static_cast<int64_t>(dataset.stride(0)) : dataset.extent(1);
       auto d_m = raft::make_device_matrix_view<const T, int64_t>(
         dataset.data_handle(), dataset.extent(0), row_stride);
-      use_padded_view = cuvs::core::matrix_row_width_matches_cagra_required(d_m);
+      use_padded_view = cuvs::core::matrix_has_padded_row_width(d_m);
     }
 
     if (use_padded_view) {

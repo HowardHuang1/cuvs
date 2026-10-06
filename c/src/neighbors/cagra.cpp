@@ -47,7 +47,7 @@ namespace {
  * Heap-allocated bundle for the C API: owns only `cagra::index`.
  * Lives behind `cuvsCagraIndex::addr` via `sg_cagra_c_api_index_box`.
  */
-template <typename T, cuvs::core::ann_dataset_view DatasetViewT>
+template <typename T, cuvs::core::dataset_like DatasetViewT>
 struct cuvs_cagra_c_api_index_lifetime_holder {
   cuvs::neighbors::cagra::index<T, uint32_t, DatasetViewT> idx;
 };
@@ -66,7 +66,7 @@ struct sg_cagra_c_api_index_box {
   cuvs::neighbors::c_api::detail::owner_record owner_rec;
 };
 
-template <cuvs::core::ann_dataset_view DatasetViewT>
+template <cuvs::core::dataset_like DatasetViewT>
 constexpr auto sg_cagra_index_layout_from_view()
 {
   if constexpr (cuvs::core::is_device_standard_dataset_view_v<DatasetViewT>) {
@@ -151,7 +151,7 @@ static void with_index_by_layout(sg_cagra_c_api_index_box* box,
 template <typename T>
 static void destroy_typed_addr(void* ptr);
 
-template <typename T, cuvs::core::ann_dataset_view DatasetViewT>
+template <typename T, cuvs::core::dataset_like DatasetViewT>
 static void merge_indices_for_layout(
   raft::resources* res_ptr,
   cuvs::neighbors::cagra::index_params const& params_cpp,
@@ -268,7 +268,7 @@ static void merge_indices_for_layout(
   }
 }
 
-template <typename T, cuvs::core::ann_dataset_view DatasetViewT>
+template <typename T, cuvs::core::dataset_like DatasetViewT>
 static auto convert_opaque_indices_to_concrete_types(cuvsCagraIndex_t* indices, size_t num_indices)
   -> std::vector<cuvs::neighbors::cagra::index<T, uint32_t, DatasetViewT>*>
 {
@@ -328,7 +328,7 @@ static void with_dataset_view_for_layout(raft::resources* res_ptr,
   RAFT_FAIL("%s: dataset must have host- or device-compatible memory", err_prefix);
 }
 
-template <typename T, cuvs::core::ann_dataset_view DatasetViewT>
+template <typename T, cuvs::core::dataset_like DatasetViewT>
 static void compute_ivfpq_shape_from_indices(cuvsCagraIndex_t* indices,
                                              size_t num_indices,
                                              int64_t* total_size,
@@ -348,7 +348,7 @@ static void compute_ivfpq_shape_from_indices(cuvsCagraIndex_t* indices,
   }
 }
 
-template <typename T, cuvs::core::ann_dataset_view DatasetViewT>
+template <typename T, cuvs::core::dataset_like DatasetViewT>
 static auto make_sg_cagra_c_api_index_box(
   cuvs_cagra_c_api_index_lifetime_holder<T, DatasetViewT>* holder)
   -> std::unique_ptr<sg_cagra_c_api_index_box>
@@ -359,7 +359,7 @@ static auto make_sg_cagra_c_api_index_box(
                              cuvs::neighbors::c_api::detail::make_owner_record(holder)});
 }
 
-template <typename T, cuvs::core::ann_dataset_view DatasetViewT>
+template <typename T, cuvs::core::dataset_like DatasetViewT>
 static void bind_index_lifetime_holder_to_C_index(
   cuvsCagraIndex_t out,
   DLDataType dtype,
@@ -370,7 +370,7 @@ static void bind_index_lifetime_holder_to_C_index(
   out->dtype = dtype;
 }
 
-template <typename T, cuvs::core::ann_dataset_view DatasetViewT>
+template <typename T, cuvs::core::dataset_like DatasetViewT>
 static void wrap_CPP_index_in_lifetime_holder_and_bind_to_C_index(
   cuvsCagraIndex_t out,
   DLDataType dtype,
@@ -864,7 +864,7 @@ void _from_args(cuvsResources_t res,
   if (cuvs::core::is_dlpack_device_compatible(dataset)) {
     using mdspan_type = raft::device_matrix_view<T const, int64_t, raft::row_major>;
     auto mds          = cuvs::core::from_dlpack<mdspan_type>(dataset_tensor);
-    if (cuvs::core::matrix_row_width_matches_cagra_required(mds)) {
+    if (cuvs::core::matrix_has_padded_row_width(mds)) {
       auto dataset_view = cuvs::core::make_device_padded_dataset_view(*res_ptr, mds);
       auto* raw         = new cuvs::neighbors::cagra::device_padded_index<T, uint32_t>(
         *res_ptr, metric);
@@ -1233,7 +1233,7 @@ void dispatch_serialized_dataset_kind(
   }
 }
 
-template <typename T, cuvs::core::ann_dataset_view ViewT>
+template <typename T, cuvs::core::dataset_like ViewT>
 void _deserialize(cuvsResources_t res, const char *filename,
                   cuvsCagraIndex_t output_index, DLDataType dtype,
                   bool include_dataset, cuvsDataset_t *out_dataset) {
@@ -1892,7 +1892,7 @@ extern "C" cuvsError_t cuvsCagraUpdateDataset(cuvsResources_t res,
  * Build from an already-constructed C++ dataset view. `DatasetViewT` selects the
  * `cuvs::neighbors::cagra::build` overload, and therefore the resulting index type.
  */
-template <typename T, cuvs::core::ann_dataset_view DatasetViewT>
+template <typename T, cuvs::core::dataset_like DatasetViewT>
 static void build_index_from_dataset_view(raft::resources* res_ptr,
                                           cuvsCagraIndexParams_t params,
                                           DatasetViewT const& ds_view,

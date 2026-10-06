@@ -88,7 +88,7 @@ auto make_padded_view(const raft::resources& res,
   -> cuvs::core::device_padded_dataset_view<T, int64_t>
 {
   if constexpr (SrcT::accessor_type::is_device_accessible) {
-    if (cuvs::core::matrix_row_width_matches_cagra_required(src)) {
+    if (cuvs::core::matrix_has_padded_row_width(src)) {
       return cuvs::core::make_device_padded_dataset_view(res, src);
     }
   }
@@ -372,7 +372,7 @@ void cuvs_cagra<T, IdxT>::build(const T* dataset, size_t nrow)
         merged_rows += static_cast<int64_t>(index->size());
       }
       auto const stride =
-        static_cast<int64_t>(cuvs::core::cagra_required_row_width<T>(static_cast<uint32_t>(dim_)));
+        static_cast<int64_t>(cuvs::core::padded_row_width<T>(static_cast<uint32_t>(dim_)));
       *dataset_                = raft::make_device_matrix<T, int64_t>(handle_, merged_rows, stride);
       auto merged_dataset_view = cuvs::core::device_padded_dataset_view<T, int64_t>(
         raft::make_const_mdspan(dataset_->view()), static_cast<uint32_t>(dim_));

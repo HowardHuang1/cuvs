@@ -66,7 +66,7 @@ auto make_padded(raft::resources const& res, raft::host_matrix_view<const T, int
 {
   auto stream       = raft::resource::get_cuda_stream(res);
   auto const dim    = static_cast<uint32_t>(src.extent(1));
-  auto const stride = cuvs::core::cagra_required_row_width<T>(dim, 16);
+  auto const stride = cuvs::core::padded_row_width<T>(dim, 16);
   auto matrix =
     raft::make_device_matrix<T, int64_t>(res, src.extent(0), static_cast<int64_t>(stride));
   RAFT_CUDA_TRY(cudaMemsetAsync(
@@ -88,7 +88,7 @@ auto make_padded(raft::resources const& res, raft::host_matrix_view<const T, int
 template <typename T>
 auto make_merged_storage(raft::resources const& res, int64_t rows, int64_t dim) -> padded_storage<T>
 {
-  auto const stride = cuvs::core::cagra_required_row_width<T>(static_cast<uint32_t>(dim), 16);
+  auto const stride = cuvs::core::padded_row_width<T>(static_cast<uint32_t>(dim), 16);
   auto matrix       = raft::make_device_matrix<T, int64_t>(res, rows, static_cast<int64_t>(stride));
   cuvs::core::device_padded_dataset_view<T, int64_t> view(raft::make_const_mdspan(matrix.view()),
                                                           static_cast<uint32_t>(dim));

@@ -372,28 +372,28 @@ extern "C" cuvsError_t cuvsMultiGpuCagraBuild(cuvsResources_t res,
     if (dataset.dtype.code == kDLFloat && dataset.dtype.bits == 32) {
       auto mds = cuvs::core::from_dlpack<raft::host_matrix_view<const float, int64_t, raft::row_major>>(
         dataset_tensor);
-      auto layout = cuvs::core::matrix_row_width_matches_cagra_required(mds)
+      auto layout = cuvs::core::matrix_has_padded_row_width(mds)
                       ? mg_cagra_dataset_layout::device_padded
                       : mg_cagra_dataset_layout::device_standard;
       index->addr = reinterpret_cast<uintptr_t>(_mg_build<float>(res, *params, dataset_tensor, layout));
     } else if (dataset.dtype.code == kDLFloat && dataset.dtype.bits == 16) {
       auto mds = cuvs::core::from_dlpack<raft::host_matrix_view<const half, int64_t, raft::row_major>>(
         dataset_tensor);
-      auto layout = cuvs::core::matrix_row_width_matches_cagra_required(mds)
+      auto layout = cuvs::core::matrix_has_padded_row_width(mds)
                       ? mg_cagra_dataset_layout::device_padded
                       : mg_cagra_dataset_layout::device_standard;
       index->addr = reinterpret_cast<uintptr_t>(_mg_build<half>(res, *params, dataset_tensor, layout));
     } else if (dataset.dtype.code == kDLInt && dataset.dtype.bits == 8) {
       auto mds = cuvs::core::from_dlpack<raft::host_matrix_view<const int8_t, int64_t, raft::row_major>>(
         dataset_tensor);
-      auto layout = cuvs::core::matrix_row_width_matches_cagra_required(mds)
+      auto layout = cuvs::core::matrix_has_padded_row_width(mds)
                       ? mg_cagra_dataset_layout::device_padded
                       : mg_cagra_dataset_layout::device_standard;
       index->addr = reinterpret_cast<uintptr_t>(_mg_build<int8_t>(res, *params, dataset_tensor, layout));
     } else if (dataset.dtype.code == kDLUInt && dataset.dtype.bits == 8) {
       auto mds = cuvs::core::from_dlpack<raft::host_matrix_view<const uint8_t, int64_t, raft::row_major>>(
         dataset_tensor);
-      auto layout = cuvs::core::matrix_row_width_matches_cagra_required(mds)
+      auto layout = cuvs::core::matrix_has_padded_row_width(mds)
                       ? mg_cagra_dataset_layout::device_padded
                       : mg_cagra_dataset_layout::device_standard;
       index->addr = reinterpret_cast<uintptr_t>(_mg_build<uint8_t>(res, *params, dataset_tensor, layout));

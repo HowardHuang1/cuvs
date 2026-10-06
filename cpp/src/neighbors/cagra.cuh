@@ -32,7 +32,7 @@
 
 namespace cuvs::neighbors::cagra {
 
-template <typename T, typename IdxT, cuvs::core::ann_dataset_view DatasetViewT>
+template <typename T, typename IdxT, cuvs::core::dataset_like DatasetViewT>
 CUVS_EXPORT void index<T, IdxT, DatasetViewT>::compute_dataset_norms_(raft::resources const& res)
 {
   // raft::linalg::reduce wants row-major with leading dim = row pitch in elements.
@@ -398,7 +398,7 @@ template <typename T,
           typename IdxT,
           typename CagraSampleFilterT,
           typename OutputIdxT,
-          cuvs::core::ann_dataset_view DatasetViewT>
+          cuvs::core::dataset_like DatasetViewT>
 void search_with_filtering(raft::resources const& res,
                            const search_params& params,
                            const index<T, IdxT, DatasetViewT>& idx,
@@ -420,7 +420,7 @@ void search_with_filtering(raft::resources const& res,
     res, params, idx, queries, neighbors, distances, sample_filter);
 }
 
-template <typename T, typename IdxT, cuvs::core::ann_dataset_view DatasetViewT, typename OutputIdxT>
+template <typename T, typename IdxT, cuvs::core::dataset_like DatasetViewT, typename OutputIdxT>
 void search(raft::resources const& res,
             const search_params& params,
             const index<T, IdxT, DatasetViewT>& idx,
@@ -516,7 +516,7 @@ void search(raft::resources const& res,
   }
 }
 
-template <class T, class IdxT, cuvs::core::ann_dataset_view DatasetViewT>
+template <class T, class IdxT, cuvs::core::dataset_like DatasetViewT>
 void extend(raft::resources const& handle,
             const cagra::extend_params& params,
             cuvs::core::device_padded_dataset_view<T, int64_t> extended_dataset,
@@ -528,7 +528,7 @@ void extend(raft::resources const& handle,
   extend_core<T, IdxT, DatasetViewT>(handle, index, params, extended_dataset, new_start_row);
 }
 
-template <class T, class IdxT, cuvs::core::ann_dataset_view DatasetViewT>
+template <class T, class IdxT, cuvs::core::dataset_like DatasetViewT>
 cuvs::neighbors::cagra::index<T, IdxT, DatasetViewT> merge(
   raft::resources const& handle,
   const cagra::index_params& params,
@@ -540,7 +540,7 @@ cuvs::neighbors::cagra::index<T, IdxT, DatasetViewT> merge(
     handle, params, indices, merged_dataset, row_filter);
 }
 
-template <class T, class IdxT, cuvs::core::ann_dataset_view DatasetViewT>
+template <class T, class IdxT, cuvs::core::dataset_like DatasetViewT>
 cuvs::neighbors::cagra::index<T, IdxT, DatasetViewT> merge(
   raft::resources const& handle,
   const cagra::index_params& params,
@@ -619,8 +619,8 @@ void search(
 
 template <typename T,
           typename IdxT,
-          cuvs::core::ann_dataset_view SrcDatasetViewT,
-          cuvs::core::ann_dataset_view DstDatasetViewT>
+          cuvs::core::dataset_like SrcDatasetViewT,
+          cuvs::core::dataset_like DstDatasetViewT>
 auto update_dataset(raft::resources const& res,
                     index<T, IdxT, SrcDatasetViewT>&& cagra_index,
                     DstDatasetViewT dataset) -> index<T, IdxT, DstDatasetViewT>

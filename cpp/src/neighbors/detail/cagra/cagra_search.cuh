@@ -101,7 +101,7 @@ void search_main_core(
   const DataT* queries_buf{};
   uint32_t query_row_stride{};
   std::unique_ptr<cuvs::core::device_padded_dataset<DataT, int64_t>> queries_padded_own;
-  if (cuvs::core::matrix_row_width_matches_cagra_required(queries)) {
+  if (cuvs::core::matrix_has_padded_row_width(queries)) {
     auto v           = cuvs::core::make_device_padded_dataset_view(res, queries);
     queries_buf      = v.as_matrix_view().data_handle();
     query_row_stride = v.as_matrix_view().stride();
@@ -188,7 +188,7 @@ template <typename T,
           typename CagraSampleFilterT,
           typename IdxT      = uint32_t,
           typename DistanceT = float,
-          cuvs::core::ann_dataset_view DatasetViewT>
+          cuvs::core::dataset_like DatasetViewT>
 void search_main(raft::resources const& res,
                  search_params params,
                  const index<T, IdxT, DatasetViewT>& index,
@@ -206,7 +206,7 @@ void search_main(raft::resources const& res,
 
   const uint32_t query_logical_dim = index.dim();
   const uint32_t query_row_width   = static_cast<uint32_t>(queries.extent(1));
-  const uint32_t required_stride   = cuvs::core::cagra_required_row_width<T>(query_logical_dim);
+  const uint32_t required_stride   = cuvs::core::padded_row_width<T>(query_logical_dim);
   RAFT_EXPECTS(query_row_width == query_logical_dim || query_row_width == required_stride,
                "CAGRA search queries must have %u logical dimensions or CAGRA-padded row width %u "
                "(got %u).",
@@ -271,7 +271,7 @@ void search_main(raft::resources const& res,
       sample_filter);
   } else if constexpr (cuvs::core::is_device_standard_dataset_view_v<DatasetViewT>) {
     RAFT_EXPECTS(
-      cuvs::core::matrix_row_width_matches_cagra_required(index.dataset().as_matrix_view()),
+      cuvs::core::matrix_has_padded_row_width(index.dataset().as_matrix_view()),
       "CAGRA search requires each dataset row to have the CAGRA-aligned stride. Create a padded "
       "dataset with cuvs::core::make_device_padded_dataset() and attach it with "
       "cagra::update_dataset().");

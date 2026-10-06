@@ -46,7 +46,7 @@ struct padded_device_matrix_for_cagra {
     -> build_result
   {
     using namespace cuvs::neighbors;
-    if (cuvs::core::matrix_row_width_matches_cagra_required(src)) {
+    if (cuvs::core::matrix_has_padded_row_width(src)) {
       return build_result{nullptr, cuvs::core::make_device_padded_dataset_view(res, src)};
     } else {
       auto own = cuvs::core::make_device_padded_dataset(res, src);

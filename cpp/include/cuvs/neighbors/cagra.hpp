@@ -483,7 +483,7 @@ static_assert(std::is_aggregate_v<search_params>);
  */
 template <typename T,
           typename IdxT,
-          cuvs::core::ann_dataset_view DatasetViewT =
+          cuvs::core::dataset_like DatasetViewT =
             cuvs::core::device_padded_dataset_view<T, int64_t>>
 struct CUVS_EXPORT index : cuvs::neighbors::index {
   using index_params_type  = cagra::index_params;
@@ -590,7 +590,7 @@ struct CUVS_EXPORT index : cuvs::neighbors::index {
   /** Construct a graph-only index with a zero-row dataset view placeholder. */
   explicit index(raft::resources const& res,
                  cuvs::distance::DistanceType metric = cuvs::distance::DistanceType::L2Expanded)
-    requires(cuvs::core::ann_dataset_view<DatasetViewT, int64_t>)
+    requires(cuvs::core::dataset_like<DatasetViewT, int64_t>)
     : cuvs::neighbors::index(),
       metric_(metric),
       graph_(raft::make_device_matrix<graph_index_type, int64_t>(res, 0, 0)),
@@ -655,7 +655,7 @@ struct CUVS_EXPORT index : cuvs::neighbors::index {
 
   /* Construct an index with a new dataset type by moving the old index and passing in a new
    * dataset*/
-  template <cuvs::core::ann_dataset_view SrcDatasetViewT>
+  template <cuvs::core::dataset_like SrcDatasetViewT>
   index(raft::resources const& res, index<T, IdxT, SrcDatasetViewT>&& other, DatasetViewT dataset)
     : metric_(other.metric_),
       graph_(std::move(other.graph_)),
@@ -896,7 +896,7 @@ struct CUVS_EXPORT index : cuvs::neighbors::index {
   }
 
  private:
-  template <typename, typename, cuvs::core::ann_dataset_view>
+  template <typename, typename, cuvs::core::dataset_like>
   friend struct index;
 
   friend struct detail::fd_transfer;
@@ -968,7 +968,7 @@ template <typename DatasetViewT>
 using cagra_index_t = std::conditional_t<
   cuvs::preprocessing::quantize::pq::is_device_vpq_f16_dataset_view_v<DatasetViewT>,
   device_pq_index<float>,
-  index<cuvs::core::cagra_view_element_type_t<DatasetViewT>,
+  index<cuvs::core::dataset_view_value_t<DatasetViewT>,
         uint32_t,
         cuvs::core::dataset_view_type_t<DatasetViewT>>>;
 
@@ -3520,7 +3520,7 @@ struct merge_params {
  * explicit FASTENER.
  * @return The merged physical CAGRA index.
  */
-template <typename T, typename IdxT, cuvs::core::ann_dataset_view DatasetViewT>
+template <typename T, typename IdxT, cuvs::core::dataset_like DatasetViewT>
 auto merge(raft::resources const& res,
            const cuvs::neighbors::cagra::index_params& params,
            std::vector<cuvs::neighbors::cagra::index<T, IdxT, DatasetViewT>*>& indices,
@@ -3532,7 +3532,7 @@ auto merge(raft::resources const& res,
 /** @copydoc merge
  * @param[in] merge_params Parameters for the merge, including the algorithm selection.
  */
-template <typename T, typename IdxT, cuvs::core::ann_dataset_view DatasetViewT>
+template <typename T, typename IdxT, cuvs::core::dataset_like DatasetViewT>
 auto merge(raft::resources const& res,
            const cuvs::neighbors::cagra::index_params& params,
            std::vector<cuvs::neighbors::cagra::index<T, IdxT, DatasetViewT>*>& indices,
@@ -4555,8 +4555,8 @@ namespace detail {
 struct fd_transfer {
   template <typename T,
             typename IdxT,
-            cuvs::core::ann_dataset_view SrcDatasetViewT,
-            cuvs::core::ann_dataset_view DstDatasetViewT>
+            cuvs::core::dataset_like SrcDatasetViewT,
+            cuvs::core::dataset_like DstDatasetViewT>
   static inline void steal_disk_fds_to(raft::resources const& res,
                                        index<T, IdxT, SrcDatasetViewT>& src,
                                        index<T, IdxT, DstDatasetViewT>& dst)
