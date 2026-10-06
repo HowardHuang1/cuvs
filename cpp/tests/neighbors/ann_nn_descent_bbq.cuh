@@ -15,6 +15,8 @@
 
 #include <gtest/gtest.h>
 
+#include <cuda/stream>
+
 #include <algorithm>
 #include <cfloat>
 #include <cmath>

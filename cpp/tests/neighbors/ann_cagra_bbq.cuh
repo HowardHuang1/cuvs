@@ -16,6 +16,8 @@
 
 #include <gtest/gtest.h>
 
+#include <cuda/stream>
+
 #include <cstdint>
 #include <optional>
 #include <sstream>
