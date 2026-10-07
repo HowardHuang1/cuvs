@@ -51,12 +51,6 @@ namespace core {
  * corresponding non-owning payload.
  */
 
-template <typename T, typename IdxT, typename SpecT>
-struct dataset;
-
-template <typename T, typename IdxT, typename SpecT>
-struct dataset_view;
-
 namespace detail {
 
 // Default owning/view accessors for public dataset aliases.
@@ -266,45 +260,6 @@ struct standard_dataset_spec {
 // dataset / dataset_view
 // -----------------------------------------------------------------------------
 
-/** Owning dataset: value-held payload (no shared_ptr -- exclusive ownership). Every member is a
- * one-line forward to `spec_type::get_*` or to the payload; all per-kind state and logic lives in
- * the spec's `data_type`, never inside this struct. */
-template <typename T, typename IdxT, typename SpecT>
-struct dataset {
-  using spec_type  = typename SpecT::template apply<T, IdxT>;
-  using value_type = typename spec_type::value_type;
-  using index_type = typename spec_type::index_type;
-  using data_type  = typename spec_type::data_type;
-
-  // Forward constructor args straight to data_type's own constructor (e.g. (MatrixT&&, uint32_t
-  // logical_dim) for dense, (uint32_t dim) for empty, or whatever a compressed kind's payload
-  // takes). Explicit only for a single argument, so that a lone value never converts to a dataset
-  // implicitly, while multi-argument brace initialization such as `return {matrix, dim};` keeps
-  // working as it did before datasets were generic.
-  template <typename... Args>
-  explicit(sizeof...(Args) == 1) dataset(Args&&... args)
-    requires(std::is_constructible_v<data_type, Args...>)
-    : data_(std::forward<Args>(args)...)
-  {
-  }
-
-  [[nodiscard]] auto n_rows() const noexcept -> index_type { return spec_type::get_n_rows(data_); }
-  [[nodiscard]] auto dim() const noexcept -> uint32_t { return spec_type::get_dim(data_); }
-  /** The spec-defined non-owning view of the payload (an mdspan derivative for dense kinds). */
-  [[nodiscard]] auto as_matrix_view() const noexcept { return spec_type::get_data_view(data_); }
-  [[nodiscard]] auto as_dataset_view() const noexcept -> dataset_view<T, IdxT, SpecT>
-  {
-    return dataset_view<T, IdxT, SpecT>(as_matrix_view());
-  }
-
-  /** The owning payload; kind-specific state and methods are reached through it. */
-  [[nodiscard]] auto data() const noexcept -> data_type const& { return data_; }
-  [[nodiscard]] auto data() noexcept -> data_type& { return data_; }
-
- private:
-  data_type data_;
-};
-
 /** Non-owning dataset view: holds only the view-shaped payload. Deliberately not derived from
  * `dataset` -- a view type holds "all view state" with no inheritance and no shared ownership tying
  * it to the owning type. Reuses the same `get_n_rows`/`get_dim` spec functions as `dataset`, fed
@@ -349,6 +304,45 @@ struct dataset_view {
 
  private:
   view_type data_view_{};
+};
+
+/** Owning dataset: value-held payload (no shared_ptr -- exclusive ownership). Every member is a
+ * one-line forward to `spec_type::get_*` or to the payload; all per-kind state and logic lives in
+ * the spec's `data_type`, never inside this struct. */
+template <typename T, typename IdxT, typename SpecT>
+struct dataset {
+  using spec_type  = typename SpecT::template apply<T, IdxT>;
+  using value_type = typename spec_type::value_type;
+  using index_type = typename spec_type::index_type;
+  using data_type  = typename spec_type::data_type;
+
+  // Forward constructor args straight to data_type's own constructor (e.g. (MatrixT&&, uint32_t
+  // logical_dim) for dense, (uint32_t dim) for empty, or whatever a compressed kind's payload
+  // takes). Explicit only for a single argument, so that a lone value never converts to a dataset
+  // implicitly, while multi-argument brace initialization such as `return {matrix, dim};` keeps
+  // working as it did before datasets were generic.
+  template <typename... Args>
+  explicit(sizeof...(Args) == 1) dataset(Args&&... args)
+    requires(std::is_constructible_v<data_type, Args...>)
+    : data_(std::forward<Args>(args)...)
+  {
+  }
+
+  [[nodiscard]] auto n_rows() const noexcept -> index_type { return spec_type::get_n_rows(data_); }
+  [[nodiscard]] auto dim() const noexcept -> uint32_t { return spec_type::get_dim(data_); }
+  /** The spec-defined non-owning view of the payload (an mdspan derivative for dense kinds). */
+  [[nodiscard]] auto as_matrix_view() const noexcept { return spec_type::get_data_view(data_); }
+  [[nodiscard]] auto as_dataset_view() const noexcept -> dataset_view<T, IdxT, SpecT>
+  {
+    return dataset_view<T, IdxT, SpecT>(as_matrix_view());
+  }
+
+  /** The owning payload; kind-specific state and methods are reached through it. */
+  [[nodiscard]] auto data() const noexcept -> data_type const& { return data_; }
+  [[nodiscard]] auto data() noexcept -> data_type& { return data_; }
+
+ private:
+  data_type data_;
 };
 
 /**
