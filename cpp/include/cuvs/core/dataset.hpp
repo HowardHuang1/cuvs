@@ -110,65 +110,43 @@ struct empty_dataset_storage {
 // -----------------------------------------------------------------------------
 
 /**
- * Dense row-major owning storage shared by padded and standard dataset specs. Publicly inherits
- * from MatrixT (a `raft::mdarray`) so `view()`/`data_handle()`/`extent()` etc. are reused as-is
- * rather than hand-forwarded; `logical_dim_` is the only state this struct adds.
+ * Dense row-major payload shared by padded and standard dataset specs, owning and non-owning
+ * alike: the owning payload passes its `raft::mdarray` as `BaseT`, the view payload passes the
+ * `raft::mdspan`. Publicly inherits from `BaseT` so `view()`/`data_handle()`/`extent()` etc. are
+ * reused as-is rather than hand-forwarded; `logical_dim_` is the only state this struct adds.
  *
  * Template parameters:
- * - MatrixT: owning matrix type that stores the payload (host/device matrix).
- * - ViewT: non-owning row-major view type returned by `view()`.
- * - DataT: scalar element type of the dataset payload.
- * - IdxT: index type used for row counts (`n_rows()` return type).
+ * - BaseT: the owning matrix (`raft::mdarray`) or the non-owning row-major view (`raft::mdspan`).
  */
-template <typename MatrixT, typename ViewT, typename DataT, typename IdxT>
-struct dense_row_major_dataset_owning_storage : public MatrixT {
-  uint32_t logical_dim_;
+template <typename BaseT>
+struct dense_row_major_storage : public BaseT {
+  using index_type = typename BaseT::index_type;
 
-  // MatrixT (mdarray) also has its own stride(size_t); pull it back into scope since declaring
-  // our own no-arg stride() below would otherwise hide it entirely (C++ name hiding).
-  using MatrixT::stride;
+  uint32_t logical_dim_{};
 
-  dense_row_major_dataset_owning_storage(MatrixT&& data, uint32_t logical_dim) noexcept
-    : MatrixT{std::move(data)}, logical_dim_{logical_dim}
+  // BaseT (mdarray/mdspan) also has its own stride(size_t); pull it back into scope since
+  // declaring our own no-arg stride() below would otherwise hide it entirely (C++ name hiding),
+  // and the body of that stride() itself needs to call the inherited one.
+  using BaseT::stride;
+
+  dense_row_major_storage() noexcept = default;
+
+  // Takes BaseT by value so an owning matrix is moved in and a view is simply copied.
+  explicit dense_row_major_storage(BaseT base) noexcept
+    : BaseT(std::move(base)), logical_dim_(static_cast<uint32_t>(this->extent(1)))
   {
   }
 
-  [[nodiscard]] auto n_rows() const noexcept -> IdxT { return this->extent(0); }
+  dense_row_major_storage(BaseT base, uint32_t logical_dim) noexcept
+    : BaseT(std::move(base)), logical_dim_(logical_dim)
+  {
+  }
+
+  [[nodiscard]] auto n_rows() const noexcept -> index_type { return this->extent(0); }
   [[nodiscard]] auto dim() const noexcept -> uint32_t { return logical_dim_; }
   [[nodiscard]] auto stride() const noexcept -> uint32_t
   {
-    return static_cast<uint32_t>(this->extent(1));
-  }
-  // view() and data_handle() are inherited directly from MatrixT (raft::mdarray); no hand-written
-  // forwarding needed since MatrixT::view() const already returns exactly ViewT.
-};
-
-template <typename ViewT, typename DataT, typename IdxT>
-struct dense_row_major_dataset_view_storage : public ViewT {
-  uint32_t logical_dim_;
-
-  // ViewT (mdspan) also has its own stride(size_t); pull it back into scope since declaring our
-  // own no-arg stride() below would otherwise hide it entirely (C++ name hiding), and the body of
-  // that stride() itself needs to call the inherited one.
-  using ViewT::stride;
-
-  dense_row_major_dataset_view_storage() noexcept = default;
-
-  explicit dense_row_major_dataset_view_storage(ViewT v) noexcept
-    : ViewT(v), logical_dim_(static_cast<uint32_t>(v.extent(1)))
-  {
-  }
-
-  dense_row_major_dataset_view_storage(ViewT v, uint32_t logical_dim) noexcept
-    : ViewT(v), logical_dim_(logical_dim)
-  {
-  }
-
-  [[nodiscard]] auto n_rows() const noexcept -> IdxT { return this->extent(0); }
-  [[nodiscard]] auto dim() const noexcept -> uint32_t { return logical_dim_; }
-  [[nodiscard]] auto stride() const noexcept -> uint32_t
-  {
-    return static_cast<uint32_t>(ViewT::stride(0) > 0 ? ViewT::stride(0) : this->extent(1));
+    return static_cast<uint32_t>(BaseT::stride(0) > 0 ? BaseT::stride(0) : this->extent(1));
   }
 };
 
@@ -184,8 +162,8 @@ struct dense_dataset_spec_impl {
     using index_type = std::remove_cv_t<IdxT>;
     using MatrixT    = dense_owning_matrix<T, IdxT, ContainerPolicy>;
     using ViewT      = dense_view_matrix<T, IdxT, ContainerPolicy>;
-    using data_type  = dense_row_major_dataset_owning_storage<MatrixT, ViewT, T, IdxT>;
-    using view_type  = dense_row_major_dataset_view_storage<ViewT, T, IdxT>;
+    using data_type  = dense_row_major_storage<MatrixT>;
+    using view_type  = dense_row_major_storage<ViewT>;
 
     [[nodiscard]] static auto get_data_view(data_type const& data) noexcept -> view_type
     {
