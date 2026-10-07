@@ -278,9 +278,11 @@ struct dataset {
 
   // Forward constructor args straight to data_type's own constructor (e.g. (MatrixT&&, uint32_t
   // logical_dim) for dense, (uint32_t dim) for empty, or whatever a compressed kind's payload
-  // takes).
+  // takes). Explicit only for a single argument, so that a lone value never converts to a dataset
+  // implicitly, while multi-argument brace initialization such as `return {matrix, dim};` keeps
+  // working as it did before datasets were generic.
   template <typename... Args>
-  explicit dataset(Args&&... args)
+  explicit(sizeof...(Args) == 1) dataset(Args&&... args)
     requires(std::is_constructible_v<data_type, Args...>)
     : data_(std::forward<Args>(args)...)
   {
@@ -323,9 +325,12 @@ struct dataset_view {
 
   // Forward raw constructor args straight to view_type's own constructor (e.g. (ViewT, uint32_t
   // logical_dim) for dense, (uint32_t dim) for empty) -- preserves today's direct-construction
-  // call sites (e.g. `device_padded_dataset_view<T,IdxT>(raw_mdspan, dim)`) unchanged.
+  // call sites (e.g. `device_padded_dataset_view<T,IdxT>(raw_mdspan, dim)`) unchanged. Explicit
+  // only for a single argument, so that a raw matrix view never converts to a dataset view
+  // implicitly (which would let it silently bind to overloads meant for dataset views), while
+  // multi-argument brace initialization such as `return {view, dim};` keeps working.
   template <typename... Args>
-  explicit dataset_view(Args&&... args)
+  explicit(sizeof...(Args) == 1) dataset_view(Args&&... args)
     requires(std::is_constructible_v<view_type, Args...>)
     : data_view_(std::forward<Args>(args)...)
   {
