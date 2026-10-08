@@ -1331,8 +1331,9 @@ public class CagraIndexImpl implements CagraIndex {
       MemorySegment indicesSegment = buildIndicesSegment(localArena, indexes);
 
       MemorySegment out = localArena.allocate(cuvsDataset_t);
+      MemorySegment noFilter = buildNoFilter(localArena);
       checkCuVSError(
-          cuvsCagraConcatenateDatasets(cuvsRes, indicesSegment, indexes.length, out),
+          cuvsCagraConcatenateDatasets(cuvsRes, indicesSegment, indexes.length, noFilter, out),
           "cuvsCagraConcatenateDatasets");
       MemorySegment merged = out.get(cuvsDataset_t, 0);
 
@@ -1358,9 +1359,9 @@ public class CagraIndexImpl implements CagraIndex {
       MemorySegment out = localArena.allocate(cuvsDataset_t);
       try (var nativeFilter = uploadBitsetFilter(cuvsRes, localArena, filter, totalRows(indexes))) {
         checkCuVSError(
-            cuvsCagraConcatenateAndFilterDatasets(
+            cuvsCagraConcatenateDatasets(
                 cuvsRes, indicesSegment, indexes.length, nativeFilter.segment, out),
-            "cuvsCagraConcatenateAndFilterDatasets");
+            "cuvsCagraConcatenateDatasets");
       }
       MemorySegment merged = out.get(cuvsDataset_t, 0);
 

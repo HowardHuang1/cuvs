@@ -1413,8 +1413,7 @@ void _concatenate_datasets(cuvsResources_t res,
                            cuvsDataset_t* merged_dataset)
 {
   auto res_ptr = reinterpret_cast<raft::resources*>(res);
-  auto layout =
-    validate_indices_for_concat(indices, num_indices, "cuvsCagraConcatenateDatasets");
+  auto layout = validate_indices_for_concat(indices, num_indices, "cuvsCagraConcatenateDatasets");
 
   std::unique_ptr<cuvs::neighbors::device_padded_dataset<T, int64_t>> owner;
   auto concat = [&](auto const& index_ptrs) {
@@ -1439,18 +1438,18 @@ void _concatenate_and_filter_datasets(cuvsResources_t res,
                                       cuvsDataset_t* merged_dataset)
 {
   RAFT_EXPECTS(filter.type == BITSET,
-               "cuvsCagraConcatenateAndFilterDatasets: only BITSET filters are supported");
+               "cuvsCagraConcatenateDatasets: only NO_FILTER and BITSET filters are supported");
   auto res_ptr = reinterpret_cast<raft::resources*>(res);
   auto layout  = validate_indices_for_concat(
-    indices, num_indices, "cuvsCagraConcatenateAndFilterDatasets");
+    indices, num_indices, "cuvsCagraConcatenateDatasets");
 
   int64_t unfiltered_row_count = 0;
   for (size_t i = 0; i < num_indices; ++i) {
     auto* box = reinterpret_cast<sg_cagra_c_api_index_box*>(indices[i]->addr);
     with_index_by_layout<T, uint32_t, false>(
       box,
-      "cuvsCagraConcatenateAndFilterDatasets: null index handle",
-      "cuvsCagraConcatenateAndFilterDatasets: host indices are not supported",
+      "cuvsCagraConcatenateDatasets: null index handle",
+      "cuvsCagraConcatenateDatasets: host indices are not supported",
       [&](auto& idx) { unfiltered_row_count += static_cast<int64_t>(idx.size()); });
   }
 
@@ -2406,14 +2405,9 @@ extern "C" cuvsError_t cuvsCagraMergeWithParams(cuvsResources_t res,
     return CUVS_ERROR;
   }
 
-  // Step 1: build the merged dataset internally using the concat helpers.
+  // Step 1: build the merged dataset internally using the concat helper.
   cuvsDataset_t concat_result = nullptr;
-  cuvsError_t err;
-  if (filter.type == NO_FILTER) {
-    err = cuvsCagraConcatenateDatasets(res, indices, num_indices, &concat_result);
-  } else {
-    err = cuvsCagraConcatenateAndFilterDatasets(res, indices, num_indices, filter, &concat_result);
-  }
+  cuvsError_t err             = cuvsCagraConcatenateDatasets(res, indices, num_indices, filter, &concat_result);
   if (err != CUVS_SUCCESS) {
     if (concat_result != nullptr) { cuvsDatasetDestroy(concat_result); }
     return err;
@@ -2501,6 +2495,7 @@ extern "C" cuvsError_t cuvsCagraMergedDatasetOffsets(cuvsResources_t res,
 extern "C" cuvsError_t cuvsCagraConcatenateDatasets(cuvsResources_t res,
                                                     cuvsCagraIndex_t* indices,
                                                     size_t num_indices,
+                                                    cuvsFilter filter,
                                                     cuvsDataset_t* merged_dataset)
 {
   return cuvs::core::translate_exceptions([=] {
@@ -2516,49 +2511,32 @@ extern "C" cuvsError_t cuvsCagraConcatenateDatasets(cuvsResources_t res,
       RAFT_EXPECTS((*indices[i]).dtype.code == dtype.code && (*indices[i]).dtype.bits == dtype.bits,
                    "All input indices must have the same data type");
     }
-    if (dtype.code == kDLFloat && dtype.bits == 32) {
-      _concatenate_datasets<float>(res, indices, num_indices, dtype, merged_dataset);
-    } else if (dtype.code == kDLFloat && dtype.bits == 16) {
-      _concatenate_datasets<half>(res, indices, num_indices, dtype, merged_dataset);
-    } else if (dtype.code == kDLInt && dtype.bits == 8) {
-      _concatenate_datasets<int8_t>(res, indices, num_indices, dtype, merged_dataset);
-    } else if (dtype.code == kDLUInt && dtype.bits == 8) {
-      _concatenate_datasets<uint8_t>(res, indices, num_indices, dtype, merged_dataset);
+    if (filter.type == NO_FILTER) {
+      if (dtype.code == kDLFloat && dtype.bits == 32) {
+        _concatenate_datasets<float>(res, indices, num_indices, dtype, merged_dataset);
+      } else if (dtype.code == kDLFloat && dtype.bits == 16) {
+        _concatenate_datasets<half>(res, indices, num_indices, dtype, merged_dataset);
+      } else if (dtype.code == kDLInt && dtype.bits == 8) {
+        _concatenate_datasets<int8_t>(res, indices, num_indices, dtype, merged_dataset);
+      } else if (dtype.code == kDLUInt && dtype.bits == 8) {
+        _concatenate_datasets<uint8_t>(res, indices, num_indices, dtype, merged_dataset);
+      } else {
+        RAFT_FAIL("Unsupported index data type: code=%d, bits=%d", dtype.code, dtype.bits);
+      }
     } else {
-      RAFT_FAIL("Unsupported index data type: code=%d, bits=%d", dtype.code, dtype.bits);
-    }
-  });
-}
-
-extern "C" cuvsError_t cuvsCagraConcatenateAndFilterDatasets(cuvsResources_t res,
-                                                              cuvsCagraIndex_t* indices,
-                                                              size_t num_indices,
-                                                              cuvsFilter filter,
-                                                              cuvsDataset_t* merged_dataset)
-{
-  return cuvs::core::translate_exceptions([=] {
-    RAFT_EXPECTS(indices != nullptr && num_indices > 0, "indices array cannot be null or empty");
-    RAFT_EXPECTS(indices[0] != nullptr && indices[0]->addr != 0,
-                 "All input indices must be built (non-empty)");
-    RAFT_EXPECTS(merged_dataset != nullptr, "merged_dataset output pointer must not be null");
-
-    auto dtype = (*indices[0]).dtype;
-    for (size_t i = 1; i < num_indices; ++i) {
-      RAFT_EXPECTS(indices[i] != nullptr && indices[i]->addr != 0,
-                   "All input indices must be built (non-empty)");
-      RAFT_EXPECTS((*indices[i]).dtype.code == dtype.code && (*indices[i]).dtype.bits == dtype.bits,
-                   "All input indices must have the same data type");
-    }
-    if (dtype.code == kDLFloat && dtype.bits == 32) {
-      _concatenate_and_filter_datasets<float>(res, indices, num_indices, dtype, filter, merged_dataset);
-    } else if (dtype.code == kDLFloat && dtype.bits == 16) {
-      _concatenate_and_filter_datasets<half>(res, indices, num_indices, dtype, filter, merged_dataset);
-    } else if (dtype.code == kDLInt && dtype.bits == 8) {
-      _concatenate_and_filter_datasets<int8_t>(res, indices, num_indices, dtype, filter, merged_dataset);
-    } else if (dtype.code == kDLUInt && dtype.bits == 8) {
-      _concatenate_and_filter_datasets<uint8_t>(res, indices, num_indices, dtype, filter, merged_dataset);
-    } else {
-      RAFT_FAIL("Unsupported index data type: code=%d, bits=%d", dtype.code, dtype.bits);
+      RAFT_EXPECTS(filter.type == BITSET,
+                   "cuvsCagraConcatenateDatasets: only NO_FILTER and BITSET filters are supported");
+      if (dtype.code == kDLFloat && dtype.bits == 32) {
+        _concatenate_and_filter_datasets<float>(res, indices, num_indices, dtype, filter, merged_dataset);
+      } else if (dtype.code == kDLFloat && dtype.bits == 16) {
+        _concatenate_and_filter_datasets<half>(res, indices, num_indices, dtype, filter, merged_dataset);
+      } else if (dtype.code == kDLInt && dtype.bits == 8) {
+        _concatenate_and_filter_datasets<int8_t>(res, indices, num_indices, dtype, filter, merged_dataset);
+      } else if (dtype.code == kDLUInt && dtype.bits == 8) {
+        _concatenate_and_filter_datasets<uint8_t>(res, indices, num_indices, dtype, filter, merged_dataset);
+      } else {
+        RAFT_FAIL("Unsupported index data type: code=%d, bits=%d", dtype.code, dtype.bits);
+      }
     }
   });
 }

@@ -1271,7 +1271,8 @@ TEST(CagraC, ConcatenateDatasetsMergeSearch)
 
   // --- Unfiltered: cuvsCagraConcatenateDatasets() builds the merged buffer for us. ---
   cuvsDataset_t concatenated_dataset;
-  ASSERT_EQ(cuvsCagraConcatenateDatasets(res, index_array, 2, &concatenated_dataset),
+  cuvsFilter no_filter = {NO_FILTER, 0};
+  ASSERT_EQ(cuvsCagraConcatenateDatasets(res, index_array, 2, no_filter, &concatenated_dataset),
             CUVS_SUCCESS);
   {
     cuvsDatasetMemType_t mem_type{};
@@ -1350,7 +1351,7 @@ TEST(CagraC, ConcatenateDatasetsMergeSearch)
 
   cuvsDataset_t filtered_dataset;
   ASSERT_EQ(
-    cuvsCagraConcatenateAndFilterDatasets(res, index_array, 2, bitset_filter, &filtered_dataset),
+    cuvsCagraConcatenateDatasets(res, index_array, 2, bitset_filter, &filtered_dataset),
     CUVS_SUCCESS);
 
   cuvsCagraIndex_t index_filtered_merged;
