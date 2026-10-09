@@ -608,6 +608,11 @@ Builder withDataset(CuVSMatrix dataset)
 
 Sets the dataset for building the `CagraIndex`.
 
+The caller retains ownership until a build that uses this dataset returns successfully.
+The returned index then owns the dataset, and the caller must leave it open until the index
+is closed. If the build fails or uses another configured input source, ownership remains
+with the caller.
+
 **Parameters**
 
 | Name | Description |
@@ -618,7 +623,25 @@ Sets the dataset for building the `CagraIndex`.
 
 an instance of this Builder
 
-_Source: `java/cuvs-java/src/main/java/com/nvidia/cuvs/CagraIndex.java:440`_
+_Source: `java/cuvs-java/src/main/java/com/nvidia/cuvs/CagraIndex.java:445`_
+
+### withBbqDataset
+
+```java
+Builder withBbqDataset(BbqQuantizer... quantizers)
+```
+
+Builds the graph from one or two encoded BBQ representations. An optional dense dataset
+supplied with `#withDataset(CuVSMatrix)` is attached before search; otherwise call
+`CagraIndex#updateDataset(PaddedDatasetView)` or
+`CagraIndex#updateDataset(PaddedDataset)` before searching.
+
+The index stores views over the quantizer tensors rather than copying them, so they must
+stay open for as long as the index is in use. A dense dataset passed to
+`#withDataset(CuVSMatrix)` is owned by the index, as it is for a non-BBQ build, and is
+closed with it.
+
+_Source: `java/cuvs-java/src/main/java/com/nvidia/cuvs/CagraIndex.java:458`_
 
 ### withIndexParams
 
@@ -639,7 +662,7 @@ Builder.
 
 An instance of this Builder.
 
-_Source: `java/cuvs-java/src/main/java/com/nvidia/cuvs/CagraIndex.java:449`_
+_Source: `java/cuvs-java/src/main/java/com/nvidia/cuvs/CagraIndex.java:467`_
 
 ### build
 
@@ -653,6 +676,6 @@ Builds and returns an instance of CagraIndex.
 
 an instance of CagraIndex
 
-_Source: `java/cuvs-java/src/main/java/com/nvidia/cuvs/CagraIndex.java:456`_
+_Source: `java/cuvs-java/src/main/java/com/nvidia/cuvs/CagraIndex.java:474`_
 
 _Source: `java/cuvs-java/src/main/java/com/nvidia/cuvs/CagraIndex.java:26`_
