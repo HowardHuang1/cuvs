@@ -1331,7 +1331,9 @@ public class CagraIndexImpl implements CagraIndex {
       MemorySegment indicesSegment = buildIndicesSegment(localArena, indexes);
 
       MemorySegment out = localArena.allocate(cuvsDataset_t);
-      MemorySegment noFilter = buildNoFilter(localArena);
+      MemorySegment noFilter = cuvsFilter.allocate(localArena);
+      cuvsFilter.type(noFilter, 0); // NO_FILTER
+      cuvsFilter.addr(noFilter, 0);
       checkCuVSError(
           cuvsCagraConcatenateDatasets(cuvsRes, indicesSegment, indexes.length, noFilter, out),
           "cuvsCagraConcatenateDatasets");
