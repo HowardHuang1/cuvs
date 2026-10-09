@@ -4692,7 +4692,7 @@ struct fd_transfer {
                       device_padded_index<T, uint32_t>& idx,                                     \
                       cuvs::neighbors::device_padded_dataset_view<T, int64_t> const& dataset);   \
   void update_dataset(raft::resources const& res,                                                \
-                      vpq_f16_index<T, uint32_t>& idx,                                           \
+                      device_pq_index<T, uint32_t>& idx,                                         \
                       cuvs::neighbors::device_vpq_dataset_view<half, int64_t> const& dataset)
 
 CUVS_CAGRA_DECLARE_UPDATE_DATASET_OVERLOADS(float);

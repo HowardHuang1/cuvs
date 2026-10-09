@@ -40,10 +40,10 @@ extern template void index<data_t, index_t, inst_device_vpq_view_t>::compute_dat
     idx = device_padded_index<T, index_t>(res, std::move(idx), dataset);                        \
   }                                                                                             \
   void update_dataset(raft::resources const& res,                                               \
-                      vpq_f16_index<T, index_t>& idx,                                           \
+                      device_pq_index<T, index_t>& idx,                                         \
                       cuvs::neighbors::device_vpq_dataset_view<half, int64_t> const& dataset)   \
   {                                                                                             \
-    idx = vpq_f16_index<T, index_t>(res, std::move(idx), dataset);                              \
+    idx = device_pq_index<T, index_t>(res, std::move(idx), dataset);                            \
   }
 
 CUVS_CAGRA_DEFINE_UPDATE_DATASET_OVERLOADS(data_t)

@@ -926,7 +926,7 @@ void _search(cuvsResources_t res,
 
   if (box->layout == sg_cagra_c_api_index_box::dataset_layout::device_pq) {
     auto* idx =
-      reinterpret_cast<cuvs::neighbors::cagra::vpq_f16_index<T, uint32_t>*>(box->index_ptr);
+      reinterpret_cast<cuvs::neighbors::cagra::device_pq_index<T, uint32_t>*>(box->index_ptr);
     RAFT_EXPECTS(idx != nullptr, "cuvsCagraSearch: null index handle");
     run_search(*idx);
     return;
@@ -1832,7 +1832,7 @@ extern "C" cuvsError_t cuvsCagraUpdateDataset(cuvsResources_t res,
           switch (box->layout) {
             case layout_t::device_pq: {
               auto* idx =
-                reinterpret_cast<cuvs::neighbors::cagra::vpq_f16_index<T, uint32_t>*>(
+                reinterpret_cast<cuvs::neighbors::cagra::device_pq_index<T, uint32_t>*>(
                   box->index_ptr);
               RAFT_EXPECTS(idx != nullptr, "cuvsCagraUpdateDataset: null index handle");
               attach_and_rebind(idx);

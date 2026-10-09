@@ -123,6 +123,8 @@ struct cuvsCagraCompressionParams {
   double pq_kmeans_trainset_fraction;
 };
 
+typedef struct cuvsCagraCompressionParams* cuvsCagraCompressionParams_t;
+
 struct cuvsIvfPqParams {
   cuvsIvfPqIndexParams_t ivf_pq_build_params;
   cuvsIvfPqSearchParams_t ivf_pq_search_params;
