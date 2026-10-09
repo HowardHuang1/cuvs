@@ -1141,7 +1141,7 @@ This is an optional convenience function for building `cuvsCagraMerge_v2`'s `mer
 | `res` | in | [`cuvsResources_t`](/api-reference/c-api-core-c-api#cuvsresources-t) | cuvsResources_t opaque C handle |
 | `indices` | in | [`cuvsCagraIndex_t*`](/api-reference/c-api-neighbors-cagra#cuvscagraindex) | Array of input cuvsCagraIndex_t handles to concatenate, in the order they will be passed to `cuvsCagraMerge_v2` |
 | `num_indices` | in | `size_t` | Number of input indices |
-| `filter` | in | [`cuvsFilter`](/api-reference/c-api-neighbors-common#cuvsfilter) | Row filter. Pass `{NO_FILTER, 0}` to concatenate all rows. Pass a `BITSET` filter to retain only the surviving rows. |
+| `filter` | in | [`cuvsFilter`](/api-reference/c-api-neighbors-common#cuvsfilter) | Row filter. Pass `\{NO_FILTER, 0\}` (or a zero-initialized `cuvsFilter`) to concatenate all rows. Pass a `BITSET` filter to retain only the surviving rows. |
 | `merged_dataset` | out | `cuvsDataset_t*` | Newly allocated owning dataset handle containing the concatenated (and optionally filtered) rows in `indices` order. Caller must destroy it with `cuvsDatasetDestroy` when done. |
 
 **Returns**
