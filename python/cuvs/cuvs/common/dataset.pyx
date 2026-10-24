@@ -200,11 +200,10 @@ def make_device_pq_dataset(params, dataset, resources=None):
         c_params.max_train_points_per_vq_cluster = \
             params.max_train_points_per_vq_cluster
 
-        check_cuvs(cuvsDatasetMakePQ(
+        check_cuvs(cuvsDatasetMakePq(
             res,
-            c_params,
             dense.dataset,
-            CUVS_DATASET_MEM_TYPE_DEVICE,
+            c_params,
             &pq.dataset))
     finally:
         check_cuvs(cuvsProductQuantizerParamsDestroy(c_params))
