@@ -633,7 +633,7 @@ CUVS_EXPORT cuvsError_t cuvsCagraUpdateDataset(cuvsResources_t res,
  * cuvsError_t res_destroy_status = cuvsResourcesDestroy(res);
  * @endcode
  *
- * A `CUVS_DATASET_LAYOUT_PQ` dataset created by `cuvsDatasetMakePQ` builds an iterative CAGRA-Q
+ * A `CUVS_DATASET_LAYOUT_PQ` dataset created by `cuvsDatasetMakePq` builds an iterative CAGRA-Q
  * index. VPQ input requires `L2Expanded` and `ITERATIVE_CAGRA_SEARCH` (or `AUTO_SELECT`), and the
  * VPQ dataset must outlive the index because the index stores a non-owning view.
  * A `CUVS_DATASET_LAYOUT_BBQ` dataset builds a graph-only index; attach a searchable dataset with

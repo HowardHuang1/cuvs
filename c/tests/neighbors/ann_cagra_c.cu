@@ -2192,6 +2192,95 @@ TEST(CagraC, SearchMultiPartitionMultiKernelRejected)
   cuvsResourcesDestroy(res);
 }
 
+TEST(CagraC, MakePqFromStandardAndHostSources)
+{
+  // cuvsDatasetMakePq accepts STANDARD or PADDED sources on host or device and NULL params.
+  constexpr int64_t n_rows = 256;
+  constexpr int64_t dim    = 32;
+
+  cuvsResources_t res;
+  ASSERT_EQ(cuvsResourcesCreate(&res), CUVS_SUCCESS);
+  cudaStream_t stream;
+  ASSERT_EQ(cuvsStreamGet(res, &stream), CUVS_SUCCESS);
+
+  std::vector<float> host(n_rows * dim);
+  for (int64_t i = 0; i < n_rows * dim; ++i) {
+    host[i] = static_cast<float>((i * 7 % 23) + 1);
+  }
+  rmm::device_uvector<float> dataset_d(n_rows * dim, stream);
+  raft::copy(dataset_d.data(), host.data(), host.size(), stream);
+  raft::resource::sync_stream(*reinterpret_cast<raft::resources*>(res));
+
+  int64_t shape[2] = {n_rows, dim};
+  auto make_tensor = [&](void* data, DLDeviceType device_type) {
+    DLManagedTensor t{};
+    t.dl_tensor.data               = data;
+    t.dl_tensor.device.device_type = device_type;
+    t.dl_tensor.ndim               = 2;
+    t.dl_tensor.dtype              = {kDLFloat, 32, 1};
+    t.dl_tensor.shape              = shape;
+    t.dl_tensor.strides            = nullptr;
+    return t;
+  };
+
+  cuvsProductQuantizerParams_t pq_params;
+  ASSERT_EQ(cuvsProductQuantizerParamsCreate(&pq_params), CUVS_SUCCESS);
+  pq_params->pq_bits       = 8;
+  pq_params->pq_dim        = 8;
+  pq_params->use_subspaces = true;
+  pq_params->use_vq        = true;
+
+  auto check_pq = [&](cuvsDataset_t pq) {
+    cuvsDatasetLayout_t layout;
+    ASSERT_EQ(cuvsDatasetGetLayout(pq, &layout), CUVS_SUCCESS);
+    EXPECT_EQ(layout, CUVS_DATASET_LAYOUT_PQ);
+    cuvsDatasetMemType_t mem_type;
+    ASSERT_EQ(cuvsDatasetGetMemType(pq, &mem_type), CUVS_SUCCESS);
+    EXPECT_EQ(mem_type, CUVS_DATASET_MEM_TYPE_DEVICE);
+    bool owning = false;
+    ASSERT_EQ(cuvsDatasetGetIsOwning(pq, &owning), CUVS_SUCCESS);
+    EXPECT_TRUE(owning);
+    DLDataType dtype;
+    ASSERT_EQ(cuvsDatasetGetDtype(pq, &dtype), CUVS_SUCCESS);
+    EXPECT_EQ(dtype.code, kDLFloat);
+    EXPECT_EQ(dtype.bits, 16);
+  };
+
+  auto device_tensor = make_tensor(dataset_d.data(), kDLCUDA);
+  auto host_tensor   = make_tensor(host.data(), kDLCPU);
+
+  cuvsDataset_t device_standard = nullptr;
+  cuvsDataset_t host_standard   = nullptr;
+  cuvsDataset_t device_padded   = nullptr;
+  ASSERT_EQ(cuvsDatasetMakeStandardView(res, &device_tensor, &device_standard), CUVS_SUCCESS);
+  ASSERT_EQ(cuvsDatasetMakeStandardView(res, &host_tensor, &host_standard), CUVS_SUCCESS);
+  ASSERT_EQ(cuvsDatasetMakePaddedView(res, &device_tensor, &device_padded), CUVS_SUCCESS);
+
+  for (auto [name, source] : {std::pair{"device standard", device_standard},
+                              std::pair{"host standard", host_standard},
+                              std::pair{"device padded", device_padded}}) {
+    SCOPED_TRACE(name);
+    cuvsDataset_t pq = nullptr;
+    ASSERT_EQ(cuvsDatasetMakePq(res, source, pq_params, &pq), CUVS_SUCCESS);
+    check_pq(pq);
+    ASSERT_EQ(cuvsDatasetDestroy(pq), CUVS_SUCCESS);
+  }
+
+  {
+    SCOPED_TRACE("NULL params");
+    cuvsDataset_t pq = nullptr;
+    ASSERT_EQ(cuvsDatasetMakePq(res, device_standard, nullptr, &pq), CUVS_SUCCESS);
+    check_pq(pq);
+    ASSERT_EQ(cuvsDatasetDestroy(pq), CUVS_SUCCESS);
+  }
+
+  cuvsDatasetDestroy(device_standard);
+  cuvsDatasetDestroy(host_standard);
+  cuvsDatasetDestroy(device_padded);
+  cuvsProductQuantizerParamsDestroy(pq_params);
+  cuvsResourcesDestroy(res);
+}
+
 TEST(CagraC, BuildAttachPqSearch)
 {
   // CAGRA-Q smoke test: dense build → MakePq → UpdateDataset(PQ) → Search.
