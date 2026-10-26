@@ -332,7 +332,7 @@ TEST(ProductQuantizationTestF, MakeVpqDatasetFromHost)
 
   EXPECT_EQ(vpq.n_rows(), n_rows);
   EXPECT_EQ(vpq.dim(), dim);
-  EXPECT_NE(vpq.data.data_handle(), nullptr);
+  EXPECT_NE(vpq.data_const_view().data_handle(), nullptr);
 }
 
 TEST(ProductQuantizationTestF, MakeVpqDatasetFromPaddedView)
@@ -354,9 +354,8 @@ TEST(ProductQuantizationTestF, MakeVpqDatasetFromPaddedView)
              host_rows.data_handle(),
              host_rows.size(),
              raft::resource::get_cuda_stream(handle));
-  cuvs::neighbors::device_padded_dataset_view<float, int64_t> padded(
-    raft::make_device_matrix_view<const float, int64_t>(device_rows.data_handle(), n_rows, stride),
-    dim);
+  auto padded = raft::make_device_strided_matrix_view<const float, int64_t, raft::row_major>(
+    device_rows.data_handle(), n_rows, dim, stride);
 
   cuvs::preprocessing::quantize::pq::params params;
   params.pq_bits       = 4;
@@ -368,7 +367,7 @@ TEST(ProductQuantizationTestF, MakeVpqDatasetFromPaddedView)
 
   EXPECT_EQ(vpq.n_rows(), n_rows);
   EXPECT_EQ(vpq.dim(), dim);
-  EXPECT_NE(vpq.data.data_handle(), nullptr);
+  EXPECT_NE(vpq.data_const_view().data_handle(), nullptr);
 }
 
 // Define test cases with different parameters

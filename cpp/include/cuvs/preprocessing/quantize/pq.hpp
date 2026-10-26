@@ -271,8 +271,8 @@ namespace detail {
  *
  * Accepts either a row-major mdspan with `value_type`, `extent`, `stride`, and `data_handle` (same
  * pattern as `cuvs::neighbors::make_device_padded_dataset`), or any cuVS dense dataset / dataset
- * view exposing `view`, `dim` and `stride`, in which case the logical `dim()` is quantized and the
- * row padding is skipped. The rows may be device-accessible or host-resident. Device-accessible
+ * view exposing `data_const_view`, in which case the logical `dim()` is quantized and the row
+ * padding is skipped. The rows may be device-accessible or host-resident. Device-accessible
  * rows (device, managed or pinned) with tight row-major storage (logical stride equals dimension)
  * are passed through to training as they are; a wider row pitch triggers a contiguous dense copy
  * first. Host-resident rows are subsampled for training and encoded in bounded batches, so the
