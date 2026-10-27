@@ -70,7 +70,7 @@ auto make_padded(raft::resources const& res, raft::host_matrix_view<const T, int
   auto matrix =
     raft::make_device_matrix<T, int64_t>(res, src.extent(0), static_cast<int64_t>(stride));
   RAFT_CUDA_TRY(cudaMemsetAsync(
-    matrix.data_handle(), 0, static_cast<size_t>(matrix.size()) * sizeof(T), stream));
+    matrix.data_handle(), 0, static_cast<size_t>(matrix.size()) * sizeof(T), stream.get()));
   raft::copy_matrix(matrix.data_handle(),
                     static_cast<size_t>(stride),
                     src.data_handle(),
@@ -79,8 +79,9 @@ auto make_padded(raft::resources const& res, raft::host_matrix_view<const T, int
                     static_cast<size_t>(src.extent(0)),
                     stream);
   raft::resource::sync_stream(res);
-  cuvs::neighbors::device_padded_dataset_view<T, int64_t> view(
-    raft::make_const_mdspan(matrix.view()), dim);
+  auto view = cuvs::neighbors::detail::make_dense_view<
+    cuvs::neighbors::device_padded_dataset_view<T, int64_t>>(
+    matrix.data_handle(), matrix.extent(0), dim, static_cast<uint32_t>(stride));
   return padded_storage<T>{std::move(matrix), view};
 }
 
@@ -90,8 +91,9 @@ auto make_merged_storage(raft::resources const& res, int64_t rows, int64_t dim) 
 {
   auto const stride = cuvs::neighbors::cagra_required_row_width<T>(static_cast<uint32_t>(dim), 16);
   auto matrix       = raft::make_device_matrix<T, int64_t>(res, rows, static_cast<int64_t>(stride));
-  cuvs::neighbors::device_padded_dataset_view<T, int64_t> view(
-    raft::make_const_mdspan(matrix.view()), static_cast<uint32_t>(dim));
+  auto view         = cuvs::neighbors::detail::make_dense_view<
+            cuvs::neighbors::device_padded_dataset_view<T, int64_t>>(
+    matrix.data_handle(), rows, static_cast<uint32_t>(dim), stride);
   return padded_storage<T>{std::move(matrix), view};
 }
 
@@ -216,11 +218,13 @@ void expect_dataset_order(raft::resources const& res,
   // honouring that stride rather than as one contiguous block.
   auto host   = raft::make_host_matrix<T, int64_t>(res, expected.extent(0), expected.extent(1));
   auto stream = raft::resource::get_cuda_stream(res);
-  int64_t const row_stride = static_cast<int64_t>(view.stride());
+  int64_t const row_stride = static_cast<int64_t>(view.data_const_view().stride(0));
   int64_t const dim        = static_cast<int64_t>(view.dim());
   for (int64_t row = 0; row < view.n_rows(); ++row) {
-    raft::copy(
-      host.data_handle() + row * dim, view.view().data_handle() + row * row_stride, dim, stream);
+    raft::copy(host.data_handle() + row * dim,
+               view.data_const_view().data_handle() + row * row_stride,
+               dim,
+               stream);
   }
   raft::resource::sync_stream(res);
   for (int64_t row = 0; row < expected.extent(0); ++row) {
@@ -237,10 +241,10 @@ void expect_zero_padding(raft::resources const& res,
   auto view            = merged.dataset();
   int64_t const rows   = view.n_rows();
   int64_t const dim    = static_cast<int64_t>(view.dim());
-  int64_t const stride = static_cast<int64_t>(view.stride());
+  int64_t const stride = static_cast<int64_t>(view.data_const_view().stride(0));
   std::vector<T> host(static_cast<std::size_t>(rows * stride));
   auto stream = raft::resource::get_cuda_stream(res);
-  raft::copy(host.data(), view.view().data_handle(), host.size(), stream);
+  raft::copy(host.data(), view.data_const_view().data_handle(), host.size(), stream);
   raft::resource::sync_stream(res);
   for (int64_t row = 0; row < rows; ++row) {
     for (int64_t column = dim; column < stride; ++column) {
@@ -288,7 +292,7 @@ void run_explicit_fastener(cuvs::distance::DistanceType metric)
   RAFT_CUDA_TRY(cudaMemsetAsync(merged_storage.matrix.data_handle(),
                                 0xff,
                                 merged_storage.matrix.size() * sizeof(T),
-                                raft::resource::get_cuda_stream(res)));
+                                raft::resource::get_cuda_stream(res).get()));
   auto merged = merge(res, params, indices, merged_storage.view, fastener);
   expect_valid_graph(merged, rows * 2, degree);
   expect_dataset_order(res, merged, raft::make_const_mdspan(expected.view()));
@@ -366,7 +370,7 @@ TEST(CagraMergeFastener, SplitManywayCarriesSmallParentsAndSupportsRepeatedLevel
   raft::copy(dataset.data_handle(), host_dataset.data_handle(), dataset.size(), stream);
 
   split_context context(res, rows, dim);
-  manyway_l2_norms_kernel<<<static_cast<int>((rows + 3) / 4), 128, 0, stream>>>(
+  manyway_l2_norms_kernel<<<static_cast<int>((rows + 3) / 4), 128, 0, stream.get()>>>(
     dataset.data_handle(), rows, dim, dim, context.norms.data_handle());
   RAFT_CUDA_TRY(cudaGetLastError());
 
@@ -452,7 +456,7 @@ TEST(CagraMergeFastener, InitializesUnwrittenScaffoldSlotsWithSelf)
   auto graph = raft::make_device_matrix<uint32_t, int64_t>(res, rows, candidate_degree);
 
   RAFT_CUDA_TRY(
-    cudaMemsetAsync(graph.data_handle(), 0xff, graph.size() * sizeof(uint32_t), stream));
+    cudaMemsetAsync(graph.data_handle(), 0xff, graph.size() * sizeof(uint32_t), stream.get()));
   launch_initialize_self_scaffold(
     res, graph.data_handle(), rows, candidate_degree, scaffold_offset, scaffold_degree);
 
@@ -608,7 +612,7 @@ TEST(CagraMergeFastener, MembershipsRemainAscendingWithinEachPartition)
   raft::copy(dataset.data_handle(), host_dataset.data_handle(), dataset.size(), stream);
 
   split_context context(res, rows, dim);
-  manyway_l2_norms_kernel<<<static_cast<int>((rows + 3) / 4), 128, 0, stream>>>(
+  manyway_l2_norms_kernel<<<static_cast<int>((rows + 3) / 4), 128, 0, stream.get()>>>(
     dataset.data_handle(), rows, dim, dim, context.norms.data_handle());
   RAFT_CUDA_TRY(cudaGetLastError());
 
@@ -1091,8 +1095,6 @@ std::vector<AnnCagraInputs> generate_fastener_merge_recall_inputs()
     {false},
     {0.95},
     {std::optional<float>{std::nullopt}},
-    // AnnCagraInputs::compression was removed upstream along with index_params::compression.
-    {std::optional<bool>{std::nullopt}},
     {cuvs::neighbors::MergeStrategy::MERGE_STRATEGY_PHYSICAL});
   for (auto& input : inputs) {
     // Default Fastener controls; only the algorithm is forced so AUTO cannot fall back to rebuild.

@@ -25,7 +25,7 @@
 #include <raft/util/cuda_rt_essentials.hpp>  // RAFT_CUDA_TRY
 #include <raft/util/pow2_utils.cuh>
 
-#include <rmm/cuda_stream_view.hpp>
+#include <cuda/stream>
 
 namespace cuvs::neighbors::ivf_flat::detail {
 static constexpr int kThreadsPerBlock = 128;
@@ -151,7 +151,7 @@ void launch_kernel(const index<T, IdxT>& index,
                    uint32_t* neighbors,
                    float* distances,
                    uint32_t& grid_dim_x,
-                   rmm::cuda_stream_view stream,
+                   cuda::stream_ref stream,
                    const std::optional<std::string>& metric_udf)
 {
   RAFT_EXPECTS(Veclen == index.veclen(),
@@ -218,7 +218,7 @@ void launch_kernel(const index<T, IdxT>& index,
       n_probes,
       smem_size);
     kernel_launcher->dispatch<interleaved_scan_func_t<T, IdxT>>(
-      stream,
+      stream.get(),
       grid_dim,
       block_dim,
       smem_size,
@@ -313,6 +313,21 @@ void launch_with_fixed_consts(cuvs::distance::DistanceType metric, Args&&... arg
                            tag_post_process_compose>(
         std::forward<Args>(args)...);  // NB: update the description of `knn::ivf_flat::build` when
                                        // adding here a new metric.
+    case cuvs::distance::DistanceType::BitwiseHamming:
+      if constexpr (std::is_same_v<T, uint8_t>) {
+        return launch_kernel<Capacity,
+                             Veclen,
+                             Ascending,
+                             false,
+                             T,
+                             AccT,
+                             IdxT,
+                             IvfSampleFilterTag,
+                             tag_metric_bitwise_hamming,
+                             tag_post_process_identity>(std::forward<Args>(args)...);
+      } else {
+        RAFT_FAIL("BitwiseHamming distance is only supported with uint8_t data type");
+      }
     case cuvs::distance::DistanceType::CustomUDF:
       return launch_kernel<Capacity,
                            Veclen,
@@ -435,9 +450,14 @@ void ivfflat_interleaved_scan(const index<T, IdxT>& index,
                               uint32_t* neighbors,
                               float* distances,
                               uint32_t& grid_dim_x,
-                              rmm::cuda_stream_view stream,
+                              cuda::stream_ref stream,
                               const std::optional<std::string>& metric_udf)
 {
+  if (metric == cuvs::distance::DistanceType::BitwiseHamming && !std::is_same_v<T, uint8_t>) {
+    RAFT_FAIL("BitwiseHamming distance is only supported with uint8_t data type, got %s",
+              typeid(T).name());
+  }
+
   const uint32_t n_probes_clamped = std::min(n_probes, index.n_lists());
   const int capacity              = raft::bound_by_power_of_two(k);
 

@@ -9,7 +9,7 @@ SPDX-License-Identifier: Apache-2.0
   <groupId>com.nvidia.cuvs.lucene</groupId>
   <artifactId>cuvs-lucene</artifactId>
   <!-- NOTE: The version automatically gets updated when ci/release/update-version.sh is invoked. -->
-  <!--CUVS_JAVA#VERSION_UPDATE_MARKER_START--><version>26.10.0</version><!--CUVS_JAVA#VERSION_UPDATE_MARKER_END-->
+  <!--CUVS_JAVA#VERSION_UPDATE_MARKER_START--><version>26.12.0</version><!--CUVS_JAVA#VERSION_UPDATE_MARKER_END-->
   <name>cuvs-lucene</name>
   <packaging>jar</packaging>
 
@@ -27,10 +27,10 @@ SPDX-License-Identifier: Apache-2.0
       </license>
   </licenses>
   <scm>
-      <connection>scm:git:https://github.com/rapidsai/cuvs.git</connection>
-      <developerConnection>scm:git:git@github.com:rapidsai/cuvs.git</developerConnection>
+      <connection>scm:git:https://github.com/NVIDIA/cuvs.git</connection>
+      <developerConnection>scm:git:git@github.com:NVIDIA/cuvs.git</developerConnection>
       <tag>HEAD</tag>
-      <url>https://github.com/rapidsai/cuvs</url>
+      <url>https://github.com/NVIDIA/cuvs</url>
   </scm>
 
   <developers>
@@ -138,12 +138,17 @@ SPDX-License-Identifier: Apache-2.0
     <dependency>
       <groupId>com.nvidia.cuvs</groupId>
       <artifactId>cuvs-java</artifactId>
-      <!--CUVS_JAVA#VERSION_UPDATE_MARKER_START--><version>26.10.0</version><!--CUVS_JAVA#VERSION_UPDATE_MARKER_END-->
+      <!--CUVS_JAVA#VERSION_UPDATE_MARKER_START--><version>26.12.0</version><!--CUVS_JAVA#VERSION_UPDATE_MARKER_END-->
     </dependency>
   </dependencies>
 
   <build>
     <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.16.0</version>
+      </plugin>
       <plugin>
         <groupId>com.diffplug.spotless</groupId>
         <artifactId>spotless-maven-plugin</artifactId>
@@ -165,7 +170,7 @@ SPDX-License-Identifier: Apache-2.0
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-assembly-plugin</artifactId>
-        <version>3.6.0</version>
+        <version>3.8.0</version>
         <configuration>
           <descriptorRefs>
             <descriptorRef>jar-with-dependencies</descriptorRef>
@@ -182,9 +187,10 @@ SPDX-License-Identifier: Apache-2.0
         </executions>
       </plugin>
       <plugin>
+        <!-- Keep at 3.5.x: 3.6.0 switches to the JUnit Platform provider, which breaks '-Dtest=Class#method' filtering with the randomizedtesting runner (surefire-junit4 is not published past 3.5.6). -->
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
-        <version>3.5.4</version>
+        <version>3.5.6</version>
         <configuration>
           <reportFormat>plain</reportFormat>
           <trimStackTrace>false</trimStackTrace>
@@ -194,12 +200,15 @@ SPDX-License-Identifier: Apache-2.0
           <systemPropertyVariables>
             <java.util.logging.config.file>${project.basedir}/src/main/resources/logging.properties</java.util.logging.config.file>
           </systemPropertyVariables>
+          <environmentVariables>
+            <CUFILE_LOGFILE_PATH>${project.build.directory}/cufile.log</CUFILE_LOGFILE_PATH>
+          </environmentVariables>
         </configuration>
       </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-source-plugin</artifactId>
-        <version>3.3.1</version>
+        <version>3.4.0</version>
         <executions>
           <execution>
             <id>attach-sources</id>
@@ -220,7 +229,6 @@ SPDX-License-Identifier: Apache-2.0
                 <goal>jar</goal>
             </goals>
             <configuration>
-                <includePackageNames>com.nvidia.cuvs.lucene</includePackageNames>
                 <doclint>all,-missing</doclint>
                 <outputDirectory>${project.build.directory}/javadocs</outputDirectory>
             </configuration>
@@ -230,7 +238,7 @@ SPDX-License-Identifier: Apache-2.0
       <plugin>
           <groupId>org.jacoco</groupId>
           <artifactId>jacoco-maven-plugin</artifactId>
-          <version>0.8.14</version>
+          <version>0.8.15</version>
           <executions>
               <execution>
                   <goals>
@@ -246,6 +254,45 @@ SPDX-License-Identifier: Apache-2.0
               </execution>
           </executions>
       </plugin>
+      <plugin>
+        <!-- Not bound to a phase: pins the version used by 'mvn install:install-file' in build.sh and ci/*_lucene.sh. -->
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-install-plugin</artifactId>
+        <version>3.2.0</version>
+      </plugin>
     </plugins>
   </build>
+
+  <profiles>
+    <profile>
+      <!--
+          Activated via -Dskip.compile. Disables the default-compile and default-testCompile
+          executions, so no compilation happens for this build.
+      -->
+      <id>skip-compile</id>
+      <activation>
+        <property>
+          <name>skip.compile</name>
+        </property>
+      </activation>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-compiler-plugin</artifactId>
+            <executions>
+              <execution>
+                <id>default-compile</id>
+                <phase>none</phase>
+              </execution>
+              <execution>
+                <id>default-testCompile</id>
+                <phase>none</phase>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 </project>

@@ -9,6 +9,10 @@
 #define CUVS_CUTILE_ENABLED 0
 #endif
 
+#ifndef CUVS_CUTILE_SM107_ENABLED
+#define CUVS_CUTILE_SM107_ENABLED 0
+#endif
+
 namespace cuvs::detail::jit_lto {
 
 #if CUVS_CUTILE_ENABLED
@@ -34,6 +38,13 @@ struct cutile_arch_10_0 {
   static constexpr int cc_minor = 0;
 };
 
+#if CUVS_CUTILE_SM107_ENABLED
+struct cutile_arch_10_7 {
+  static constexpr int cc_major = 10;
+  static constexpr int cc_minor = 7;
+};
+#endif
+
 struct cutile_arch_12_0 {
   static constexpr int cc_major = 12;
   static constexpr int cc_minor = 0;
@@ -41,8 +52,10 @@ struct cutile_arch_12_0 {
 
 inline bool is_embedded_cubin_arch(int cc_major, int cc_minor)
 {
-  if (cc_minor < 0) { return false; }
-  return cc_major == 8 || cc_major == 9 || cc_major == 10 || cc_major == 12;
+  return (cc_major == 8 && (cc_minor == 0 || cc_minor == 6)) || (cc_major == 9 && cc_minor == 0) ||
+         (cc_major == 10 && cc_minor == 0) ||
+         (CUVS_CUTILE_SM107_ENABLED && cc_major == 10 && cc_minor == 7) ||
+         (cc_major == 12 && cc_minor == 0);
 }
 
 #else
@@ -50,5 +63,11 @@ inline bool is_embedded_cubin_arch(int cc_major, int cc_minor)
 inline bool is_embedded_cubin_arch(int, int) { return false; }
 
 #endif
+
+/** SM89 is binary compatible with the embedded SM86 SASS. */
+inline constexpr bool can_use_sm86_compat_cubin(int cc_major, int cc_minor)
+{
+  return cc_major == 8 && cc_minor == 9;
+}
 
 }  // namespace cuvs::detail::jit_lto

@@ -28,7 +28,7 @@ public class HnswBuildAndSearchIT extends CuVSTestCase {
 
   @Before
   public void setup() {
-    assumeTrue("not supported on " + System.getProperty("os.name"), isLinuxAmd64());
+    assumeTrue("not supported on " + System.getProperty("os.name"), isLinuxSupportedArch());
   }
 
   // Sample data and query
@@ -61,7 +61,7 @@ public class HnswBuildAndSearchIT extends CuVSTestCase {
 
     // Create the index with the dataset
     CagraIndex index =
-        CagraIndex.newBuilder(resources).withDataset(dataset).withIndexParams(indexParams).build();
+        CagraIndex.newBuilder(resources).fromDataset(dataset).withIndexParams(indexParams).build();
 
     // hnswlib search runs on the host, so a host-built index serializes straight from its own
     // host-resident vectors without a detour through device-padded storage.
