@@ -1345,7 +1345,7 @@ class AnnCagraIndexFilteredMergeTest : public ::testing::TestWithParam<AnnCagraI
         // validates the helper against the `merged_dataset_offsets()` boundaries computed above.
         auto merged_dataset = cuvs::neighbors::cagra::concatenate_datasets<DataT>(
           handle_, dataset_views, bitset_filter_obj);
-        auto merged_view = merged_dataset->as_dataset_view();
+        auto merged_view = merged_dataset->view();
         auto merge_idx   = cuvs::neighbors::cagra::merge(
           handle_, index_params, indices, merged_view, offsets, bitset_filter_obj);
 
@@ -1597,7 +1597,7 @@ class AnnCagraIndexMergeTest : public ::testing::TestWithParam<AnnCagraInputs> {
             ds_views.push_back(idx->dataset());
           }
           auto merged_dataset = cagra::concatenate_datasets<DataT>(handle_, ds_views);
-          auto merged_view    = merged_dataset->as_dataset_view();
+          auto merged_view    = merged_dataset->view();
           auto merged_idx =
             ps.physical_merge_params.has_value()
               ? cagra::merge(handle_,

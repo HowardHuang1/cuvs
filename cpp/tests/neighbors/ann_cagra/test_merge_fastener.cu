@@ -106,16 +106,16 @@ auto populate_merged_storage(raft::resources const& res,
                              padded_storage<T>& dest) -> std::vector<int64_t>
 {
   auto stream               = raft::resource::get_cuda_stream(res);
-  int64_t const dest_stride = static_cast<int64_t>(dest.view.stride());
+  int64_t const dest_stride = static_cast<int64_t>(dest.view.data_view().stride(0));
   std::vector<int64_t> offsets{0};
   for (auto* index : indices) {
     auto src             = index->dataset();
     int64_t const rows   = src.n_rows();
     int64_t const dim    = static_cast<int64_t>(src.dim());
-    int64_t const stride = static_cast<int64_t>(src.stride());
+    int64_t const stride = static_cast<int64_t>(src.data_view().stride(0));
     raft::copy_matrix(dest.matrix.data_handle() + offsets.back() * dest_stride,
                       static_cast<std::size_t>(dest_stride),
-                      src.view().data_handle(),
+                      src.data_view().data_handle(),
                       static_cast<std::size_t>(stride),
                       static_cast<std::size_t>(dim),
                       static_cast<std::size_t>(rows),

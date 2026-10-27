@@ -133,10 +133,10 @@ auto validate_datasets_for_concat(std::vector<DatasetViewT> const& datasets, cha
                  caller);
     if (dim == 0) {
       dim    = v.dim();
-      stride = static_cast<int64_t>(v.stride());
+      stride = static_cast<int64_t>(v.data_view().stride(0));
     } else {
       RAFT_EXPECTS(dim == v.dim(), "Dimension of datasets must be equal.");
-      RAFT_EXPECTS(stride == static_cast<int64_t>(v.stride()),
+      RAFT_EXPECTS(stride == static_cast<int64_t>(v.data_view().stride(0)),
                    "Row stride of datasets must be equal.");
     }
   }
@@ -156,7 +156,7 @@ void copy_datasets_into(raft::resources const& handle,
   int64_t row_offset  = 0;
   cudaStream_t stream = raft::resource::get_cuda_stream(handle).get();
   for (auto const& v : datasets) {
-    const T* src_ptr   = v.view().data_handle();
+    const T* src_ptr   = v.data_view().data_handle();
     std::size_t n_rows = static_cast<std::size_t>(v.n_rows());
     raft::copy_matrix(dst + static_cast<std::size_t>(row_offset) * dst_stride,
                       static_cast<std::size_t>(dst_stride),
@@ -274,7 +274,7 @@ auto concatenate_datasets(raft::resources const& handle,
 
     auto const& v = datasets[i];
     auto src_view = raft::make_device_matrix_view<const T, int64_t>(
-      v.view().data_handle(), static_cast<int64_t>(v.n_rows()), stride);
+      v.data_view().data_handle(), static_cast<int64_t>(v.n_rows()), stride);
     auto dst_view = raft::make_device_matrix_view<T, int64_t>(
       out_array.data_handle() + static_cast<std::size_t>(offsets[i]) * stride, n_i, stride);
 
