@@ -338,7 +338,7 @@ void inverse_transform(
 template <typename DatasetT, typename MathT, typename IdxT, typename StoreMathT = MathT>
 auto vpq_build(const raft::resources& res,
                const cuvs::preprocessing::quantize::pq::params& params,
-               const DatasetT& dataset) -> cuvs::neighbors::device_vpq_dataset<MathT, IdxT>
+               const DatasetT& dataset) -> cuvs::neighbors::device_vpq_dataset<StoreMathT, IdxT>
 {
   using label_t = uint32_t;
   auto ps       = params;

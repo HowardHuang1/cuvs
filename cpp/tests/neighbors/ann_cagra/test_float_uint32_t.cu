@@ -186,7 +186,7 @@ TEST(AnnCagraPq, BuildUpdatePqSearch)
   EXPECT_EQ(pq.n_rows(), n_rows);
   EXPECT_EQ(pq.dim(), dim);
 
-  auto pq_index = cagra::update_dataset(handle, std::move(dense_index), pq.as_dataset_view());
+  auto pq_index = cagra::update_dataset(handle, std::move(dense_index), pq.view());
 
   auto queries = raft::make_device_matrix<float, int64_t>(handle, n_queries, dim);
   raft::copy(queries.data_handle(), dataset.data_handle(), queries.size(), stream);
