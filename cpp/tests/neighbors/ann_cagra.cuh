@@ -72,9 +72,8 @@ void cagra_build_into_index(
   cagra::device_padded_index<DataT>& index)
 {
   if (ace_host_dataset.has_value()) {
-    cuvs::neighbors::host_padded_dataset_view<DataT, int64_t> host_view(
-      *ace_host_dataset, static_cast<uint32_t>(ace_host_dataset->extent(1)));
-    auto host_idx = cagra::build(res, params, host_view);
+    auto host_view = cuvs::neighbors::make_host_standard_dataset_view(*ace_host_dataset);
+    auto host_idx  = cagra::build(res, params, host_view);
     // In-memory ACE returns graph-only; attach device padded storage for search.
     index = cagra::update_dataset(res, std::move(host_idx), padded);
     return;
@@ -734,6 +733,10 @@ class AnnCagraAddNodesTest : public ::testing::TestWithParam<AnnCagraInputs> {
       double min_recall = ps.min_recall;
       if (ps.graph_degree < 50) { min_recall *= 0.94; }
       if (ps.graph_degree < 40) { min_recall *= 0.94; }
+      // AUTO may select MULTI_CTA, whose automatic iteration limit is shallower.
+      if (ps.algo == search_algo::MULTI_CTA || ps.algo == search_algo::AUTO) {
+        min_recall *= 0.985;
+      }
       EXPECT_TRUE(eval_neighbours(indices_naive,
                                   indices_Cagra,
                                   distances_naive,
@@ -2508,10 +2511,10 @@ inline std::vector<AnnCagraMpInputs> generate_mp_inputs()
                              // Lower than the single-index 0.985 convention. These
                              // low-redundancy single-partition / skewed configs dip
                              // further under filtering, where removing rows thins the
-                             // survivors' graph connectivity; observed recall floors
-                             // around 0.974, so 0.97 leaves headroom for run-to-run
-                             // jitter while still catching real regressions.
-                             /*min_recall*/ 0.97});
+                             // survivors' graph connectivity, so leave headroom for run-to-run
+                             // jitter while still catching real regressions. MULTI_CTA gets extra
+                             // headroom because its automatic iteration limit is shallower.
+                             /*min_recall*/ algo == search_algo::MULTI_CTA ? 0.95 : 0.97});
         }
       }
     }

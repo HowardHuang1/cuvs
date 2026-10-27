@@ -305,7 +305,7 @@ CagraIndex mergeCagraIndexes( CagraIndex[] indexes, long mergedDatasetHandleAddr
 Merges multiple CAGRA indexes into a single index, using a caller-owned pre-concatenated
 padded dataset.
 
-See CagraIndex.PaddedDataset, long[]) for the full
+See `CagraIndex#merge(CagraIndex[], CagraIndex.PaddedDataset, long[])` for the full
 `mergedDatasetHandleAddress`/`offsets` contract; this SPI method takes the raw
 native handle address so implementations don't need to depend on the concrete dataset
 wrapper type.
@@ -343,7 +343,7 @@ is null).
 
 This is declared as a `default` method so that adding it does not break binary
 compatibility with providers compiled against an earlier version of this interface; the
-default implementation falls back to long, long[], CagraIndexParams) when `filter` is null, and otherwise throws `UnsupportedOperationException`.
+default implementation falls back to `#mergeCagraIndexes(CagraIndex[], long, long[], CagraIndexParams)` when `filter` is null, and otherwise throws `UnsupportedOperationException`.
 
 **Parameters**
 
@@ -375,9 +375,9 @@ default long[] cagraMergedDatasetOffsets(CagraIndex[] indexes, BitSet filter) th
 
 Computes per-index write offsets for a bitset-filtered merged dataset buffer.
 
-See BitSet) for the full contract.
+See `CagraIndex#mergedDatasetOffsets(CagraIndex[], BitSet)` for the full contract.
 This is declared as a `default` method for the same binary-compatibility reason as
-long, long[], BitSet, CagraIndexParams); the default
+`#mergeCagraIndexes(CagraIndex[], long, long[], BitSet, CagraIndexParams)`; the default
 implementation throws `UnsupportedOperationException`.
 
 **Parameters**
@@ -389,7 +389,7 @@ implementation throws `UnsupportedOperationException`.
 
 **Returns**
 
-Array of `indexes.length + 1` entries, as described in BitSet)
+Array of `indexes.length + 1` entries, as described in `CagraIndex#mergedDatasetOffsets(CagraIndex[], BitSet)`
 
 **Throws**
 
@@ -409,7 +409,7 @@ Concatenates every input index's dataset (unfiltered, in `indexes` order) into a
 allocated, owning padded dataset.
 
 See `CagraIndex#concatenateDatasets(CagraIndex[])` for the full contract. This is
-declared as a `default` method for the same binary-compatibility reason as long, long[], BitSet, CagraIndexParams); the default
+declared as a `default` method for the same binary-compatibility reason as `#mergeCagraIndexes(CagraIndex[], long, long[], BitSet, CagraIndexParams)`; the default
 implementation throws `UnsupportedOperationException`.
 
 **Parameters**
@@ -439,9 +439,9 @@ default CagraIndex.PaddedDataset concatenateAndFilterCagraDatasets( CagraIndex[]
 Concatenates every input index's dataset (in `indexes` order), retaining only the rows
 selected by `filter`, into a newly allocated, owning padded dataset.
 
-See BitSet) for the full
+See `CagraIndex#concatenateAndFilterDatasets(CagraIndex[], BitSet)` for the full
 contract. This is declared as a `default` method for the same binary-compatibility
-reason as long, long[], BitSet, CagraIndexParams);
+reason as `#mergeCagraIndexes(CagraIndex[], long, long[], BitSet, CagraIndexParams)`;
 the default implementation throws `UnsupportedOperationException`.
 
 **Parameters**
@@ -453,7 +453,7 @@ the default implementation throws `UnsupportedOperationException`.
 
 **Returns**
 
-A newly allocated owning padded dataset, as described in BitSet)
+A newly allocated owning padded dataset, as described in `CagraIndex#concatenateAndFilterDatasets(CagraIndex[], BitSet)`
 
 **Throws**
 

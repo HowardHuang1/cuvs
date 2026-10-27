@@ -55,14 +55,8 @@ struct cuvs_cagra_c_api_index_lifetime_holder {
 /** Owns how to delete co-located index storage; `cuvsCagraIndex::addr` points here. */
 struct sg_cagra_c_api_index_box {
   void* index_ptr;
-  enum class dataset_layout : uint8_t {
-    device_padded,
-    device_standard,
-    device_vpq,
-    device_bbq,
-    host_padded,
-    host_standard
-  } layout;
+  using dataset_layout = cuvs::neighbors::cagra::c_api_dataset_layout;
+  dataset_layout layout;
   cuvs::neighbors::c_api::detail::owner_record owner_rec;
 };
 
@@ -349,7 +343,7 @@ static void with_dataset_view(cuvsDataset_t dataset, Fn&& fn)
   RAFT_EXPECTS(dataset->addr != 0, "null dataset storage");
   if (dataset->is_owning) {
     auto* owner = reinterpret_cast<OwnerT*>(dataset->addr);
-    auto view   = owner->as_dataset_view();
+    auto view   = std::as_const(*owner).view();
     fn(view);
   } else {
     fn(*reinterpret_cast<ViewT*>(dataset->addr));
@@ -1481,7 +1475,7 @@ void get_dataset_dl_tensor_from_index(cuvsCagraIndex_t index, DLManagedTensor* d
           "cuvsCagraIndexGetDatasetAsDLTensor does not expose quantized datasets as dense DLPack "
           "tensors");
       } else {
-        cuvs::core::to_dlpack(idx.dataset().view(), dataset);
+        cuvs::core::to_dlpack(cuvs::neighbors::dense_row_major_view(idx.dataset()), dataset);
       }
     });
 }
@@ -1643,6 +1637,12 @@ void* cagra_c_api_index_ptr(cuvsCagraIndex const* idx)
   // Matches `sg_cagra_c_api_index_box::index_ptr` (first member); keep in sync with that layout.
   if (idx == nullptr || idx->addr == 0) { return nullptr; }
   return *reinterpret_cast<void**>(idx->addr);
+}
+
+c_api_dataset_layout cagra_c_api_index_layout(cuvsCagraIndex const* idx)
+{
+  RAFT_EXPECTS(idx != nullptr && idx->addr != 0, "the CAGRA index handle is empty");
+  return reinterpret_cast<sg_cagra_c_api_index_box*>(idx->addr)->layout;
 }
 }  // namespace cuvs::neighbors::cagra
 
