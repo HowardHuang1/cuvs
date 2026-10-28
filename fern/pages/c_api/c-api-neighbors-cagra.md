@@ -776,6 +776,26 @@ Note that the DLManagedTensor dataset returned will have an associated 'deleter'
 
 [`cuvsError_t`](/api-reference/c-api-core-c-api#cuvserror-t)
 
+<a id="cuvscagraindexgetdataset"></a>
+### cuvsCagraIndexGetDataset
+
+Returns a view of the CAGRA dataset as a DLManagedTensor.
+
+```c
+cuvsError_t cuvsCagraIndexGetDataset(cuvsCagraIndex_t index, DLManagedTensor* dataset);
+```
+
+**Parameters**
+
+| Name | Direction | Type | Description |
+| --- | --- | --- | --- |
+| `index` | in | [`cuvsCagraIndex_t`](/api-reference/c-api-neighbors-cagra#cuvscagraindex) | CAGRA index |
+| `dataset` | out | `DLManagedTensor*` | the dataset used in cagra |
+
+**Returns**
+
+[`cuvsError_t`](/api-reference/c-api-core-c-api#cuvserror-t)
+
 <a id="cuvscagraindexgetdatasethandle"></a>
 ### cuvsCagraIndexGetDatasetHandle
 

@@ -599,6 +599,17 @@ CUVS_EXPORT cuvsError_t cuvsCagraIndexGetDatasetAsDLTensor(cuvsCagraIndex_t inde
                                                            DLManagedTensor* dataset);
 
 /**
+ * @brief Returns a view of the CAGRA dataset as a DLManagedTensor.
+ *
+ * @deprecated Use cuvsCagraIndexGetDatasetAsDLTensor instead.
+ *
+ * @param[in] index CAGRA index
+ * @param[out] dataset the dataset used in cagra
+ * @return cuvsError_t
+ */
+CUVS_EXPORT cuvsError_t cuvsCagraIndexGetDataset(cuvsCagraIndex_t index, DLManagedTensor* dataset);
+
+/**
  * @brief Return a non-owning cuvsDataset_t handle for the dataset of a built CAGRA index.
  *
  * The returned handle wraps the same device memory the index uses internally; no data is copied.

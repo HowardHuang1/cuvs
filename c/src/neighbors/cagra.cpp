@@ -1715,6 +1715,11 @@ extern "C" cuvsError_t cuvsCagraIndexGetDatasetAsDLTensor(cuvsCagraIndex_t index
   });
 }
 
+extern "C" cuvsError_t cuvsCagraIndexGetDataset(cuvsCagraIndex_t index, DLManagedTensor* dataset)
+{
+  return cuvsCagraIndexGetDatasetAsDLTensor(index, dataset);
+}
+
 extern "C" cuvsError_t cuvsCagraIndexGetDatasetHandle(cuvsCagraIndex_t index,
                                                       cuvsDataset_t* dataset_out)
 {
