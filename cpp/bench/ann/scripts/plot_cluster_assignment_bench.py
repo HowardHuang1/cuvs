@@ -22,6 +22,7 @@ Usage:
 
 import argparse
 import json
+import math
 import re
 import subprocess
 import sys
@@ -47,7 +48,9 @@ def run_benchmark(binary_path: str, extra_args: list[str]) -> dict:
 
 def parse_flat(payload: dict) -> list[tuple[str, int, int, int, float]]:
     """Return [(method, n_rows, n_clusters, dim, time_ms), ...]."""
-    records = []
+    # Several sweeps register the same (method, N, K, dim); average those repeats instead of
+    # letting the last one silently win.
+    times: dict = {}
     for entry in payload["benchmarks"]:
         match = BENCH_NAME_RE.match(entry["name"])
         if not match:
@@ -56,10 +59,9 @@ def parse_flat(payload: dict) -> list[tuple[str, int, int, int, float]]:
         time_ms = entry["real_time"] * (
             1000 if entry.get("time_unit") == "s" else 1
         )
-        records.append(
-            (method, int(n_rows), int(n_clusters), int(dim), time_ms)
-        )
-    return records
+        key = (method, int(n_rows), int(n_clusters), int(dim))
+        times.setdefault(key, []).append(time_ms)
+    return [(*key, sum(ts) / len(ts)) for key, ts in times.items()]
 
 
 def group_by_fixed_n(records: list) -> dict:
@@ -82,14 +84,18 @@ def series_by_ratio(records: list, ratio: int, dim: int | None = None) -> dict:
 
 
 def find_crossover(ks: list[int], bf: dict, cagra: dict):
-    """Return the K interval (k_before, k_after) where CAGRA - BruteForce changes sign, or None."""
+    """Return the K where CAGRA and BruteForce times cross, or None. Interpolated linearly in
+    log-log space between the two measured K values that bracket the sign change.
+    """
     common = [k for k in ks if k in bf and k in cagra]
-    prev_k, prev_sign = None, None
-    for k in common:
-        sign = 1 if cagra[k] > bf[k] else -1
-        if prev_sign is not None and sign != prev_sign:
-            return (prev_k, k)
-        prev_k, prev_sign = k, sign
+    for k0, k1 in zip(common, common[1:]):
+        r0 = math.log(bf[k0] / cagra[k0])
+        r1 = math.log(bf[k1] / cagra[k1])
+        if r0 * r1 < 0:
+            frac = r0 / (r0 - r1)
+            return math.exp(
+                math.log(k0) + frac * (math.log(k1) - math.log(k0))
+            )
     return None
 
 
@@ -177,23 +183,40 @@ def draw_panel(ax, data: dict, title: str, xlabel: str) -> tuple | None:
     )
 
     crossover = find_crossover(all_k, data["BruteForce"], data["CAGRA"])
+    box = dict(boxstyle="round,pad=0.3", fc=SURFACE, ec=GRID_GRAY, lw=0.8)
     if crossover is not None:
-        k_before, k_after = crossover
-        ax.axvspan(
-            k_before, k_after, color=TEXT_SECONDARY, alpha=0.08, zorder=1
+        ax.axvline(
+            crossover,
+            color=TEXT_SECONDARY,
+            linewidth=1.2,
+            linestyle="--",
+            zorder=2,
         )
         ax.annotate(
-            f"crossover\nK {k_before:,}-{k_after:,}",
-            xy=((k_before * k_after) ** 0.5, data["CAGRA"][k_after]),
-            ha="center",
-            xytext=(0, 26),
+            f"crossover\nK ~ {crossover:,.0f}",
+            xy=(crossover, 0.05),
+            xycoords=("data", "axes fraction"),
+            xytext=(6, 0),
             textcoords="offset points",
+            ha="left",
+            va="bottom",
             color=TEXT_PRIMARY,
             fontsize=9,
             fontweight="bold",
-            bbox=dict(
-                boxstyle="round,pad=0.3", fc=SURFACE, ec=GRID_GRAY, lw=0.8
-            ),
+            bbox=box,
+        )
+    else:
+        ax.text(
+            0.98,
+            0.05,
+            "no crossover in this K range",
+            transform=ax.transAxes,
+            ha="right",
+            va="bottom",
+            color=TEXT_PRIMARY,
+            fontsize=9,
+            fontweight="bold",
+            bbox=box,
         )
 
     ax.set_xscale("log")
@@ -260,7 +283,7 @@ def plot_single(series: dict, out_path: str, want_n: int | None) -> None:
     print(f"Saved plot to {out_path} (N={n_rows:,}, dim={dim})")
     if crossover is not None:
         print(
-            f"Crossover: CAGRA overtakes Brute force between K={crossover[0]:,} and K={crossover[1]:,}"
+            f"Crossover: CAGRA overtakes Brute force at K ~ {crossover:,.0f}"
         )
     else:
         print("No crossover found in this K range.")
@@ -315,9 +338,7 @@ def plot_side_by_side(
         (f"fixed N={fixed_n_rows:,}", crossover_fixed),
     ):
         if crossover is not None:
-            print(
-                f"  [{label}] crossover: K={crossover[0]:,} - K={crossover[1]:,}"
-            )
+            print(f"  [{label}] crossover: K ~ {crossover:,.0f}")
         else:
             print(f"  [{label}] no crossover found in this K range")
 

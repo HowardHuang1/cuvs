@@ -7,10 +7,12 @@ Produce all 8 cluster-assignment (brute force vs CAGRA) analysis panels in one f
   1. Ratio-controlled sweep: N = 5 * K
   2. Fixed-N sweep: N = 2,000,000, K varies
   3. Fixed-K sweep: K = 65,536, N varies
-  4. (N, K) speedup heatmap
-  5. Speedup ratio (BruteForce / CAGRA) vs K, for sweeps 1 and 2
+  4. (N, K) speedup heatmap (BruteForce / CAGRA time, log color scale centered on 1x)
+  5. Speedup ratio (BruteForce / CAGRA) vs K, for sweeps 1 and 2, with break-even points
   6. CAGRA build-vs-search breakdown vs K (at N = 2,000,000)
-  7. Assignment quality (label match %, centroid drift) vs ann_rebuild_interval
+  7. Fit quality (mean squared distance from each point to its assigned centroid, ANN fit divided
+     by brute-force fit; k-means "inertia" / n_rows) and speed vs ann_rebuild_interval, plus CAGRA 1-NN
+     agreement with exact search (CUVS_FIT_ANN_REBUILD_TUNING_BENCH)
   8. Dimension sensitivity, at N = 2,000,000, K = 131,072
 
 Usage:
@@ -28,6 +30,7 @@ Usage:
 
 import argparse
 import json
+import math
 import re
 import subprocess
 import sys
@@ -46,6 +49,10 @@ TUNING_NAME_RE = re.compile(
 COLOR_BRUTE_FORCE = "#2a78d6"
 COLOR_CAGRA = "#eb6834"
 COLOR_CAGRA_SEARCH = "#1baf7a"
+# Panels 5 and 7 plot sweeps / metrics rather than brute force vs CAGRA, so they must not reuse the
+# method colors above.
+COLOR_SERIES_A = "#7b4fd6"
+COLOR_SERIES_B = "#222222"
 GRID_GRAY = "#d8d7d2"
 TEXT_PRIMARY = "#0b0b0b"
 TEXT_SECONDARY = "#52514e"
@@ -74,7 +81,9 @@ def load_json_or_run(
 def parse_cluster_records(
     payload: dict,
 ) -> list[tuple[str, int, int, int, float]]:
-    records = []
+    # Several sweeps register the same (method, N, K, dim); average those repeats instead of
+    # letting the last one silently win in the per-panel dicts.
+    times: dict = {}
     for entry in payload.get("benchmarks", []):
         match = CLUSTER_NAME_RE.match(entry["name"])
         if not match:
@@ -83,10 +92,9 @@ def parse_cluster_records(
         time_ms = entry["real_time"] * (
             1000 if entry.get("time_unit") == "s" else 1
         )
-        records.append(
-            (method, int(n_rows), int(n_clusters), int(dim), time_ms)
-        )
-    return records
+        key = (method, int(n_rows), int(n_clusters), int(dim))
+        times.setdefault(key, []).append(time_ms)
+    return [(*key, sum(ts) / len(ts)) for key, ts in times.items()]
 
 
 def parse_amortized_records(
@@ -129,19 +137,31 @@ def parse_tuning_records(payload: dict) -> list[dict]:
                 "label_match_pct": entry.get("label_match_pct"),
                 "centroid_mean_l2_drift": entry.get("centroid_mean_l2_drift"),
                 "speedup_vs_brute": entry.get("speedup_vs_brute"),
+                "inertia_ratio_vs_brute": entry.get("inertia_ratio_vs_brute"),
+                "agreement_itopk64": entry.get(
+                    "ann_1nn_agreement_pct_itopk64"
+                ),
+                "agreement_itopk256": entry.get(
+                    "ann_1nn_agreement_pct_itopk256"
+                ),
             }
         )
     return records
 
 
-def find_crossover(ks: list, bf: dict, other: dict):
-    common = [k for k in ks if k in bf and k in other]
-    prev_k, prev_sign = None, None
-    for k in common:
-        sign = 1 if other[k] > bf[k] else -1
-        if prev_sign is not None and sign != prev_sign:
-            return (prev_k, k)
-        prev_k, prev_sign = k, sign
+def find_crossover(xs: list, bf: dict, other: dict):
+    """First x where `other` and `bf` times cross, interpolated linearly in log-log space between
+    the two measured points that bracket the sign change. None if they never cross.
+    """
+    common = [x for x in xs if x in bf and x in other]
+    for x0, x1 in zip(common, common[1:]):
+        r0 = math.log(bf[x0] / other[x0])
+        r1 = math.log(bf[x1] / other[x1])
+        if r0 * r1 < 0:
+            frac = r0 / (r0 - r1)
+            return math.exp(
+                math.log(x0) + frac * (math.log(x1) - math.log(x0))
+            )
     return None
 
 
@@ -172,21 +192,39 @@ def style_axes(ax, xlabel, ylabel, title, logx=True, logy=True):
     ax.tick_params(axis="both", colors=TEXT_SECONDARY, labelsize=7.5)
 
 
-def annotate_crossover(ax, crossover, y_at_after):
+def annotate_crossover(ax, crossover, xname, xs, bf, other):
+    """Mark the interpolated crossover, or say so (with the closest ratio) when there is none."""
+    box = dict(boxstyle="round,pad=0.25", fc=SURFACE, ec=GRID_GRAY, lw=0.7)
     if crossover is None:
+        x_last = max(x for x in xs if x in bf and x in other)
+        ax.text(
+            0.98,
+            0.04,
+            f"no crossover in range\nBF/CAGRA = {bf[x_last] / other[x_last]:.2f}x at {xname}={x_last:,}",
+            transform=ax.transAxes,
+            ha="right",
+            va="bottom",
+            color=TEXT_PRIMARY,
+            fontsize=7.5,
+            fontweight="bold",
+            bbox=box,
+        )
         return
-    k_before, k_after = crossover
-    ax.axvspan(k_before, k_after, color=TEXT_SECONDARY, alpha=0.08, zorder=1)
+    ax.axvline(
+        crossover, color=TEXT_SECONDARY, linewidth=1, linestyle="--", zorder=2
+    )
     ax.annotate(
-        f"K {k_before:,}-{k_after:,}",
-        xy=((k_before * k_after) ** 0.5, y_at_after),
-        ha="center",
-        xytext=(0, 18),
+        f"crossover {xname} ~ {crossover:,.0f}",
+        xy=(crossover, 0.04),
+        xycoords=("data", "axes fraction"),
+        xytext=(5, 0),
         textcoords="offset points",
+        ha="left",
+        va="bottom",
         color=TEXT_PRIMARY,
         fontsize=7.5,
         fontweight="bold",
-        bbox=dict(boxstyle="round,pad=0.25", fc=SURFACE, ec=GRID_GRAY, lw=0.7),
+        bbox=box,
     )
 
 
@@ -259,8 +297,9 @@ def panel1_ratio(ax, records, ratio=5, dim=128):
         all_k,
     )
     crossover = find_crossover(all_k, data["BruteForce"], data["CAGRA"])
-    if crossover:
-        annotate_crossover(ax, crossover, data["CAGRA"][crossover[1]])
+    annotate_crossover(
+        ax, crossover, "K", all_k, data["BruteForce"], data["CAGRA"]
+    )
     return crossover
 
 
@@ -284,8 +323,9 @@ def panel2_fixed_n(ax, records, n_fixed=2000000, dim=128):
         all_k,
     )
     crossover = find_crossover(all_k, data["BruteForce"], data["CAGRA"])
-    if crossover:
-        annotate_crossover(ax, crossover, data["CAGRA"][crossover[1]])
+    annotate_crossover(
+        ax, crossover, "K", all_k, data["BruteForce"], data["CAGRA"]
+    )
     return data, crossover
 
 
@@ -309,8 +349,9 @@ def panel3_fixed_k(ax, records, k_fixed=65536, dim=128):
         all_n,
     )
     crossover = find_crossover(all_n, data["BruteForce"], data["CAGRA"])
-    if crossover:
-        annotate_crossover(ax, crossover, data["CAGRA"][crossover[1]])
+    annotate_crossover(
+        ax, crossover, "N", all_n, data["BruteForce"], data["CAGRA"]
+    )
     return crossover
 
 
@@ -362,23 +403,16 @@ def panel4_heatmap(ax, records, dim=128):
     cmap = mcolors.LinearSegmentedColormap.from_list(
         "bf_cagra_diverging", [COLOR_BRUTE_FORCE, "#e8e7e2", COLOR_CAGRA]
     )
-    vmax = max(
-        2.0,
-        float(np.nanmax(ratio_matrix))
-        if not np.all(np.isnan(ratio_matrix))
-        else 2.0,
-    )
-    vmin = min(
-        0.5,
-        float(np.nanmin(ratio_matrix))
-        if not np.all(np.isnan(ratio_matrix))
-        else 0.5,
-    )
-    bound = max(abs(1 - vmin), abs(vmax - 1))
-    norm = mcolors.TwoSlopeNorm(vmin=1 - bound, vcenter=1.0, vmax=1 + bound)
-
+    # Color in log2(ratio) so 2x faster and 2x slower are equally far from the midpoint. Colors
+    # saturate at 16x either way; the cell labels still print the exact ratio.
+    bound = 4.0
+    norm = mcolors.TwoSlopeNorm(vmin=-bound, vcenter=0.0, vmax=bound)
     im = ax.imshow(
-        ratio_matrix, cmap=cmap, norm=norm, aspect="auto", origin="lower"
+        np.clip(np.log2(ratio_matrix), -bound, bound),
+        cmap=cmap,
+        norm=norm,
+        aspect="auto",
+        origin="lower",
     )
     for i in range(len(ks)):
         for j in range(len(ns)):
@@ -403,58 +437,79 @@ def panel4_heatmap(ax, records, dim=128):
     ax.set_xlabel("N", color=TEXT_SECONDARY, fontsize=8.5)
     ax.set_ylabel("K", color=TEXT_SECONDARY, fontsize=8.5)
     ax.set_title(
-        "4. (N, K) speedup heatmap  (BruteForce/CAGRA time, >1 = CAGRA faster)",
+        "4. (N, K) speedup heatmap",
         color=TEXT_PRIMARY,
-        fontsize=9.5,
+        fontsize=10,
         loc="left",
         fontweight="bold",
     )
     for spine in ax.spines.values():
         spine.set_visible(False)
     fig = ax.get_figure()
-    fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+    cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+    cbar.set_ticks([-4, -2, 0, 2, 4])
+    cbar.set_ticklabels(["1/16x", "1/4x", "1x", "4x", "16x"])
+    cbar.set_label(
+        "BF time / CAGRA time  (>1x: CAGRA faster)",
+        color=TEXT_SECONDARY,
+        fontsize=8,
+    )
+    cbar.ax.tick_params(colors=TEXT_SECONDARY, labelsize=7)
 
 
 def panel5_speedup_ratio(ax, ratio_data, fixed_n_data):
-    ks1 = sorted(set(ratio_data["BruteForce"]) & set(ratio_data["CAGRA"]))
-    ks2 = sorted(set(fixed_n_data["BruteForce"]) & set(fixed_n_data["CAGRA"]))
-    ax.plot(
-        ks1,
-        [ratio_data["BruteForce"][k] / ratio_data["CAGRA"][k] for k in ks1],
-        color=COLOR_BRUTE_FORCE,
-        linewidth=1.8,
-        marker="o",
-        markersize=5,
-        markerfacecolor=COLOR_BRUTE_FORCE,
-        markeredgecolor=SURFACE,
-        markeredgewidth=1,
-        label="Ratio-controlled (N=5xK)",
-        zorder=3,
-    )
-    ax.plot(
-        ks2,
-        [
-            fixed_n_data["BruteForce"][k] / fixed_n_data["CAGRA"][k]
-            for k in ks2
-        ],
-        color=COLOR_CAGRA,
-        linewidth=1.8,
-        marker="o",
-        markersize=5,
-        markerfacecolor=COLOR_CAGRA,
-        markeredgecolor=SURFACE,
-        markeredgewidth=1,
-        label="Fixed N=2,000,000",
-        zorder=3,
-    )
+    # Blue/orange mean brute force/CAGRA in the other panels; here each curve is a whole sweep
+    # (BF time / CAGRA time), so use separate colors and marker shapes. The dashed line is
+    # break-even; the diamond on it marks where each sweep's own curve reaches it.
+    series = [
+        ("N = 5xK sweep", ratio_data, COLOR_SERIES_A, "o", (30, -16)),
+        ("N = 2,000,000 sweep", fixed_n_data, COLOR_SERIES_B, "s", (-30, 10)),
+    ]
     ax.axhline(
         1.0, color=TEXT_SECONDARY, linewidth=1, linestyle="--", zorder=2
     )
+    for label, data, color, marker, text_offset in series:
+        ks = sorted(set(data["BruteForce"]) & set(data["CAGRA"]))
+        ax.plot(
+            ks,
+            [data["BruteForce"][k] / data["CAGRA"][k] for k in ks],
+            color=color,
+            linewidth=1.8,
+            marker=marker,
+            markersize=5,
+            markerfacecolor=color,
+            markeredgecolor=SURFACE,
+            markeredgewidth=1,
+            label=label,
+            zorder=3,
+        )
+        break_even = find_crossover(ks, data["BruteForce"], data["CAGRA"])
+        if break_even is not None:
+            ax.plot(
+                [break_even],
+                [1.0],
+                marker="D",
+                markersize=7,
+                markerfacecolor=SURFACE,
+                markeredgecolor=color,
+                markeredgewidth=1.6,
+                zorder=4,
+            )
+            ax.annotate(
+                f"K ~ {break_even:,.0f}",
+                xy=(break_even, 1.0),
+                xytext=text_offset,
+                textcoords="offset points",
+                ha="center",
+                color=color,
+                fontsize=7.5,
+                fontweight="bold",
+            )
     style_axes(
         ax,
         "K",
-        "Speedup = BruteForce time / CAGRA time",
-        "5. Speedup ratio vs K",
+        "BF time / CAGRA time  (>1: CAGRA faster)",
+        "5. Speedup vs K, per sweep  (dashed = break-even)",
         logy=True,
     )
     ax.legend(
@@ -575,7 +630,8 @@ def panel6_build_vs_search(
         )
 
     ax.set_facecolor(SURFACE)
-    ax.set_ylim(-22, 108)
+    ax.set_ylim(-22, 120)
+    ax.set_yticks([0, 20, 40, 60, 80, 100])
     ax.set_xlim(-group_gap, len(ks) * (group_width + group_gap))
     ax.set_xticks([])
     ax.set_xlabel(
@@ -601,11 +657,24 @@ def panel6_build_vs_search(
         ax.spines[spine].set_color(GRID_GRAY)
     ax.tick_params(axis="y", colors=TEXT_SECONDARY, labelsize=7.5)
     ax.legend(
-        loc="upper left", frameon=False, fontsize=7, labelcolor=TEXT_PRIMARY
+        loc="upper center",
+        ncol=2,
+        frameon=False,
+        fontsize=7.5,
+        labelcolor=TEXT_PRIMARY,
     )
 
 
 def panel7_accuracy(ax, tuning_records):
+    """Fit quality and speed vs ann_rebuild_interval, for the smallest (N, K) in the tuning JSON.
+
+    Quality is inertia_ratio_vs_brute: the mean squared distance from each point to its assigned
+    centroid (k-means inertia / n_rows) for the ANN fit divided by the same quantity for the brute
+    fit. Smaller means tighter clusters and 1.0 means equal. Unlike label match or centroid drift it
+    does not depend on cluster ids lining up between two independent fits. The 1-NN agreement with
+    exact search (fixed centroids, so no staleness) is independent of the rebuild interval and is
+    shown as text.
+    """
     by_combo: dict = {}
     for r in tuning_records:
         if r["method"] != "CAGRA" or r["ann_rebuild_interval"] is None:
@@ -613,18 +682,27 @@ def panel7_accuracy(ax, tuning_records):
         key = (r["n_vectors"], r["n_lists"])
         by_combo.setdefault(key, {})[r["ann_rebuild_interval"]] = r
 
-    if not by_combo:
+    title = "7. Fit quality and speed vs rebuild interval"
+    needed = ("inertia_ratio_vs_brute", "speedup_vs_brute")
+    if not by_combo or any(
+        r.get(f) is None
+        for by in by_combo.values()
+        for r in by.values()
+        for f in needed
+    ):
         ax.text(
             0.5,
             0.5,
-            "no tuning data",
+            "no tuning data with inertia_ratio_vs_brute\n"
+            "(rerun CUVS_FIT_ANN_REBUILD_TUNING_BENCH)",
             ha="center",
             va="center",
             transform=ax.transAxes,
             color=TEXT_SECONDARY,
+            fontsize=8,
         )
         ax.set_title(
-            "7. Assignment quality vs rebuild interval",
+            title,
             color=TEXT_PRIMARY,
             fontsize=10,
             loc="left",
@@ -634,65 +712,113 @@ def panel7_accuracy(ax, tuning_records):
 
     (n_vectors, n_lists), by_interval = sorted(by_combo.items())[0]
     intervals = sorted(by_interval)
-    label_match = [by_interval[i]["label_match_pct"] for i in intervals]
+    inertia = [by_interval[i]["inertia_ratio_vs_brute"] for i in intervals]
+    speedup = [by_interval[i]["speedup_vs_brute"] for i in intervals]
     ax2 = ax.twinx()
 
+    ax.axhline(
+        1.0, color=TEXT_SECONDARY, linewidth=1, linestyle="--", zorder=2
+    )
+    # The dashed line belongs to the left (distance ratio) axis only; say so, since the speedup
+    # line on the right axis crosses it at an unrelated value.
+    ax.text(
+        0.99,
+        1.0,
+        "left axis: 1.0 = same as brute force",
+        transform=ax.get_yaxis_transform(),
+        ha="right",
+        va="top",
+        color=TEXT_SECONDARY,
+        fontsize=7,
+    )
     ax.plot(
         intervals,
-        label_match,
-        color=COLOR_BRUTE_FORCE,
+        inertia,
+        color=COLOR_SERIES_A,
         linewidth=1.8,
         marker="o",
         markersize=6,
-        markerfacecolor=COLOR_BRUTE_FORCE,
+        markerfacecolor=COLOR_SERIES_A,
         markeredgecolor=SURFACE,
         markeredgewidth=1,
-        label="Label match % vs brute force",
+        label="Point-to-centroid distance, ANN fit / brute fit (1.0 = same, >1 = looser clusters)",
         zorder=3,
     )
-    ax.set_ylabel("Label match %", color=COLOR_BRUTE_FORCE, fontsize=8.5)
+    ax.set_ylabel(
+        "Mean sq. distance to assigned centroid\n(ANN fit / brute fit)",
+        color=COLOR_SERIES_A,
+        fontsize=8.5,
+    )
     ax.set_facecolor(SURFACE)
     ax.set_xlabel("ann_rebuild_interval", color=TEXT_SECONDARY, fontsize=8.5)
+    ax.set_xticks(intervals)
     ax.set_title(
-        f"7. Quality vs rebuild interval  (N={n_vectors:,}, K={n_lists:,})",
+        f"{title}  (N={n_vectors:,}, K={n_lists:,})",
         color=TEXT_PRIMARY,
         fontsize=9.5,
         loc="left",
         fontweight="bold",
     )
     ax.grid(True, which="major", color=GRID_GRAY, linewidth=0.7, zorder=0)
-    for spine in ("top",):
-        ax.spines[spine].set_visible(False)
-    ax.tick_params(axis="both", colors=TEXT_SECONDARY, labelsize=7.5)
+    ax.spines["top"].set_visible(False)
+    ax.tick_params(axis="x", colors=TEXT_SECONDARY, labelsize=7.5)
+    ax.tick_params(axis="y", colors=COLOR_SERIES_A, labelsize=7.5)
 
-    drift = [by_interval[i]["centroid_mean_l2_drift"] for i in intervals]
     ax2.plot(
         intervals,
-        drift,
-        color=COLOR_CAGRA,
+        speedup,
+        color=COLOR_SERIES_B,
         linewidth=1.8,
         marker="s",
         markersize=6,
-        markerfacecolor=COLOR_CAGRA,
+        markerfacecolor=COLOR_SERIES_B,
         markeredgecolor=SURFACE,
         markeredgewidth=1,
-        label="Centroid mean L2 drift",
+        label="Fit speedup vs brute (>1 = ANN faster)",
         zorder=3,
     )
-    ax2.set_ylabel("Centroid mean L2 drift", color=COLOR_CAGRA, fontsize=8.5)
+    ax2.set_ylabel(
+        "Fit speedup (brute time / ANN time)",
+        color=COLOR_SERIES_B,
+        fontsize=8.5,
+    )
     ax2.spines["top"].set_visible(False)
-    ax2.tick_params(axis="y", colors=COLOR_CAGRA, labelsize=7.5)
+    ax2.tick_params(axis="y", colors=COLOR_SERIES_B, labelsize=7.5)
+
+    # Leave an empty band above the data for the legend so it never sits on a line.
+    for axis, values in ((ax, inertia + [1.0]), (ax2, speedup)):
+        lo, hi = min(values), max(values)
+        pad = max(hi - lo, 1e-3) * 0.08
+        axis.set_ylim(lo - pad, hi + pad + 0.45 * (hi - lo + 2 * pad))
 
     lines1, labels1 = ax.get_legend_handles_labels()
     lines2, labels2 = ax2.get_legend_handles_labels()
     ax.legend(
         lines1 + lines2,
         labels1 + labels2,
-        loc="lower right",
+        loc="upper left",
         frameon=False,
         fontsize=7,
         labelcolor=TEXT_PRIMARY,
     )
+
+    sample = by_interval[intervals[0]]
+    if sample.get("agreement_itopk64") is not None:
+        ax.text(
+            0.98,
+            0.04,
+            "CAGRA 1-NN == exact, fixed centroids:\n"
+            f"  itopk_size 64 (default): {sample['agreement_itopk64']:.1f}%\n"
+            f"  itopk_size 256: {sample['agreement_itopk256']:.1f}%",
+            transform=ax.transAxes,
+            ha="right",
+            va="bottom",
+            color=TEXT_PRIMARY,
+            fontsize=7.5,
+            bbox=dict(
+                boxstyle="round,pad=0.3", fc=SURFACE, ec=GRID_GRAY, lw=0.7
+            ),
+        )
 
 
 def panel8_dim_sensitivity(ax, records, n_fixed=2000000, k_fixed=131072):
@@ -731,7 +857,11 @@ def main() -> None:
     parser.add_argument("--tuning-json")
     parser.add_argument("--tuning-binary")
     parser.add_argument("--out", default="all_cluster_assignment_panels.png")
-    parser.add_argument("--tuning-filter", default="327680/65536/128")
+    parser.add_argument(
+        "--tuning-filter",
+        default="n_vectors:327680/n_lists:65536/dim:128",
+        help="--benchmark_filter regex used when running --tuning-binary",
+    )
     args = parser.parse_args()
 
     if not args.cluster_json and not args.cluster_binary:

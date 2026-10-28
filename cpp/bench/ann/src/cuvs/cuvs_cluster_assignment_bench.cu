@@ -97,6 +97,22 @@ static void BM_ClusterAssignment_CAGRA(benchmark::State& state)
   // float X/centroids only.
   std::optional<cuvs::neighbors::cagra::index<float, uint32_t>> cagra_index_opt;
 
+  // Untimed warm-up: the first CAGRA build/search for a configuration pays one-time costs (kernel
+  // JIT, allocator growth) that would otherwise land in the first measured iteration. Large cases
+  // only run one iteration, so that cost would be the whole measurement.
+  cuvs::cluster::kmeans::detail::assign_nearest_centroid_cagra_with_index_reuse<int64_t, uint32_t>(
+    handle,
+    params,
+    centroids.data(),
+    n_clusters,
+    dim,
+    X.data(),
+    n_rows,
+    labels.data(),
+    &cagra_index_opt,
+    true);
+  raft::resource::sync_stream(handle);
+
   for (auto _ : state) {
     cuvs::cluster::kmeans::detail::assign_nearest_centroid_cagra_with_index_reuse<int64_t,
                                                                                   uint32_t>(
@@ -147,6 +163,11 @@ static void BM_ClusterAssignment_CAGRA_SearchOnly(benchmark::State& state)
     cuvs::cluster::kmeans::detail::build_cagra_index_for_centroids(handle, params, centers_view);
   auto search_params = cuvs::cluster::kmeans::detail::default_cagra_centroid_search_params();
 
+  // Untimed warm-up search (see BM_ClusterAssignment_CAGRA).
+  cuvs::cluster::kmeans::detail::assign_nearest_centroid_cagra(
+    handle, search_params, cagra_index, X_view, labels.data(), n_rows);
+  raft::resource::sync_stream(handle);
+
   for (auto _ : state) {
     cuvs::cluster::kmeans::detail::assign_nearest_centroid_cagra(
       handle, search_params, cagra_index, X_view, labels.data(), n_rows);
@@ -186,6 +207,15 @@ static void BM_ClusterAssignment_CAGRA_AmortizedInterval(benchmark::State& state
   auto centers_view = raft::make_device_matrix_view<const float, int64_t, raft::row_major>(
     centroids.data(), n_clusters, dim);
   auto search_params = cuvs::cluster::kmeans::detail::default_cagra_centroid_search_params();
+
+  // Untimed warm-up of one build and one search (see BM_ClusterAssignment_CAGRA).
+  {
+    auto warm_index =
+      cuvs::cluster::kmeans::detail::build_cagra_index_for_centroids(handle, params, centers_view);
+    cuvs::cluster::kmeans::detail::assign_nearest_centroid_cagra(
+      handle, search_params, warm_index, X_view, labels.data(), n_rows);
+    raft::resource::sync_stream(handle);
+  }
 
   for (auto _ : state) {
     auto cagra_index =

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Tuning benchmark for balanced k-means fit E-step ANN rebuild interval (`ann_rebuild_interval`).
@@ -15,9 +15,19 @@
  *
  * Label match and centroid drift are computed once after the full fit (all n_iters),
  * comparing final centroids and final predict labels vs brute — not per EM iteration.
+ *
+ * Label match and centroid drift compare cluster ids index-by-index between two independent fits,
+ * so they collapse to near chance as soon as the two trajectories diverge, even when both fits are
+ * equally good. Two additional, permutation-invariant quality counters are reported:
+ *  - inertia_ratio_vs_brute: mean squared distance of each point to its assigned final centroid for
+ *    the ANN fit divided by the same quantity for the brute fit (1.0 = same quality, > 1 = worse)
+ *  - ann_1nn_agreement_pct_itopk{64,256}: % of points for which CAGRA 1-NN over the brute fit's
+ *    final centroids (fixed, so no staleness) returns the exact nearest centroid, at the given
+ *    itopk_size. Independent of ann_rebuild_interval.
  */
 #include <benchmark/benchmark.h>
 
+#include <cluster/detail/kmeans_predict_cagra.cuh>
 #include <cuvs/cluster/kmeans.hpp>
 #include <raft/core/device_mdarray.hpp>
 #include <raft/core/device_resources.hpp>
@@ -36,7 +46,10 @@
 
 namespace {
 
-constexpr uint32_t kFitIters = 3;
+// The ANN path only runs in the final fine-tuning pass over all clusters, which executes
+// max(n_iters / 10, 2) EM iterations (more if balancing adjusts centers). With n_iters = 100 that
+// is 10 iterations, so ann_rebuild_interval values up to 10 produce different numbers of rebuilds.
+constexpr uint32_t kFitIters = 100;
 
 struct BenchRanges {
   int64_t n_rows;
@@ -142,6 +155,24 @@ double centroid_mean_l2_drift(const std::vector<float>& ref_centroids,
   return sum_l2 / static_cast<double>(n_clusters);
 }
 
+// Mean squared L2 distance from each point to its assigned centroid (k-means inertia / n_rows).
+double mean_sq_dist_to_assigned(const std::vector<float>& dataset,
+                                const std::vector<float>& centroids,
+                                const std::vector<uint32_t>& labels,
+                                int64_t dim)
+{
+  double sum = 0.0;
+  for (size_t i = 0; i < labels.size(); ++i) {
+    const float* x = dataset.data() + i * static_cast<size_t>(dim);
+    const float* c = centroids.data() + static_cast<size_t>(labels[i]) * static_cast<size_t>(dim);
+    for (int64_t d = 0; d < dim; ++d) {
+      const double diff = static_cast<double>(x[d]) - static_cast<double>(c[d]);
+      sum += diff * diff;
+    }
+  }
+  return sum / static_cast<double>(labels.size());
+}
+
 struct FitFixture {
   raft::device_resources handle;
   rmm::device_uvector<float> dataset;
@@ -171,7 +202,9 @@ struct FitFixture {
 struct BruteReference {
   std::vector<uint32_t> labels;
   std::vector<float> centroids;
-  double fit_ms = 0.0;
+  double fit_ms       = 0.0;
+  double mean_sq_dist = 0.0;
+  std::vector<float> dataset_host;
 };
 
 BruteReference compute_brute_reference(FitFixture& fixture, BenchRanges const& ranges)
@@ -196,7 +229,47 @@ BruteReference compute_brute_reference(FitFixture& fixture, BenchRanges const& r
   ref.labels    = copy_labels_to_host(fixture.handle, fixture.labels.data(), ranges.n_rows);
   ref.centroids = copy_centroids_to_host(
     fixture.handle, ref_centroids.data_handle(), ranges.n_clusters, ranges.dim);
+  // copy_centroids_to_host is a plain [rows, dim] device-to-host copy, so it also fits the dataset
+  ref.dataset_host =
+    copy_centroids_to_host(fixture.handle, fixture.dataset.data(), ranges.n_rows, ranges.dim);
+  ref.mean_sq_dist =
+    mean_sq_dist_to_assigned(ref.dataset_host, ref.centroids, ref.labels, ranges.dim);
   return ref;
+}
+
+// % of points whose CAGRA 1-NN over the brute fit's (fixed) final centroids equals the exact
+// nearest centroid, for a given itopk_size.
+double ann_1nn_agreement_pct(FitFixture& fixture,
+                             BenchRanges const& ranges,
+                             BruteReference const& ref,
+                             size_t itopk_size)
+{
+  auto stream = raft::resource::get_cuda_stream(fixture.handle);
+  auto ref_centroids =
+    raft::make_device_matrix<float, int64_t>(fixture.handle, ranges.n_clusters, ranges.dim);
+  raft::copy(ref_centroids.data_handle(), ref.centroids.data(), ref.centroids.size(), stream);
+
+  auto params = make_fit_params(false, 1);
+  auto index  = cuvs::cluster::kmeans::detail::build_cagra_index_for_centroids(
+    fixture.handle,
+    params,
+    raft::make_device_matrix_view<const float, int64_t, raft::row_major>(
+      ref_centroids.data_handle(), ranges.n_clusters, ranges.dim));
+  auto search_params       = cuvs::cluster::kmeans::detail::default_cagra_centroid_search_params();
+  search_params.itopk_size = itopk_size;
+
+  cuvs::cluster::kmeans::detail::assign_nearest_centroid_cagra(
+    fixture.handle,
+    search_params,
+    index,
+    raft::make_device_matrix_view<const float, int64_t, raft::row_major>(
+      fixture.dataset.data(), ranges.n_rows, ranges.dim),
+    fixture.labels.data(),
+    ranges.n_rows);
+  raft::resource::sync_stream(fixture.handle);
+
+  const auto ann_labels = copy_labels_to_host(fixture.handle, fixture.labels.data(), ranges.n_rows);
+  return label_match_pct(ref.labels, ann_labels);
 }
 
 static void BM_FitAnnTuning_Brute(benchmark::State& state)
@@ -212,6 +285,7 @@ static void BM_FitAnnTuning_Brute(benchmark::State& state)
   state.SetItemsProcessed(state.iterations() * ranges.n_rows);
   state.counters["label_match_pct"]        = 100.0;
   state.counters["centroid_mean_l2_drift"] = 0.0;
+  state.counters["inertia_ratio_vs_brute"] = 1.0;
 }
 
 static void BM_FitAnnTuning_CAGRA(benchmark::State& state)
@@ -224,6 +298,14 @@ static void BM_FitAnnTuning_CAGRA(benchmark::State& state)
   double last_label_match      = 100.0;
   double last_centroid_drift   = 0.0;
   double last_speedup_vs_brute = 0.0;
+  double last_inertia_ratio    = 0.0;
+  double last_agreement_64     = 0.0;
+  double last_agreement_256    = 0.0;
+
+  // Untimed warm-up fit: the first CAGRA use in a process pays one-time costs (kernel JIT,
+  // allocator growth) that would otherwise be counted in the first measured fit, and these cases
+  // only run one iteration.
+  run_fit(fixture.handle, ann_params, fixture.dataset_view, fixture.centroids_view);
 
   for (auto _ : state) {
     state.PauseTiming();
@@ -253,13 +335,22 @@ static void BM_FitAnnTuning_CAGRA(benchmark::State& state)
       centroid_mean_l2_drift(brute_ref.centroids, ann_centroids, ranges.n_clusters, ranges.dim);
 
     last_speedup_vs_brute = ann_fit_ms > 0.0 ? brute_ref.fit_ms / ann_fit_ms : 0.0;
+    last_inertia_ratio =
+      mean_sq_dist_to_assigned(brute_ref.dataset_host, ann_centroids, ann_labels, ranges.dim) /
+      brute_ref.mean_sq_dist;
+    // Overwrites fixture.labels, so it must come after ann_labels was copied to the host above.
+    last_agreement_64  = ann_1nn_agreement_pct(fixture, ranges, brute_ref, 64);
+    last_agreement_256 = ann_1nn_agreement_pct(fixture, ranges, brute_ref, 256);
     state.ResumeTiming();
   }
 
   state.SetItemsProcessed(state.iterations() * ranges.n_rows);
-  state.counters["label_match_pct"]        = last_label_match;
-  state.counters["centroid_mean_l2_drift"] = last_centroid_drift;
-  state.counters["speedup_vs_brute"]       = last_speedup_vs_brute;
+  state.counters["label_match_pct"]                = last_label_match;
+  state.counters["centroid_mean_l2_drift"]         = last_centroid_drift;
+  state.counters["speedup_vs_brute"]               = last_speedup_vs_brute;
+  state.counters["inertia_ratio_vs_brute"]         = last_inertia_ratio;
+  state.counters["ann_1nn_agreement_pct_itopk64"]  = last_agreement_64;
+  state.counters["ann_1nn_agreement_pct_itopk256"] = last_agreement_256;
 }
 
 constexpr int64_t kDim = 128;
