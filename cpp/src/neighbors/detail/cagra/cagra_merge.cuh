@@ -196,7 +196,10 @@ auto concatenate_datasets(raft::resources const& handle,
       cuvs::neighbors::detail::make_dense_array<cuvs::neighbors::device_padded_dataset<T, int64_t>>(
         handle, total_rows, dim);
     RAFT_CUDA_TRY(cudaMemsetAsync(
-      out_array.data_handle(), 0, static_cast<std::size_t>(out_array.size()) * sizeof(T), stream));
+      out_array.data_handle(),
+      0,
+      static_cast<std::size_t>(out_array.mapping().required_span_size()) * sizeof(T),
+      stream));
     copy_datasets_into<T>(handle, datasets, out_array.data_handle(), stride, dim);
     return std::make_unique<cuvs::neighbors::device_padded_dataset<T, int64_t>>(
       std::move(out_array));
@@ -246,8 +249,11 @@ auto concatenate_datasets(raft::resources const& handle,
   auto out_array =
     cuvs::neighbors::detail::make_dense_array<cuvs::neighbors::device_padded_dataset<T, int64_t>>(
       handle, final_rows, dim);
-  RAFT_CUDA_TRY(cudaMemsetAsync(
-    out_array.data_handle(), 0, static_cast<std::size_t>(out_array.size()) * sizeof(T), stream));
+  RAFT_CUDA_TRY(
+    cudaMemsetAsync(out_array.data_handle(),
+                    0,
+                    static_cast<std::size_t>(out_array.mapping().required_span_size()) * sizeof(T),
+                    stream));
 
   for (std::size_t i = 0; i < datasets.size(); ++i) {
     int64_t const n_i = offsets[i + 1] - offsets[i];
