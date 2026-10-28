@@ -7,9 +7,16 @@
 from libc.stdint cimport uint32_t
 from libcpp cimport bool
 
-from cuvs.cluster.kmeans.kmeans cimport cuvsKMeansType
 from cuvs.common.c_api cimport cuvsError_t, cuvsResources_t
 from cuvs.common.cydlpack cimport DLDataType, DLManagedTensor
+
+
+# Declared here rather than cimported from cuvs.cluster.kmeans.kmeans: that cimport imports the
+# kmeans module when this one initializes, which loops back into cuvs.common through cagra.
+cdef extern from "cuvs/cluster/kmeans.h" nogil:
+    ctypedef enum cuvsKMeansType:
+        CUVS_KMEANS_TYPE_KMEANS
+        CUVS_KMEANS_TYPE_KMEANS_BALANCED
 
 
 cdef extern from "cuvs/preprocessing/quantize/pq.h" nogil:

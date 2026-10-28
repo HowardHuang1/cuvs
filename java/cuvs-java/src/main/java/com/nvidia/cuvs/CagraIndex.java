@@ -509,7 +509,7 @@ public interface CagraIndex extends AutoCloseable {
      * Loads an index written by {@link CagraIndex#serialize(OutputStream)}, with its graph and
      * dataset. {@link FromSerializedBuilder#build()} reads {@code inputStream} to its end, but
      * closing it is left to the caller. The index owns the loaded dataset unless
-     * {@link FromSerializedBuilder#withOutputDataset(DeserializeDataset)} hands it to the caller.
+     * {@link FromSerializedBuilder#withOutputDataset(DenseOwningDataset)} hands it to the caller.
      *
      * @param inputStream the serialized index
      * @return a builder for the optional inputs
@@ -539,7 +539,7 @@ public interface CagraIndex extends AutoCloseable {
      * @param outDataset an empty {@link PaddedDataset} or {@link StandardDataset}
      * @return an instance of this Builder
      * @deprecated Use {@link #fromSerialized(InputStream)} and
-     *     {@link FromSerializedBuilder#withOutputDataset(DeserializeDataset)}.
+     *     {@link FromSerializedBuilder#withOutputDataset(DenseOwningDataset)}.
      */
     @Deprecated(since = "26.12", forRemoval = true)
     Builder from(InputStream inputStream, DenseOwningDataset outDataset);
@@ -743,7 +743,7 @@ public interface CagraIndex extends AutoCloseable {
      * @return this builder
      * @throws IllegalStateException if called more than once
      */
-    FromSerializedBuilder withOutputDataset(DeserializeDataset outDataset);
+    FromSerializedBuilder withOutputDataset(DenseOwningDataset outDataset);
 
     /**
      * Loads the index. A builder creates one index, so this can be called only once,

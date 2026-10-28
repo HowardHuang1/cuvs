@@ -679,7 +679,7 @@ default FromSerializedBuilder fromSerialized(InputStream inputStream)
 Loads an index written by `CagraIndex#serialize(OutputStream)`, with its graph and
 dataset. `FromSerializedBuilder#build()` reads `inputStream` to its end, but
 closing it is left to the caller. The index owns the loaded dataset unless
-`FromSerializedBuilder#withOutputDataset(DeserializeDataset)` hands it to the caller.
+`FromSerializedBuilder#withOutputDataset(DenseOwningDataset)` hands it to the caller.
 
 **Parameters**
 
@@ -727,7 +727,7 @@ deserialization. The concrete output type must match the dataset layout stored i
 serialized index. Keep `outDataset` alive while the built index is in use. Unlike
 `#fromSerialized(InputStream)`, `#build()` closes `inputStream`.
 
-**Deprecated:** Use `#fromSerialized(InputStream)` and `FromSerializedBuilder#withOutputDataset(DeserializeDataset)`.
+**Deprecated:** Use `#fromSerialized(InputStream)` and `FromSerializedBuilder#withOutputDataset(DenseOwningDataset)`.
 
 **Parameters**
 
@@ -1027,7 +1027,7 @@ _Source: `java/cuvs-java/src/main/java/com/nvidia/cuvs/CagraIndex.java:727`_
 ### withOutputDataset
 
 ```java
-FromSerializedBuilder withOutputDataset(DeserializeDataset outDataset)
+FromSerializedBuilder withOutputDataset(DenseOwningDataset outDataset)
 ```
 
 Hands the loaded dataset to the caller instead of the index. `outDataset` must be

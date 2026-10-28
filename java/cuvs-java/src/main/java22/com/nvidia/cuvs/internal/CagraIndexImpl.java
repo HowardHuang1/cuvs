@@ -1849,7 +1849,7 @@ public class CagraIndexImpl implements CagraIndex {
   private static final class FromSerializedBuilderImpl implements CagraIndex.FromSerializedBuilder {
     private final CuVSResources resources;
     private final InputStream inputStream;
-    private CagraIndex.DeserializeDataset outDataset;
+    private CagraIndex.DenseOwningDataset outDataset;
     private boolean built;
 
     FromSerializedBuilderImpl(CuVSResources resources, InputStream inputStream) {
@@ -1859,7 +1859,7 @@ public class CagraIndexImpl implements CagraIndex {
 
     @Override
     public CagraIndex.FromSerializedBuilder withOutputDataset(
-        CagraIndex.DeserializeDataset outDataset) {
+        CagraIndex.DenseOwningDataset outDataset) {
       Objects.requireNonNull(outDataset, "outDataset");
       checkNotSet(this.outDataset, "withOutputDataset");
       this.outDataset = outDataset;
