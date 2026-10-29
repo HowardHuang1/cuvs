@@ -1252,6 +1252,7 @@ public class CagraIndexImpl implements CagraIndex {
     try (var localArena = Arena.ofConfined()) {
       MemorySegment indexesSegment = buildIndicesSegment(localArena, indexes);
 
+      boolean success = false;
       var mergedIndex = createCagraIndex();
       int numWriterThreads = mergeParams != null ? mergeParams.getNumWriterThreads() : 0;
       try (var nativeMergeParams = segmentFromIndexParams(mergeParams);
@@ -1295,7 +1296,13 @@ public class CagraIndexImpl implements CagraIndex {
           }
         }
         // mergedDataset is caller-owned; the returned index does not take ownership of it.
+        success = true;
         return new CagraIndexImpl(new IndexReference(mergedIndex, null, null), resources);
+      } finally {
+        if (!success) {
+          quietly(
+              () -> checkCuVSError(cuvsCagraIndexDestroy(mergedIndex), "cuvsCagraIndexDestroy"));
+        }
       }
     }
   }
@@ -1417,7 +1424,7 @@ public class CagraIndexImpl implements CagraIndex {
 
   /**
    * Gets a non-owning {@code cuvsDataset_t} handle for each index via
-   * {@code cuvsCagraIndexGetCuvsDataset}, stores them in {@code datasetsOut}, and returns a
+   * {@code cuvsCagraIndexGetDatasetHandle}, stores them in {@code datasetsOut}, and returns a
    * native array of those handles suitable for passing to {@code cuvsMergedDatasetOffsets}
    * or {@code cuvsConcatenateDatasets}. The caller is responsible for destroying every handle
    * in {@code datasetsOut} (via {@code cuvsDatasetDestroy}) when the call is complete.
@@ -1486,6 +1493,10 @@ public class CagraIndexImpl implements CagraIndex {
   private static NativeBitsetFilter uploadBitsetFilter(
       long cuvsRes, Arena arena, BitSet filter, long totalRows) {
     Objects.requireNonNull(filter);
+    if (filter.length() > totalRows) {
+      throw new IllegalArgumentException(
+          "filter has bits set beyond totalRows (" + filter.length() + " > " + totalRows + ")");
+    }
     long wordCount = (totalRows + 63) / 64; // number of uint64 words to upload
     MemorySegment hostBitset = buildMemorySegment(arena, filter.toLongArray(), wordCount);
     long bitsetBytes = wordCount * Long.BYTES;

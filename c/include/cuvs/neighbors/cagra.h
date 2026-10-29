@@ -1173,15 +1173,14 @@ CUVS_EXPORT cuvsError_t cuvsCagraMergeWithParams_v2(cuvsResources_t res,
  *                            using \p output_index and destroy it with `cuvsDatasetDestroy`.
  * @param[out] output_index Output handle initialized with `cuvsCagraIndexCreate`
  */
-CUVS_EXPORT __attribute__((deprecated(
-  "Use cuvsCagraMerge_v2 instead; will be removed in 27.02"))) cuvsError_t
-cuvsCagraMerge(cuvsResources_t res,
-               cuvsCagraIndexParams_t params,
-               cuvsCagraIndex_t* indices,
-               size_t num_indices,
-               cuvsFilter filter,
-               cuvsDataset_t merged_dataset,
-               cuvsCagraIndex_t output_index);
+CUVS_EXPORT cuvsError_t cuvsCagraMerge(cuvsResources_t res,
+                                       cuvsCagraIndexParams_t params,
+                                       cuvsCagraIndex_t* indices,
+                                       size_t num_indices,
+                                       cuvsFilter filter,
+                                       cuvsDataset_t merged_dataset,
+                                       cuvsCagraIndex_t output_index)
+  __attribute__((deprecated("Use cuvsCagraMerge_v2 instead; will be removed in 27.02")));
 
 /**
  * @brief Merge multiple CAGRA indices with explicit merge parameters (deprecated).
@@ -1200,16 +1199,15 @@ cuvsCagraMerge(cuvsResources_t res,
  *                            using `output_index` and destroy it with `cuvsDatasetDestroy`.
  * @param[out] output_index Output handle initialized with `cuvsCagraIndexCreate`
  */
-CUVS_EXPORT __attribute__((deprecated(
-  "Use cuvsCagraMergeWithParams_v2 instead; will be removed in 27.02"))) cuvsError_t
-cuvsCagraMergeWithParams(cuvsResources_t res,
-                         cuvsCagraIndexParams_t params,
-                         cuvsCagraMergeParams_t merge_params,
-                         cuvsCagraIndex_t* indices,
-                         size_t num_indices,
-                         cuvsFilter filter,
-                         cuvsDataset_t merged_dataset,
-                         cuvsCagraIndex_t output_index);
+CUVS_EXPORT cuvsError_t cuvsCagraMergeWithParams(cuvsResources_t res,
+                                                 cuvsCagraIndexParams_t params,
+                                                 cuvsCagraMergeParams_t merge_params,
+                                                 cuvsCagraIndex_t* indices,
+                                                 size_t num_indices,
+                                                 cuvsFilter filter,
+                                                 cuvsDataset_t merged_dataset,
+                                                 cuvsCagraIndex_t output_index)
+  __attribute__((deprecated("Use cuvsCagraMergeWithParams_v2 instead; will be removed in 27.02")));
 
 /**
  * @}

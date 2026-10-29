@@ -26,6 +26,7 @@ import com.nvidia.cuvs.VamanaIndex;
 import com.nvidia.cuvs.spi.CuVSProvider;
 import java.lang.invoke.MethodHandle;
 import java.nio.file.Path;
+import java.util.BitSet;
 import java.util.List;
 import java.util.logging.Level;
 
@@ -99,6 +100,34 @@ class FilterCuVSProvider implements CuVSProvider {
       CagraIndexParams mergeParams)
       throws Throwable {
     return delegate.mergeCagraIndexes(indexes, mergedDatasetHandleAddress, offsets, mergeParams);
+  }
+
+  @Override
+  public CagraIndex mergeCagraIndexes(
+      CagraIndex[] indexes,
+      long mergedDatasetHandleAddress,
+      long[] offsets,
+      BitSet filter,
+      CagraIndexParams mergeParams)
+      throws Throwable {
+    return delegate.mergeCagraIndexes(
+        indexes, mergedDatasetHandleAddress, offsets, filter, mergeParams);
+  }
+
+  @Override
+  public long[] cagraMergedDatasetOffsets(CagraIndex[] indexes, BitSet filter) throws Throwable {
+    return delegate.cagraMergedDatasetOffsets(indexes, filter);
+  }
+
+  @Override
+  public CagraIndex.PaddedDataset concatenateCagraDatasets(CagraIndex[] indexes) throws Throwable {
+    return delegate.concatenateCagraDatasets(indexes);
+  }
+
+  @Override
+  public CagraIndex.PaddedDataset concatenateAndFilterCagraDatasets(
+      CagraIndex[] indexes, BitSet filter) throws Throwable {
+    return delegate.concatenateAndFilterCagraDatasets(indexes, filter);
   }
 
   @Override

@@ -152,7 +152,7 @@ CUVS_EXPORT cuvsError_t cuvsDatasetGetDtype(cuvsDataset_t dataset, DLDataType* d
  * `BITSET`, the number of surviving rows per dataset cannot be derived any other way, so call this
  * first.
  *
- * Use `cuvsCagraIndexGetCuvsDataset` to obtain a `cuvsDataset_t` handle from each CAGRA index
+ * Use `cuvsCagraIndexGetDatasetHandle` to obtain a `cuvsDataset_t` handle from each CAGRA index
  * before calling this function.
  *
  * @param[in] res cuvsResources_t opaque C handle
@@ -178,7 +178,7 @@ CUVS_EXPORT cuvsError_t cuvsMergedDatasetOffsets(cuvsResources_t res,
  * argument. Callers that already have their own concatenated buffer are not required to use it.
  * Call `cuvsMergedDatasetOffsets` with the same `filter` to get the matching `offsets`.
  *
- * Use `cuvsCagraIndexGetCuvsDataset` to obtain a `cuvsDataset_t` handle from each CAGRA index
+ * Use `cuvsCagraIndexGetDatasetHandle` to obtain a `cuvsDataset_t` handle from each CAGRA index
  * before calling this function.
  *
  * @param[in] res cuvsResources_t opaque C handle
