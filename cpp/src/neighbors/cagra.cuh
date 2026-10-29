@@ -596,9 +596,7 @@ std::vector<int64_t> merged_dataset_offsets(
  * the output dataset type must share the same row stride. Optional convenience helper for
  * `merge()`'s `merged_dataset` argument; call `merged_dataset_offsets()` with the same
  * `row_filter` to get the matching `offsets`. */
-template <typename T,
-          typename OutputDatasetT = cuvs::neighbors::device_padded_dataset<T, int64_t>,
-          cuvs::neighbors::ann_dataset_view DatasetViewT>
+template <typename T, typename OutputDatasetT, cuvs::neighbors::ann_dataset_view DatasetViewT>
 auto concatenate_datasets(raft::resources const& handle,
                           std::vector<DatasetViewT> const& datasets,
                           cuvs::neighbors::filtering::base_filter const& row_filter)
