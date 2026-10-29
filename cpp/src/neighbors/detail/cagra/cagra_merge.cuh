@@ -177,12 +177,14 @@ void copy_datasets_into(raft::resources const& handle,
  *  When `row_filter` is `none_sample_filter`, all rows are copied. When it is a bitset filter,
  *  only surviving rows are gathered (peak device memory is the output buffer sized to the
  *  surviving row count — no unfiltered-sized staging buffer is allocated). */
-template <typename T, cuvs::neighbors::ann_dataset_view DatasetViewT>
+template <typename T,
+          typename OutputDatasetT = cuvs::neighbors::device_padded_dataset<T, int64_t>,
+          cuvs::neighbors::ann_dataset_view DatasetViewT>
 auto concatenate_datasets(raft::resources const& handle,
                           std::vector<DatasetViewT> const& datasets,
                           cuvs::neighbors::filtering::base_filter const& row_filter =
                             cuvs::neighbors::filtering::none_sample_filter{})
-  -> std::unique_ptr<cuvs::neighbors::device_padded_dataset<T, int64_t>>
+  -> std::unique_ptr<OutputDatasetT>
 {
   auto [dim, stride]  = validate_datasets_for_concat(datasets, "cagra::concatenate_datasets");
   cudaStream_t stream = raft::resource::get_cuda_stream(handle).get();
@@ -193,16 +195,14 @@ auto concatenate_datasets(raft::resources const& handle,
       total_rows += static_cast<int64_t>(v.n_rows());
     }
     auto out_array =
-      cuvs::neighbors::detail::make_dense_array<cuvs::neighbors::device_padded_dataset<T, int64_t>>(
-        handle, total_rows, dim);
+      cuvs::neighbors::detail::make_dense_array<OutputDatasetT>(handle, total_rows, dim);
     RAFT_CUDA_TRY(cudaMemsetAsync(
       out_array.data_handle(),
       0,
       static_cast<std::size_t>(out_array.mapping().required_span_size()) * sizeof(T),
       stream));
     copy_datasets_into<T>(handle, datasets, out_array.data_handle(), stride, dim);
-    return std::make_unique<cuvs::neighbors::device_padded_dataset<T, int64_t>>(
-      std::move(out_array));
+    return std::make_unique<OutputDatasetT>(std::move(out_array));
   }
 
   RAFT_EXPECTS(row_filter.get_filter_type() == cuvs::neighbors::filtering::FilterType::Bitset,
@@ -247,8 +247,7 @@ auto concatenate_datasets(raft::resources const& handle,
   }
 
   auto out_array =
-    cuvs::neighbors::detail::make_dense_array<cuvs::neighbors::device_padded_dataset<T, int64_t>>(
-      handle, final_rows, dim);
+    cuvs::neighbors::detail::make_dense_array<OutputDatasetT>(handle, final_rows, dim);
   RAFT_CUDA_TRY(
     cudaMemsetAsync(out_array.data_handle(),
                     0,
@@ -291,7 +290,7 @@ auto concatenate_datasets(raft::resources const& handle,
     raft::matrix::copy_rows(handle, src_view, dst_view, raft::make_const_mdspan(local_ids.view()));
   }
 
-  return std::make_unique<cuvs::neighbors::device_padded_dataset<T, int64_t>>(std::move(out_array));
+  return std::make_unique<OutputDatasetT>(std::move(out_array));
 }
 
 /** Build a fresh CAGRA graph over a caller-populated, already-concatenated (and, if applicable,

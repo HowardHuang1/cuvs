@@ -589,17 +589,22 @@ std::vector<int64_t> merged_dataset_offsets(
   return cagra::detail::merged_dataset_offsets<DatasetViewT>(handle, datasets, row_filter);
 }
 
-/** @brief Concatenate `datasets` (in order) into a freshly allocated, CAGRA-padded, owning device
- * dataset, optionally retaining only the rows selected by `row_filter`. Optional convenience
- * helper for `merge()`'s `merged_dataset` argument; call `merged_dataset_offsets()` with the same
+/** @brief Concatenate `datasets` (in order) into a freshly allocated owning device dataset,
+ * optionally retaining only the rows selected by `row_filter`. `OutputDatasetT` controls the
+ * layout of the result; it defaults to `device_padded_dataset` (CAGRA-padded). Pass
+ * `device_standard_dataset` to produce a standard (contiguous) output. The input view type and
+ * the output dataset type must share the same row stride. Optional convenience helper for
+ * `merge()`'s `merged_dataset` argument; call `merged_dataset_offsets()` with the same
  * `row_filter` to get the matching `offsets`. */
-template <typename T, cuvs::neighbors::ann_dataset_view DatasetViewT>
+template <typename T,
+          typename OutputDatasetT = cuvs::neighbors::device_padded_dataset<T, int64_t>,
+          cuvs::neighbors::ann_dataset_view DatasetViewT>
 auto concatenate_datasets(raft::resources const& handle,
                           std::vector<DatasetViewT> const& datasets,
                           cuvs::neighbors::filtering::base_filter const& row_filter)
-  -> std::unique_ptr<cuvs::neighbors::device_padded_dataset<T, int64_t>>
+  -> std::unique_ptr<OutputDatasetT>
 {
-  return cagra::detail::concatenate_datasets<T>(handle, datasets, row_filter);
+  return cagra::detail::concatenate_datasets<T, OutputDatasetT>(handle, datasets, row_filter);
 }
 
 template <typename T, typename IdxT = uint32_t, typename OutputIdxT = uint32_t>
@@ -703,31 +708,31 @@ auto update_dataset(raft::resources const& res,
 
 }  // namespace cuvs::neighbors::cagra
 
-#define CUVS_INST_CAGRA_MERGE(T, IdxT, DatasetViewT)                                       \
-  template CUVS_EXPORT std::vector<int64_t>                                                \
-  cuvs::neighbors::cagra::merged_dataset_offsets<DatasetViewT>(                            \
-    raft::resources const& handle,                                                         \
-    std::vector<DatasetViewT> const& datasets,                                             \
-    cuvs::neighbors::filtering::base_filter const& row_filter);                            \
-  template CUVS_EXPORT cuvs::neighbors::cagra::index<T, IdxT, DatasetViewT>                \
-  cuvs::neighbors::cagra::merge<T, IdxT, DatasetViewT>(                                    \
-    raft::resources const& handle,                                                         \
-    const cuvs::neighbors::cagra::index_params& params,                                    \
-    std::vector<cuvs::neighbors::cagra::index<T, IdxT, DatasetViewT>*>& indices,           \
-    DatasetViewT merged_dataset,                                                           \
-    std::vector<int64_t> const& offsets,                                                   \
-    cuvs::neighbors::filtering::base_filter const& row_filter);                            \
-  template CUVS_EXPORT cuvs::neighbors::cagra::index<T, IdxT, DatasetViewT>                \
-  cuvs::neighbors::cagra::merge<T, IdxT, DatasetViewT>(                                    \
-    raft::resources const& handle,                                                         \
-    const cuvs::neighbors::cagra::index_params& params,                                    \
-    std::vector<cuvs::neighbors::cagra::index<T, IdxT, DatasetViewT>*>& indices,           \
-    DatasetViewT merged_dataset,                                                           \
-    std::vector<int64_t> const& offsets,                                                   \
-    const cuvs::neighbors::cagra::merge_params& merge_params,                              \
-    cuvs::neighbors::filtering::base_filter const& row_filter);                            \
-  template CUVS_EXPORT std::unique_ptr<cuvs::neighbors::device_padded_dataset<T, int64_t>> \
-  cuvs::neighbors::cagra::concatenate_datasets<T, DatasetViewT>(                           \
-    raft::resources const& handle,                                                         \
-    std::vector<DatasetViewT> const& datasets,                                             \
+#define CUVS_INST_CAGRA_MERGE(T, IdxT, DatasetViewT, OutputDatasetT)             \
+  template CUVS_EXPORT std::vector<int64_t>                                      \
+  cuvs::neighbors::cagra::merged_dataset_offsets<DatasetViewT>(                  \
+    raft::resources const& handle,                                               \
+    std::vector<DatasetViewT> const& datasets,                                   \
+    cuvs::neighbors::filtering::base_filter const& row_filter);                  \
+  template CUVS_EXPORT cuvs::neighbors::cagra::index<T, IdxT, DatasetViewT>      \
+  cuvs::neighbors::cagra::merge<T, IdxT, DatasetViewT>(                          \
+    raft::resources const& handle,                                               \
+    const cuvs::neighbors::cagra::index_params& params,                          \
+    std::vector<cuvs::neighbors::cagra::index<T, IdxT, DatasetViewT>*>& indices, \
+    DatasetViewT merged_dataset,                                                 \
+    std::vector<int64_t> const& offsets,                                         \
+    cuvs::neighbors::filtering::base_filter const& row_filter);                  \
+  template CUVS_EXPORT cuvs::neighbors::cagra::index<T, IdxT, DatasetViewT>      \
+  cuvs::neighbors::cagra::merge<T, IdxT, DatasetViewT>(                          \
+    raft::resources const& handle,                                               \
+    const cuvs::neighbors::cagra::index_params& params,                          \
+    std::vector<cuvs::neighbors::cagra::index<T, IdxT, DatasetViewT>*>& indices, \
+    DatasetViewT merged_dataset,                                                 \
+    std::vector<int64_t> const& offsets,                                         \
+    const cuvs::neighbors::cagra::merge_params& merge_params,                    \
+    cuvs::neighbors::filtering::base_filter const& row_filter);                  \
+  template CUVS_EXPORT std::unique_ptr<OutputDatasetT>                           \
+  cuvs::neighbors::cagra::concatenate_datasets<T, OutputDatasetT, DatasetViewT>( \
+    raft::resources const& handle,                                               \
+    std::vector<DatasetViewT> const& datasets,                                   \
     cuvs::neighbors::filtering::base_filter const& row_filter);

@@ -1389,21 +1389,22 @@ void _merged_dataset_offsets(cuvsResources_t res,
   }
 }
 
-/** Bind a freshly built owning `device_padded_dataset<T, int64_t>` to a new `cuvsDataset_t`
- *  handle, mirroring `make_device_padded_dataset<T>`'s output construction. */
-template <typename T>
+/** Bind a freshly built owning dataset to a new `cuvsDataset_t` handle. `layout` must match the
+ *  concrete type of `OwnerT` (PADDED for `device_padded_dataset`, STANDARD for
+ *  `device_standard_dataset`). */
+template <typename OwnerT>
 static void bind_concatenated_dataset(
-  std::unique_ptr<cuvs::neighbors::device_padded_dataset<T, int64_t>> owner,
+  std::unique_ptr<OwnerT> owner,
   DLDataType dtype,
+  cuvsDatasetLayout_t layout,
   cuvsDataset_t* output)
 {
-  using owner_type  = cuvs::neighbors::device_padded_dataset<T, int64_t>;
   auto* out         = new cuvsDataset{};
   out->addr         = reinterpret_cast<uintptr_t>(owner.release());
-  out->destroy_addr = &destroy_typed_addr<owner_type>;
+  out->destroy_addr = &destroy_typed_addr<OwnerT>;
   out->dtype        = dtype;
   out->mem_type     = CUVS_DATASET_MEM_TYPE_DEVICE;
-  out->layout       = CUVS_DATASET_LAYOUT_PADDED;
+  out->layout       = layout;
   out->is_owning    = true;
   *output           = out;
 }
@@ -1420,10 +1421,15 @@ void _concatenate_datasets(cuvsResources_t res,
   auto layout =
     validate_datasets_for_concat(datasets, num_datasets, "cuvsConcatenateDatasets");
 
-  auto compute = [&](auto const& dataset_views) {
+  // Type-tag dispatch: the null pointer carries OutputDatasetT to the lambda at compile time.
+  auto compute = [&](auto const& dataset_views, cuvsDatasetLayout_t layout_enum,
+                     auto* output_type_tag) {
+    using OutputDatasetT = std::remove_pointer_t<decltype(output_type_tag)>;
     if (filter.type == NO_FILTER) {
-      bind_concatenated_dataset<T>(
-        cuvs::neighbors::cagra::concatenate_datasets<T>(*res_ptr, dataset_views), dtype,
+      bind_concatenated_dataset(
+        cuvs::neighbors::cagra::concatenate_datasets<T, OutputDatasetT>(*res_ptr, dataset_views),
+        dtype,
+        layout_enum,
         merged_dataset);
     } else {
       int64_t total_rows = 0;
@@ -1433,29 +1439,33 @@ void _concatenate_datasets(cuvsResources_t res,
       auto removed_indices     = cuvs::core::from_dlpack<filter_mdspan_type>(removed_tensor);
       cuvs::core::bitset_view<std::uint32_t, int64_t> bitset_view_obj(removed_indices, total_rows);
       cuvs::neighbors::filtering::bitset_filter<uint32_t, int64_t> row_filter(bitset_view_obj);
-      bind_concatenated_dataset<T>(
-        cuvs::neighbors::cagra::concatenate_datasets<T>(*res_ptr, dataset_views, row_filter),
+      bind_concatenated_dataset(
+        cuvs::neighbors::cagra::concatenate_datasets<T, OutputDatasetT>(
+          *res_ptr, dataset_views, row_filter),
         dtype,
+        layout_enum,
         merged_dataset);
     }
   };
 
   if (layout == CUVS_DATASET_LAYOUT_PADDED) {
-    using ViewT = cuvs::neighbors::device_padded_dataset_view<T, int64_t>;
+    using ViewT   = cuvs::neighbors::device_padded_dataset_view<T, int64_t>;
+    using OutputT = cuvs::neighbors::device_padded_dataset<T, int64_t>;
     std::vector<ViewT> views;
     views.reserve(num_datasets);
     for (size_t i = 0; i < num_datasets; ++i) {
       views.push_back(*reinterpret_cast<ViewT*>(datasets[i]->addr));
     }
-    compute(views);
+    compute(views, CUVS_DATASET_LAYOUT_PADDED, (OutputT*)nullptr);
   } else {
-    using ViewT = cuvs::neighbors::device_standard_dataset_view<T, int64_t>;
+    using ViewT   = cuvs::neighbors::device_standard_dataset_view<T, int64_t>;
+    using OutputT = cuvs::neighbors::device_standard_dataset<T, int64_t>;
     std::vector<ViewT> views;
     views.reserve(num_datasets);
     for (size_t i = 0; i < num_datasets; ++i) {
       views.push_back(*reinterpret_cast<ViewT*>(datasets[i]->addr));
     }
-    compute(views);
+    compute(views, CUVS_DATASET_LAYOUT_STANDARD, (OutputT*)nullptr);
   }
 }
 

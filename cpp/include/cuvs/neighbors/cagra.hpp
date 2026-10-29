@@ -3490,9 +3490,12 @@ auto merged_dataset_offsets(raft::resources const& res,
                             const cuvs::neighbors::filtering::base_filter& row_filter)
   -> std::vector<int64_t>;
 
-/** @brief Concatenate `datasets` (in order) into a freshly allocated, CAGRA-padded, owning device
- * dataset, optionally retaining only the rows selected by `row_filter`. Optional convenience
- * helper for `merge()`'s `merged_dataset` argument; call `merged_dataset_offsets()` with the same
+/** @brief Concatenate `datasets` (in order) into a freshly allocated owning device dataset,
+ * optionally retaining only the rows selected by `row_filter`. The `OutputDatasetT` template
+ * parameter controls the layout of the result (default: `device_padded_dataset`, CAGRA-padded).
+ * Pass `device_standard_dataset` to produce a standard (contiguous row-major) output. The input
+ * view type and the chosen output type must share the same row stride. Optional convenience helper
+ * for `merge()`'s `merged_dataset` argument; call `merged_dataset_offsets()` with the same
  * `row_filter` to get the matching `offsets`.
  *
  * @param[in] res RAFT resources.
@@ -3500,15 +3503,17 @@ auto merged_dataset_offsets(raft::resources const& res,
  *                     index.
  * @param[in] row_filter Row filter. Pass `none_sample_filter{}` (the default) to concatenate all
  *                       rows. Pass a `bitset_filter` to retain only the surviving rows.
- * @return An owning, CAGRA-padded device dataset containing the concatenated (and optionally
- *         filtered) rows.
+ * @return An owning device dataset containing the concatenated (and optionally filtered) rows,
+ *         with the layout determined by `OutputDatasetT`.
  */
-template <typename T, cuvs::neighbors::ann_dataset_view DatasetViewT>
+template <typename T,
+          typename OutputDatasetT = cuvs::neighbors::device_padded_dataset<T, int64_t>,
+          cuvs::neighbors::ann_dataset_view DatasetViewT>
 auto concatenate_datasets(raft::resources const& res,
                           std::vector<DatasetViewT> const& datasets,
                           cuvs::neighbors::filtering::base_filter const& row_filter =
                             cuvs::neighbors::filtering::none_sample_filter{})
-  -> std::unique_ptr<cuvs::neighbors::device_padded_dataset<T, int64_t>>;
+  -> std::unique_ptr<OutputDatasetT>;
 
 /** @brief Merge multiple physical CAGRA indices into one.
  *
